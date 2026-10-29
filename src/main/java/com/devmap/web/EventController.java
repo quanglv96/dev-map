@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.agent.AgentService.AgentProgress;
 import com.devmap.graph.GraphService.GraphChanged;
 import com.devmap.ticket.TaskChanged;
 import java.io.IOException;
@@ -11,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-/** Server-Sent Events: open tabs learn about ticket ("task") and graph ("graph") changes, all projects or ?project=. */
+/** Server-Sent Events: open tabs learn about ticket ("task"), graph ("graph") and agent ("agent") changes, all projects or ?project=. */
 @RestController
 public class EventController {
 
@@ -35,6 +36,11 @@ public class EventController {
   @EventListener
   public void onGraphChanged(GraphChanged change) {
     send(change.project(), "graph", change);
+  }
+
+  @EventListener
+  public void onAgent(AgentProgress progress) {
+    send(progress.project(), "agent", progress);
   }
 
   private void send(String changed, String name, Object data) {

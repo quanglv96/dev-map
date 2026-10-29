@@ -74,6 +74,11 @@ public final class Graph {
     return edges;
   }
 
+  /** Nodes declared in one file of a repo (class, function and API nodes), e.g. to find who calls what a diff changed. */
+  public List<Node> nodesIn(String repo, String file) {
+    return nodes.values().stream().filter(n -> repo.equals(n.repo()) && file.equals(n.file())).toList();
+  }
+
   public List<Node> search(String query, int limit) {
     String q = query.toLowerCase(Locale.ROOT);
     return nodes.values().stream().filter(n -> n.label().toLowerCase(Locale.ROOT).contains(q))

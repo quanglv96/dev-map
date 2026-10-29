@@ -196,6 +196,12 @@ public class GitService {
     return must(dir, "diff", from + "...HEAD") + "\n" + must(dir, "diff", "HEAD");
   }
 
+  /** Content of path at commit (works in worktrees too), or null when the file does not exist there. */
+  public String show(Path dir, String commit, String path) {
+    Out o = run(dir, "show", commit + ":" + path);
+    return o.ok() ? o.output() : null;
+  }
+
   /** Every file path in the commit's tree. */
   public List<String> listFiles(Path repo, String commit) {
     try (Git git = Git.open(repo.toFile()); RevWalk walk = new RevWalk(git.getRepository());

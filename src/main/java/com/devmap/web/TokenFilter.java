@@ -38,6 +38,10 @@ public class TokenFilter extends OncePerRequestFilter {
       deny(res, HttpServletResponse.SC_FORBIDDEN, "DevMap chỉ nhận kết nối từ máy này (localhost).");
       return;
     }
+    if ("/mcp".equals(req.getRequestURI()) && req.getHeader(McpController.SESSION_HEADER) != null) {
+      chain.doFilter(req, res); // agent MCP calls: McpController checks the session token
+      return;
+    }
     if ("GET".equals(req.getMethod()) && token.matches(req.getParameter("token"))) {
       ResponseCookie cookie = ResponseCookie.from(COOKIE, token.value()).httpOnly(true).sameSite("Strict").path("/").build();
       res.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());

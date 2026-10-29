@@ -79,6 +79,22 @@ class WebTest {
         .andExpect(status().isForbidden());
   }
 
+  /** The agent's MCP endpoint takes only a live session token; the run token alone or a made-up session gets nothing. */
+  @Test
+  void mcpNeedsALiveSession() throws Exception {
+    String rpc = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}";
+    mvc.perform(post("/mcp").contentType(MediaType.APPLICATION_JSON).content(rpc)).andExpect(status().isUnauthorized());
+    mvc.perform(post("/mcp").header(McpController.SESSION_HEADER, "made-up").contentType(MediaType.APPLICATION_JSON).content(rpc))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(post("/mcp").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON).content(rpc))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(post("/mcp").header(McpController.SESSION_HEADER, "made-up").contentType(MediaType.APPLICATION_JSON).content(rpc)
+        .with(r -> {
+          r.setRemoteAddr("192.168.1.20");
+          return r;
+        })).andExpect(status().isForbidden());
+  }
+
   /** FR-01 → FR-04 through the API used by the UI. */
   @Test
   void projectLifecycleOverApi() throws Exception {

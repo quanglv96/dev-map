@@ -355,6 +355,11 @@ public class TaskService {
     }
   }
 
+  /** NFR-10: a line in history.md for something done outside this service (agent sessions, Q&A). */
+  public void note(String project, String id, Actor actor, String text) {
+    history(stored(project, id).folder(), actor, text);
+  }
+
   void history(Path folder, Actor actor, String text) {
     repo.appendDoc(folder, "history.md", "- " + now() + " · " + actor + " · " + masker.mask(text).text() + "\n");
   }
@@ -387,6 +392,11 @@ public class TaskService {
       throw new IllegalStateException("Không có folder dữ liệu " + d);
     }
     return d;
+  }
+
+  /** The ticket folder in the data folder (chat.json lives there next to the documents). */
+  public Path folder(String project, String id) {
+    return stored(project, id).folder();
   }
 
   Stored stored(String project, String id) {

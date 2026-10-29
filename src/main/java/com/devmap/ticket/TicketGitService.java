@@ -277,7 +277,7 @@ public class TicketGitService {
   }
 
   /** FR-26: changes.md = branch, commits and files per repo, regenerated from git after every step. */
-  private void writeChanges(String project, String id) {
+  public void writeChanges(String project, String id) {
     StringBuilder md = new StringBuilder("# Thay đổi – " + id + "\n");
     for (RepoView r : view(project, id).repos()) {
       md.append("\n## ").append(r.repo()).append("\n\n- Branch: `").append(r.branch()).append("` (nhánh nền `").append(r.baseBranch())

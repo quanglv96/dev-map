@@ -14,8 +14,8 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "devmap", mixinStandardHelpOptions = true, version = "devmap 0.1.0",
     description = "DevMap: PMO requirement -> SA/Dev agents -> traced code changes.",
-    subcommands = {InitCommand.class, WorkspaceCommand.class, TaskCommand.class, IndexCommand.class, RulesCommand.class, ServeCommand.class,
-        DoctorCommand.class})
+    subcommands = {InitCommand.class, WorkspaceCommand.class, TaskCommand.class, IndexCommand.class, RulesCommand.class,
+        PromptCommand.class, ServeCommand.class, DoctorCommand.class})
 public class DevMapCommand implements Runnable {
 
   @Spec
