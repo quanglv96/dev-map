@@ -153,7 +153,7 @@ class AgentServiceTest {
           .isNull();
       JsonNode list = mcp.handle(c.sessionToken(), JSON.valueToTree(Map.of("jsonrpc", "2.0", "id", 2, "method", "tools/list")));
       assertThat(list.findValuesAsText("name")).contains("get_spec", "search_graph", "get_snippet", "verify_facts", "write_ticket_doc")
-          .doesNotContain("write_file", "edit_file", "commit", "run_quality_gate");
+          .doesNotContain("write_file", "edit_file", "delete_file", "commit", "run_quality_gate");
       assertThat(tool(c, "get_spec", Map.of())).contains("\"action_type\" : \"FEAT\"").contains("[MASKED_TOKEN]").doesNotContain("ghp_");
       assertThat(tool(c, "get_ticket_docs", Map.of("names", List.of("task.md")))).startsWith("ERR");
       assertThat(tool(c, "set_status", Map.of("to", "ready"))).startsWith("ERR").contains("PMO");
@@ -293,10 +293,14 @@ class AgentServiceTest {
     git.run(wt, "commit", "-q", "-m", "NYX-3: PMO sửa tay");
     fake.scripts.add(c -> {
       assertThat(c.prompt()).contains("Commit PMO tự làm ở order-service", "PMO sửa tay", "KHÔNG ĐẠT");
+      assertThat(tool(c, "delete_file", Map.of("repo", "order-service", "path", "src/main/java/com/shop/order/Extra.java")))
+          .contains("Đã xoá");
+      assertThat(tool(c, "delete_file", Map.of("repo", "order-service", "path", ".env"))).startsWith("ERR").contains("bí mật");
       return "ok";
     });
     agents.ask("shop", id, "", "Sửa theo verify.md", false);
     assertThat(tasks.readDoc("shop", id, "changes.md").content()).contains("PMO sửa tay");
+    assertThat(Path.of(dev.view("shop", id).repos().get(0).worktree()).resolve("src/main/java/com/shop/order/Extra.java")).doesNotExist();
   }
 
   /** AC-04, FR-07, NFR-10: "Chạy hàng đợi" – Dev works Ready MAINT tickets one by one in the PMO's order; every step is logged. */

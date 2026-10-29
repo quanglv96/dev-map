@@ -94,7 +94,9 @@ class AgentTools {
           "repo:string:Tên repo", "path:string:Đường dẫn trong repo", "content:string:Nội dung đầy đủ"),
       tool("edit_file", "Thay đúng một chỗ old bằng new trong một file của worktree.", Set.of(Role.DEV),
           "repo:string:Tên repo", "path:string:Đường dẫn trong repo", "old:string:Đoạn cũ, phải khớp đúng một lần",
-          "new:string:Đoạn mới"));
+          "new:string:Đoạn mới"),
+      tool("delete_file", "Xoá một file trong worktree của ticket.", Set.of(Role.DEV),
+          "repo:string:Tên repo", "path:string:Đường dẫn trong repo"));
 
   private final TaskService tasks;
   private final TicketGitService dev;
@@ -143,6 +145,7 @@ class AgentTools {
       case "commit" -> commit(s, text(args, "repo"), text(args, "message"));
       case "write_file" -> writeFile(s, text(args, "repo"), text(args, "path"), text(args, "content"));
       case "edit_file" -> editFile(s, text(args, "repo"), text(args, "path"), text(args, "old"), text(args, "new"));
+      case "delete_file" -> deleteFile(s, text(args, "repo"), text(args, "path"));
       default -> throw new IllegalArgumentException("Không có công cụ " + name);
     };
     return mask(s, cap(out));
@@ -375,6 +378,18 @@ class AgentTools {
     return "Đã ghi " + repo + ":" + path + scopeWarning(s, repo, path);
   }
 
+  private String deleteFile(AgentSession s, String repo, String path) {
+    Path f = editable(s, repo, path);
+    try {
+      if (!Files.deleteIfExists(f)) {
+        throw new NoSuchElementException("Không có file " + path);
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    return "Đã xoá " + repo + ":" + path + scopeWarning(s, repo, path);
+  }
+
   private String editFile(AgentSession s, String repo, String path, String old, String now) {
     Path f = editable(s, repo, path);
     if (old.contains("[MASKED_") || now.contains("[MASKED_")) {
@@ -431,7 +446,7 @@ class AgentTools {
       }
     }
     String rule = switch (name) {
-      case "write_file", "edit_file" -> "scope + chặn file bí mật (FR-32, FR-34)";
+      case "write_file", "edit_file", "delete_file" -> "scope + chặn file bí mật (FR-32, FR-34)";
       case "commit" -> "git.commit_template, scope";
       case "run_quality_gate" -> "quality: tách lớp, phân tích tĩnh, unit test";
       case "set_status" -> "luồng 8 trạng thái, cổng duyệt PMO";
