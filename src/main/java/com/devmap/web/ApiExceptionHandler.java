@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.ticket.PmoOnlyException;
 import java.io.UncheckedIOException;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -15,6 +16,11 @@ public class ApiExceptionHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException e) {
     return error(HttpStatus.BAD_REQUEST, e);
+  }
+
+  @ExceptionHandler(PmoOnlyException.class)
+  public ResponseEntity<Map<String, String>> forbidden(PmoOnlyException e) {
+    return error(HttpStatus.FORBIDDEN, e);
   }
 
   @ExceptionHandler(NoSuchElementException.class)

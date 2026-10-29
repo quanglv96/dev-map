@@ -1,0 +1,42 @@
+package com.devmap.web;
+
+import com.devmap.ticket.TaskChanged;
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.context.event.EventListener;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+/** Server-Sent Events: every open tab learns about ticket changes (all projects, or one with ?project=). */
+@RestController
+public class EventController {
+
+  private final Map<SseEmitter, String> emitters = new ConcurrentHashMap<>();
+
+  @GetMapping("/api/events")
+  public SseEmitter events(@RequestParam(defaultValue = "") String project) {
+    SseEmitter emitter = new SseEmitter(0L);
+    emitters.put(emitter, project);
+    emitter.onCompletion(() -> emitters.remove(emitter));
+    emitter.onTimeout(() -> emitters.remove(emitter));
+    emitter.onError(e -> emitters.remove(emitter));
+    return emitter;
+  }
+
+  @EventListener
+  public void onTaskChanged(TaskChanged change) {
+    emitters.forEach((emitter, project) -> {
+      if (!project.isEmpty() && !project.equals(change.project())) {
+        return;
+      }
+      try {
+        emitter.send(SseEmitter.event().name("task").data(change));
+      } catch (IOException | IllegalStateException e) {
+        emitters.remove(emitter);
+      }
+    });
+  }
+}

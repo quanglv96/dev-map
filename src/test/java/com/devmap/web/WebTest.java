@@ -104,6 +104,31 @@ class WebTest {
             .contentType(MediaType.APPLICATION_JSON).content("{\"color\":\"#00aa55\",\"repos\":[{\"name\":\"x\",\"path\":\"/nope\"}]}"))
         .andExpect(status().isBadRequest());
 
+    String h = token.value();
+    mvc.perform(post("/api/projects/webshop/tasks").header(TokenFilter.HEADER, h).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"type\":\"FEAT\",\"title\":\"Refund\",\"request\":\"Hoàn tiền payment-service, key sk_live_abcdefghijklmnop\"}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.task.id").value("FEAT-001"))
+        .andExpect(jsonPath("$.maskedCount").value(1));
+    mvc.perform(post("/api/projects/webshop/tasks/FEAT-001/transition").header(TokenFilter.HEADER, h)
+        .contentType(MediaType.APPLICATION_JSON).content("{\"to\":\"sa_analysis\"}")).andExpect(status().isOk());
+    mvc.perform(post("/api/projects/webshop/tasks/FEAT-001/transition").header(TokenFilter.HEADER, h)
+        .contentType(MediaType.APPLICATION_JSON).content("{\"to\":\"ready\"}")).andExpect(status().isBadRequest());
+    for (String content : new String[] {"v1", "v2"}) {
+      mvc.perform(put("/api/projects/webshop/tasks/FEAT-001/doc").param("name", "plan.md").header(TokenFilter.HEADER, h)
+          .contentType(MediaType.APPLICATION_JSON).content("{\"content\":\"" + content + "\"}")).andExpect(status().isOk());
+    }
+    mvc.perform(get("/api/projects/webshop/tasks/FEAT-001/doc/diff").param("name", "plan.md").param("from", "1")
+        .param("to", "2").header(TokenFilter.HEADER, h)).andExpect(jsonPath("$.diff").value(
+            org.hamcrest.Matchers.containsString("+v2")));
+    mvc.perform(get("/api/projects/webshop/tasks/FEAT-001/doc").param("name", "spec.json").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$.content").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("sk_live"))));
+    mvc.perform(get("/api/projects/webshop/tasks/FEAT-001").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$.actions[0].to").value("awaiting_approval"));
+    mvc.perform(get("/api/overview").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$[0].running[0].id").value("FEAT-001"));
+    mvc.perform(get("/api/events").header(TokenFilter.HEADER, h)).andExpect(status().isOk());
+
     mvc.perform(get("/api/projects/nope").header(TokenFilter.HEADER, token.value())).andExpect(status().isNotFound());
     mvc.perform(delete("/api/projects/webshop").header(TokenFilter.HEADER, token.value())).andExpect(status().isNoContent());
     assertThat(tmp.resolve("data/webshop/config.yml")).exists();
