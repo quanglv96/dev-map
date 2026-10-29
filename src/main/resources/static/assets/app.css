@@ -118,3 +118,14 @@ pre.diff span.del { background: #fee2e2; }
 @media (max-width: 900px) {
   .grid2 { grid-template-columns: 1fr; }
 }
+
+/* Phase 3: graph */
+.cy { height: calc(100vh - 190px); min-height: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.graph-tools { flex-wrap: wrap; margin-bottom: 8px; }
+.crumbs { display: flex; align-items: center; gap: 2px; }
+.search { position: relative; }
+.search-results { position: absolute; right: 0; top: 34px; z-index: 5; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; display: flex; flex-direction: column; max-height: 300px; overflow: auto; min-width: 260px; }
+.search-results:empty { display: none; }
+.search-results button { text-align: left; }
+pre.sig { white-space: pre-wrap; word-break: break-word; font-size: 11px; background: var(--bg); padding: 6px; border-radius: 6px; }

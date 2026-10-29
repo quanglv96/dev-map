@@ -3,6 +3,7 @@
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
 import { WAITS_FOR_PMO, api, el, fill, setFavicon, showError } from "./lib.js";
 import { renderConfig } from "./views/config.js";
+import { renderGraph } from "./views/graph.js";
 import { renderNewTask, renderTask } from "./views/task.js";
 
 applyI18n();
@@ -20,6 +21,7 @@ const filterType = document.getElementById("filter-type");
 const state = { masked: 0 };
 let project;
 let tasks = [];
+let refreshGraph = null;
 
 fill(filterStatus, el("option", { value: "" }, t("allStatus")),
   STATUSES.map((s) => el("option", { value: s }, t(`status.${s}`))));
@@ -33,7 +35,7 @@ function route() {
   if (hash.startsWith("task=")) {
     return { view: "task", id: decodeURIComponent(hash.slice(5)) };
   }
-  return { view: hash === "config" || hash === "new" ? hash : "overview" };
+  return { view: ["config", "new", "graph"].includes(hash) ? hash : "overview" };
 }
 
 function setHeader() {
@@ -112,8 +114,13 @@ async function render() {
   const r = route();
   document.querySelectorAll("nav .tab").forEach((b) => b.classList.toggle("active", b.dataset.view === r.view));
   renderList();
+  refreshGraph = null;
   if (r.view === "task") {
     await renderTask(mid, right, name, r.id, state);
+    return;
+  }
+  if (r.view === "graph") {
+    refreshGraph = renderGraph(mid, right, name, tasks);
     return;
   }
   renderProjectInfo();
@@ -150,6 +157,7 @@ function listen() {
     }
     renderList();
   });
+  events.addEventListener("graph", () => refreshGraph?.());
 }
 
 window.addEventListener("hashchange", render);
