@@ -17,8 +17,8 @@ public class SecretMasker {
   public record Result(String text, int count) {
   }
 
-  /** group = the part of the match that is replaced (0 = whole match). */
-  private record Rule(String label, Pattern pattern, int group) {
+  /** group = the part of the match that is replaced (0 = whole match); wordsOk: keep values made of words (branches, paths). */
+  private record Rule(String label, Pattern pattern, int group, boolean wordsOk) {
   }
 
   private static final String KEY_WORDS =
@@ -36,16 +36,25 @@ public class SecretMasker {
           + "|xox[abprs]-[A-Za-z0-9-]{10,}|(?:sk|pk|rk|tok|key|api)_[A-Za-z0-9_]{16,})\\b", 0),
       rule("TOKEN", "\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}", 0),
       // ponytail: generic "random-looking" string = 32+ chars mixing upper, lower and digits; hex-only keys rely on key=value rules
-      rule("TOKEN", "(?<![A-Za-z0-9_+/-])(?=[A-Za-z0-9_+/-]*[A-Z])(?=[A-Za-z0-9_+/-]*[a-z])(?=[A-Za-z0-9_+/-]*[0-9])"
-          + "[A-Za-z0-9_+/-]{32,}={0,2}", 0),
+      new Rule("TOKEN", Pattern.compile("(?<![A-Za-z0-9_+/-])(?=[A-Za-z0-9_+/-]*[A-Z])(?=[A-Za-z0-9_+/-]*[a-z])(?=[A-Za-z0-9_+/-]*[0-9])"
+          + "[A-Za-z0-9_+/-]{32,}={0,2}"), 0, true),
       rule("IP", "(?<![\\d.])(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(?![\\d.]*\\d)", 0));
 
   private static final List<Pattern> DEFAULT_ALLOW = List.of(
       Pattern.compile("127\\.0\\.0\\.1"), Pattern.compile("0\\.0\\.0\\.0"), Pattern.compile("\\$\\{[^}]*\\}"),
       Pattern.compile("\\[MASKED_[A-Z]+\\].*"));
 
+  /** Segments of a branch name or path: lowercase/Capitalized words, numbers, short CAPS (NYX) or anything up to 3 chars. */
+  private static final Pattern WORD = Pattern.compile("[a-z]+|[A-Z][a-z]+|[A-Z]{1,10}|[0-9]+|.{1,3}");
+
   private static Rule rule(String label, String regex, int group) {
-    return new Rule(label, Pattern.compile(regex), group);
+    return new Rule(label, Pattern.compile(regex), group, false);
+  }
+
+  /** feature/NYX-9-them-hoan-tien, db/migration/V2__add_refund: words joined by / - _; a random token has mixed-case runs. */
+  static boolean madeOfWords(String value) {
+    String[] parts = value.split("[/_+-]+");
+    return parts.length >= 3 && java.util.Arrays.stream(parts).allMatch(p -> p.isEmpty() || WORD.matcher(p).matches());
   }
 
   public Result mask(String text) {
@@ -70,7 +79,8 @@ public class SecretMasker {
       int last = 0;
       while (m.find()) {
         String value = m.group(r.group());
-        if (value == null || value.isEmpty() || allow.stream().anyMatch(a -> a.matcher(value).matches())) {
+        if (value == null || value.isEmpty() || allow.stream().anyMatch(a -> a.matcher(value).matches())
+            || r.wordsOk() && madeOfWords(value)) {
           continue;
         }
         sb.append(out, last, m.start(r.group())).append("[MASKED_").append(r.label()).append(']');
