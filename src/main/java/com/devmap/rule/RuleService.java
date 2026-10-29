@@ -32,7 +32,8 @@ public class RuleService {
   public record Unit(String repo, String service, String path, String kind) {
   }
 
-  public record View(Rules projectDefault, Map<String, Rules> services, Map<String, Boolean> overridden, List<String> presets,
+  /** presets: preset name to its quality settings (snake_case), so the UI can fill the commands when the PMO picks one. */
+  public record View(Rules projectDefault, Map<String, Rules> services, Map<String, Boolean> overridden, Map<String, JsonNode> presets,
       List<String> lockedBaseBranches) {
   }
 
@@ -93,7 +94,9 @@ public class RuleService {
       services.put(u.service(), toRules(merged(dir, u)));
       overridden.put(u.service(), repo.read(dir, u.service()).size() > 0);
     }
-    return new View(projectDefault(project), services, overridden, presets(), baseBranches(project));
+    Map<String, JsonNode> presets = new LinkedHashMap<>();
+    presets().forEach(p -> presets.put(p, BUILTIN.path("presets").path(p).path("quality")));
+    return new View(projectDefault(project), services, overridden, presets, baseBranches(project));
   }
 
   public synchronized Rules saveDefault(String project, Rules rules) {

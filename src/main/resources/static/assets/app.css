@@ -129,3 +129,7 @@ pre.diff span.del { background: #fee2e2; }
 .search-results:empty { display: none; }
 .search-results button { text-align: left; }
 pre.sig { white-space: pre-wrap; word-break: break-word; font-size: 11px; background: var(--bg); padding: 6px; border-radius: 6px; }
+.confirm-card { border: 1px solid #f59e0b; }
+.confirm-card ul { margin: 6px 0; }
+.repo-picker label.check { display: flex; align-items: center; gap: 6px; }
+details summary { cursor: pointer; }

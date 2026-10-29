@@ -7,15 +7,15 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | AC | Phase | Trạng thái | Kiểm thử |
 | --- | --- | --- | --- |
 | AC-01 Khởi tạo | 1, 3 | Đạt (phần tự động); pull do Dev ở P4 gọi cùng cơ chế | `ProjectServiceTest.createsDataFolderWithReposAndServices`, `GraphServiceTest.noScanUntilPmoAsks`, `GraphServiceTest.incrementalUpdateParsesOnlyTheGitDiff`, `WebTest`, `CliTest`, K-01, K-03 |
-| AC-02 FEAT trọn luồng | 2, 4, 5 | Chưa | |
+| AC-02 FEAT trọn luồng | 2, 4, 5 | Một phần: phần Dev bằng tay xong (pull nhánh nền, commit 2 repo cùng mã, gate, xác nhận push); agent SA/Dev ở P5 | `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush`, K-04 |
 | AC-03 Mở lại ticket | 2, 5 | Một phần: mở lại bằng tay xong; SA cập nhật analysis (FR-11) ở P5 | `TaskServiceTest.reopenKeepsCode`, K-02 |
 | AC-04 MAINT | 2, 4, 5 | Một phần: chốt + thứ tự hàng đợi xong; chạy theo thứ tự ở P5 | `TaskServiceTest.flowGatesAndQueue` |
-| AC-05 Push | 4 | Một phần: cổng "Xác nhận push" chỉ PMO, kiểm ở server; push thật ở P4 | `TaskServiceTest.flowGatesAndQueue` |
+| AC-05 Push | 4 | Đạt (phần tự động): chỉ PMO push, chỉ commit đã qua gate, không force-push, không push branch bảo vệ (nhánh nền luôn bảo vệ) | `TicketGitServiceTest` (3 test), `RuleServiceTest.protectedBranchesAlwaysIncludeBaseBranches`, `TaskServiceTest.flowGatesAndQueue`, K-04 |
 | AC-06 Bí mật | 2, 5 | Một phần: tài liệu không chứa bí mật; chặn agent đọc `.env` ở P5 | `SecretMaskerTest`, `TaskServiceTest.createsTicketWithMaskedSpec` |
 | AC-07 Token | 5 | Chưa | |
 | AC-08 Hai dự án song song | 5, 6 | Chưa | |
 | AC-09 Quét toàn bộ | 3, 5 | Một phần: mặc định tắt, PMO bấm mới quét, có cảnh báo trước; bật theo câu hỏi ở P5 | `GraphServiceTest.noScanUntilPmoAsks`, K-03 |
-| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Một phần: chỉ mục chỉ có chữ ký, lân cận ≤ 3 tầng, vi phạm Controller→Repository thấy được trong graph; chặn ở P4, ngữ cảnh agent ở P5 | `GraphServiceTest.fullScanBuildsCrossRepoGraph`, `GraphServiceTest.indexHoldsNoSecretsAndNeverReadsEnvFiles`, `GraphServiceTest.blastRadiusCrossesServices` |
+| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Một phần: chỉ mục chỉ có chữ ký, lân cận ≤ 3 tầng; Controller→Repository làm gate không đạt và chặn chuyển SA kiểm chứng; chỉ sang SA khi phân tích tĩnh + unit test đạt; ngữ cảnh agent và prompt caching ở P5 | `GraphServiceTest.*`, `RuleServiceTest.layerCheckFindsControllerCallingRepository`, `RuleServiceTest.qualityGateRunsConfiguredCommands`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` |
 | AC-11 Kiểm chứng phạm vi | 5 | Chưa | |
 | AC-12 Tối ưu token | 2, 5 | Một phần: spec.json gọn, đã che, không gọi LLM; nhật ký LLM và xoá ngữ cảnh ở P5 | `TaskServiceTest.createsTicketWithMaskedSpec`, `RequestCleanerTest`, K-02 |
 
@@ -106,3 +106,36 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 6. "Nối edge tay từ node này" → chọn node khác → Lưu. "Quét toàn bộ" lại → edge tay vẫn còn.
 7. Commit một file mới vào nhánh `test` của `samples/shop/repos/order-service`, bấm "Cập nhật theo git diff" → báo "đọc 1" ở order-service, "đã mới nhất" ở repo khác.
 8. CLI: `java -jar target/devmap.jar index shop` và `index shop --full`.
+
+## Test tự động Phase 4
+
+| Test | Kiểm |
+| --- | --- |
+| `RuleServiceTest.serviceRulesInheritProjectDefault` | FR-29: preset theo loại service ← mặc định dự án ← rule service; file chỉ lưu phần khác; khôi phục kế thừa; mẫu commit |
+| `RuleServiceTest.protectedBranchesAlwaysIncludeBaseBranches` | FR-30: nhánh nền luôn được bảo vệ; mẫu `release/*`; mẫu commit thiếu `{code}` bị từ chối |
+| `RuleServiceTest.scopeSortsChangedFiles` | FR-32: phân loại file cấm sửa, DB schema, dependency theo service |
+| `RuleServiceTest.globs` | glob của rule (`**`, `*`, tên file, thư mục) |
+| `RuleServiceTest.layerCheckFindsControllerCallingRepository` | AIR-12/AC-10: `OrderReportController → OrderRepository` của repo mẫu; payment-service sạch |
+| `RuleServiceTest.qualityGateRunsConfiguredCommands` | FR-31: chạy lệnh cấu hình trong thư mục service; lệnh lỗi, thiếu lệnh, vi phạm tách lớp → không đạt |
+| `RuleServiceTest.conventionsCollectedFromCodeThenApproved` | FR-33: bản nháp từ code (không đọc `.env`, đã che IP), giữ phần PMO viết, duyệt, thu thập lại về bản nháp |
+| `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` | FR-24/26/27, NFR-07, AC-05, AC-10: worktree từ nhánh nền mới nhất (có commit vừa push lên origin), checkout của PMO không đổi; `pom.xml` cần PMO duyệt (Dev không tự duyệt được); `.env` không commit được; commit mang mã; gate không đạt vì Controller→Repository, sửa xong thì đạt; chưa đạt thì không sang SA; Done chỉ qua xác nhận push của PMO; origin nhận đúng commit, repo không đổi thì không push; changes.md, tests.md, history.md |
+| `TicketGitServiceTest.protectedBranchesAreRefused` | FR-30: branch ticket khớp mẫu bảo vệ không bắt đầu được; refspec có `+` bị từ chối |
+| `TicketGitServiceTest.pushOnlyTheVerifiedCommit` | commit thêm sau khi gate đạt thì không push được |
+| `TaskServiceTest.reopenKeepsCode` (cập nhật) | ticket không có repo vẫn đi tay được tới Done |
+
+## Kịch bản thủ công Phase 4
+
+**K-04 (AC-05, AC-10 phần chặn, AC-02 phần Dev bằng tay)**
+
+Chuẩn bị: dự án `shop` (K-01). Mỗi repo trong `samples/shop/repos` cần một remote `origin` để push thử:
+`git clone --bare samples/shop/repos/order-service <tmp>/order-service.git` rồi `git -C samples/shop/repos/order-service remote add origin <tmp>/order-service.git` (tương tự payment-service).
+
+1. Tab "Rule & convention": mặc định dự án có preset trống, 3 ô khoá (xác nhận push, không force-push, không push branch bảo vệ) và dòng "Nhánh nền luôn được bảo vệ: test, main". Chọn `order-service` → preset `maven`, lệnh `mvn -q test`. Máy không có Maven thì đổi lệnh thành lệnh có sẵn (ví dụ `git status`) → Lưu → nút "có rule riêng"; `rules/order-service.devrules.yml` chỉ chứa phần đổi.
+2. "Thu thập từ code" → coding convention có mục order-service/payment-service, nhãn "Bản nháp"; "Sửa" thêm một dòng chuẩn riêng → Lưu; "Duyệt" → nhãn "PMO đã duyệt". `conventions.md` không có giá trị trong `.env`.
+3. Tạo ticket FEAT `NYX-7` nhắc order-service và payment-service, đi tới "Sẵn sàng" (K-02). Cột phải: tick/bỏ tick repo → "Lưu repo".
+4. "Bắt đầu triển khai (pull nhánh nền)" → mục Code có 2 repo, branch `feature/NYX-7-…`, worktree ở `~/.devmap/worktrees/shop/NYX-7/`. Repo gốc vẫn ở nhánh cũ.
+5. Trong worktree order-service: thêm một file Java và sửa `pom.xml`. Ở ticket nhập nội dung commit → "Commit" → thẻ vàng "Cần PMO duyệt: pom.xml – đổi dependency" → "PMO duyệt và commit" → commit `NYX-7: …`. Tạo `.env` trong worktree → Commit → báo không commit file bí mật (xoá file đi).
+6. "Chạy quality gate" → order-service "gate chưa đạt", tests.md có `OrderReportController → OrderRepository`. Bấm "Chuyển SA kiểm chứng" → báo lỗi gate. Xoá `OrderReportController.java` trong worktree, commit, chạy lại gate → "gate đạt" → chuyển SA kiểm chứng → "SA đạt, chờ PMO xác nhận".
+7. "Xác nhận push" → khung xem lại: repo → origin/branch, số commit, tests.md, diff. Bấm "Push" → ticket Done; `git -C <tmp>/order-service.git branch` có branch ticket; payment-service (không đổi) không bị push.
+8. CLI: `java -jar target/devmap.jar rules show shop order-service`, `rules check shop --repo order-service` (exit 1, báo vi phạm tách lớp), `rules check shop --path ~/.devmap/worktrees/shop/NYX-7/order-service --repo order-service`.
+9. Cấu hình mặc định dự án thêm `feature/*` vào branch bảo vệ → ticket mới không bắt đầu triển khai được ("branch được bảo vệ"). Xoá đi; xoá `test` khỏi danh sách → `test` vẫn hiện trong nhánh nền được bảo vệ.

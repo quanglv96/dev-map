@@ -155,3 +155,55 @@ Edge tay chỉ nối được giữa hai node đang có; nếu sau này node bi�
 ## D-24 Kích thước devmap.jar
 
 Thêm tree-sitter (thư viện native cho 3 hệ điều hành × 4 ngôn ngữ) và swagger-parser làm `devmap.jar` lên khoảng 40 MB. Chấp nhận vì vẫn là một file chạy offline.
+
+## D-25 File rule và kế thừa (FR-29)
+
+- Rule nằm trong folder dữ liệu, không ghi vào repo của PMO: `rules/_default.devrules.yml` (mặc định dự án) và `rules/<service>.devrules.yml`.
+- Thứ tự: rule dựng sẵn (`src/main/resources/rules/presets.yml`) ← preset ← mặc định dự án ← rule service. Preset lấy từ file rule, không có thì theo loại service do bộ phát hiện tìm ra (maven, gradle, node, python, go; không rõ thì `none`).
+- Giao diện luôn gửi rule đầy đủ; server chỉ lưu phần khác cấp trên, nên file rule ngắn và đổi mặc định dự án vẫn áp dụng cho service chưa ghi đè.
+- Nhóm `git` chỉ có ở cấp dự án (một repo có thể chứa nhiều service nhưng chỉ có một lịch sử). `quality` và `scope` theo service, đường dẫn tính từ thư mục service.
+- Đường dẫn trong rule là glob tự viết (`rule/Glob`), dùng `/` trên mọi hệ điều hành; mẫu không có `/` khớp tên file ở mọi thư mục.
+
+## D-26 Rule git không tắt được (FR-30, AC-05)
+
+- Push chỉ chạy qua `TicketGitService.confirmPush` với Actor PMO, ticket đang "Chờ PMO xác nhận"; kiểm ở server.
+- Lệnh push luôn là `git push origin <sha>:refs/heads/<branch-ticket>`: không có `--force`, refspec không có `+`, nên không thể force-push.
+- Branch được bảo vệ = danh sách cấu hình ∪ nhánh nền của mọi repo (không xoá được). Branch ticket khớp mẫu bảo vệ thì không bắt đầu triển khai và không push.
+
+## D-27 Worktree và pull nhánh nền (FR-24, NFR-07)
+
+- Worktree ở `~/.devmap/worktrees/<dự án>/<ticket>/<repo>`: ngoài folder dữ liệu (folder dữ liệu chép sang máy khác được) và ngoài repo của PMO; checkout của PMO không bị đổi.
+- Worktree, merge, commit, push chạy bằng git CLI (JGit không hỗ trợ worktree; CLI dùng credential và hook sẵn có của máy).
+- "Bắt đầu triển khai" và "Pull nhánh nền": `git fetch`, tạo worktree trên branch ticket từ `origin/<nhánh nền>` (hoặc nhánh local nếu không có remote), rồi merge nhánh nền mới nhất vào branch ticket. Xung đột thì huỷ merge và báo; worktree còn thay đổi chưa commit thì không pull.
+- Sau mỗi lần pull, DevMap phát sự kiện để Graph cập nhật chỉ mục theo git diff ở nền (chỉ khi dự án đã có chỉ mục, D-21).
+- Worktree không tự xoá khi ticket Done (mở lại dùng tiếp). `ponytail:` thêm dọn worktree khi ổ đĩa thành vấn đề.
+
+## D-28 dev.json và hai cổng cuối
+
+- `dev.json` trong folder ticket: mỗi repo có worktree, branch, commit nền, commit đã qua quality gate (`gate_head`), commit đã push (`pushed_head`), danh sách file PMO đã duyệt.
+- `in_dev → sa_verify` chỉ được khi mọi repo của ticket có gate đạt **trên commit hiện tại** và không còn thay đổi chưa commit (AIR-13). Ticket không có repo nào thì không kiểm (luồng tay của Phase 2).
+- `awaiting_push → done` chỉ được khi mọi repo có commit mới đã push đúng commit đã qua gate. Commit thêm sau khi gate đạt thì push bị từ chối, phải trả về Dev.
+- PMO chọn repo của ticket ở cột phải (trước đó lấy từ module đích trong spec.json).
+
+## D-29 Phạm vi commit (FR-32, FR-34)
+
+- File khớp `forbidden_paths`, `schema_paths`, `dependency_files` cần PMO duyệt từng file trước khi commit (thẻ xác nhận ở giao diện); quyền duyệt chỉ của PMO, hết hiệu lực sau commit đó.
+- File bí mật (`SecretFiles`: `.env*`, khoá, credentials…) không bao giờ được commit, kể cả PMO.
+- Mọi commit qua DevMap mang mã ticket theo `commit_template` (mặc định `{code}: {message}`); mẫu bắt buộc có `{code}`.
+- `changes.md` sinh lại từ git sau mỗi bước (branch, commit, file sửa, file chưa commit, trạng thái push), nên commit PMO tự làm trong worktree cũng hiện ra (một phần FR-28; agent Dev đọc lại ở Phase 5).
+
+## D-30 Quality gate (FR-31, AIR-12/13, CLAUDE.md §5.9)
+
+- Theo từng service: kiểm tách lớp có sẵn, rồi lệnh phân tích tĩnh, unit test, integration test đã cấu hình (chạy qua `cmd /c` hoặc `sh -c` trong thư mục service của worktree). Chạy đủ mọi bước để báo cáo đầy đủ; bước bật mà chưa có lệnh thì tính là không đạt.
+- Kiểm tách lớp (JavaParser, chỉ Java): controller (`@Controller`, `@RestController`, tên `*Controller`) nhắc tới kiểu repository (`@Repository`, `*Repository`, `*Dao`, kế thừa Spring Data) là vi phạm. Ngôn ngữ khác dựa vào lệnh lint của dự án.
+- Preset chỉ là gợi ý lệnh, cần công cụ có trên máy (ví dụ `mvn` trên PATH; dự án có Maven Wrapper thì đổi thành `mvnw.cmd`/`./mvnw`). SonarQube server: thêm lệnh `sonar-scanner` vào danh sách phân tích tĩnh nếu PMO muốn.
+- Kết quả ghi `tests.md` (60 dòng cuối của mỗi bước lỗi, đã che bí mật). `devmap rules check` chạy cùng gate trên repo hoặc `--path` worktree.
+
+## D-31 Coding convention (FR-33)
+
+- Thu thập từ cây commit của nhánh nền (như D-20), không đọc file bí mật, không gọi LLM: số file theo ngôn ngữ, thụt lề, độ dài dòng (99%), cách inject, tách package, nháy/chấm phẩy JS/TS, thư viện test, và trích file cấu hình lint/formatter.
+- Chỉ phần giữa `<!-- devmap:collected -->` được thay khi thu thập lại; phần PMO viết (chuẩn riêng, CLAUDE.md §5.6) giữ nguyên. Dòng `> Trạng thái:` ghi bản nháp/đã duyệt; mọi lần sửa hay thu thập đưa về bản nháp, PMO bấm "Duyệt".
+
+## D-32 Actor DEVMAP
+
+Tài liệu do chính công cụ sinh (`tests.md`, `changes.md`) ghi với Actor `DEVMAP` trong history.md, để phân biệt với thao tác của PMO, SA, Dev.

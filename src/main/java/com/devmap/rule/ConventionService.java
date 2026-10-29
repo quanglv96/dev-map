@@ -44,7 +44,8 @@ public class ConventionService {
   private static final Map<String, String> LANGS = Map.of("java", "Java", "ts", "TypeScript", "tsx", "TypeScript", "js", "JavaScript",
       "jsx", "JavaScript", "py", "Python", "go", "Go");
   private static final Pattern LINT = Pattern.compile("(^|.*/)(\\.editorconfig|checkstyle[^/]*\\.xml|pmd[^/]*\\.xml|\\.eslintrc[^/]*"
-      + "|eslint\\.config\\.[cm]?js|\\.prettierrc[^/]*|\\.golangci\\.ya?ml|ruff\\.toml|pyproject\\.toml|setup\\.cfg|pom\\.xml|package\\.json)$");
+      + "|eslint\\.config\\.[cm]?js|\\.prettierrc[^/]*|\\.golangci\\.ya?ml|ruff\\.toml|pyproject\\.toml|setup\\.cfg"
+      + "|pom\\.xml|package\\.json)$");
   private static final int MAX_FILES = 400;
 
   private final ProjectService projects;
@@ -204,7 +205,8 @@ public class ConventionService {
       }
       List<String> lines = text.lines().filter(l -> !l.isBlank()).toList();
       String shown = name.startsWith("checkstyle") || name.startsWith("pmd")
-          ? String.join("\n", lines.stream().filter(l -> l.contains("<module") || l.contains("<rule") || l.contains("value=")).limit(40).toList())
+          ? String.join("\n", lines.stream()
+              .filter(l -> l.contains("<module") || l.contains("<rule") || l.contains("value=")).limit(40).toList())
           : String.join("\n", lines.subList(0, Math.min(40, lines.size())));
       configs.put(path, shown);
     }

@@ -108,11 +108,147 @@ async function renderDocs(box, project, detail, selected, notice) {
   }
 }
 
-function renderRight(right, project, detail) {
+const short = (sha) => (sha ? sha.slice(0, 8) : "–");
+
+/** Commit one repo: secret files refused, forbidden/schema/dependency files need the PMO's explicit approval first (FR-32). */
+async function commitRepo(project, id, repo, message, status) {
+  const scope = await api(`${base(project, id)}/dev/scope?repo=${encodeURIComponent(repo)}`);
+  if (scope.secrets.length) {
+    throw new Error(t("secretFiles", { files: scope.secrets.join(", ") }));
+  }
+  const doCommit = async () => {
+    await api(`${base(project, id)}/dev/commit`, { method: "POST", body: { repo, message } });
+    rerender();
+  };
+  if (!scope.needApproval.length) {
+    await doCommit();
+    return;
+  }
+  const kind = (f) => scope.scope.forbidden.includes(f) ? t("forbidden") : scope.scope.schema.includes(f) ? t("dbSchema") : t("dependency");
+  status.replaceChildren(el("div", { class: "warn confirm-card" },
+    el("strong", {}, t("needApproval")),
+    el("ul", {}, scope.needApproval.map((f) => el("li", {}, el("code", {}, f), ` – ${kind(f)}`))),
+    el("button", { type: "button", class: "primary", onclick: async () => {
+      try {
+        await api(`${base(project, id)}/dev/approve`, { method: "POST", body: { repo, files: scope.needApproval } });
+        await doCommit();
+      } catch (err) {
+        showError(status, err);
+      }
+    } }, t("approveAndCommit")),
+    el("button", { type: "button", class: "link", onclick: () => status.replaceChildren() }, t("cancel"))));
+}
+
+/** "Code" section: per repo branch, commits, files, gate result, diff and commit form (FR-26, FR-27). */
+function renderCode(box, project, detail, dev) {
+  const id = detail.task.id;
+  const canCommit = detail.task.status === "in_dev";
+  fill(box, dev.repos.length ? el("h3", {}, t("codeSection")) : null, dev.repos.map((r) => {
+    const out = el("div");
+    const status = el("div");
+    const message = el("input", { placeholder: t("commitMessage", { code: id }) });
+    return el("section", { class: "card" },
+      el("div", { class: "row" },
+        el("strong", { class: "grow" }, r.repo),
+        el("span", { class: `badge ${r.gatePassed ? "done" : "awaiting_approval"}` }, r.gatePassed ? t("gatePassed") : t("gateNotPassed"))),
+      el("small", { class: "muted path" }, `${r.branch} ← ${r.baseBranch} @${short(r.baseCommit)} · ${r.worktree}`),
+      el("p", { class: "small" }, r.pushedHead ? t("pushedAt", { sha: short(r.pushedHead) }) : t("notPushed")),
+      r.commits.length ? el("ul", { class: "small" }, r.commits.map((c) => el("li", {}, c))) : el("p", { class: "muted small" }, t("noCommits")),
+      r.files.length ? el("details", {}, el("summary", {}, t("changedFiles", { n: r.files.length })),
+        el("ul", { class: "small path" }, r.files.map((f) => el("li", {}, f)))) : null,
+      r.uncommitted.length ? el("p", { class: "warn small" }, t("uncommitted", { files: r.uncommitted.join(", ") })) : null,
+      el("div", { class: "row" },
+        el("button", { type: "button", class: "link", onclick: async () => {
+          if (out.childElementCount) {
+            out.replaceChildren();
+            return;
+          }
+          const d = await api(`${base(project, id)}/dev/diff?repo=${encodeURIComponent(r.repo)}`);
+          out.replaceChildren(diffView(d.diff.trim() || "(=)"));
+        } }, t("diff"))),
+      canCommit && r.uncommitted.length ? el("div", { class: "row" }, message,
+        el("button", { type: "button", class: "secondary", onclick: async () => {
+          try {
+            await commitRepo(project, id, r.repo, message.value, status);
+          } catch (err) {
+            showError(status, err);
+          }
+        } }, t("commit"))) : null,
+      status, out);
+  }));
+}
+
+/** Before the push: what goes where, the quality gate report and the diffs; the push itself is the PMO's click (FR-27). */
+async function pushReview(box, project, detail, dev, error) {
+  const id = detail.task.id;
+  let tests = null;
+  try {
+    tests = (await api(`${base(project, id)}/doc?name=tests.md`)).content;
+  } catch {
+    // no gate report: the server refuses the push anyway
+  }
+  const diffs = await Promise.all(dev.repos.filter((r) => r.commits.length).map(async (r) =>
+    [r, (await api(`${base(project, id)}/dev/diff?repo=${encodeURIComponent(r.repo)}`)).diff]));
+  fill(box, el("section", { class: "card confirm-card" },
+    el("h3", {}, t("pushReview")),
+    el("ul", {}, diffs.map(([r]) => el("li", {}, el("strong", {}, r.repo), ` → origin/${r.branch} · ${r.commits.length} commit · `,
+      r.gatePassed ? t("gatePassed") : t("gateNotPassed")))),
+    diffs.length ? null : el("p", { class: "muted" }, t("nothingToPush")),
+    tests ? markdown(tests) : el("p", { class: "warn" }, t("noTests")),
+    diffs.map(([r, d]) => el("details", {}, el("summary", {}, `diff ${r.repo}`), diffView(d))),
+    el("div", { class: "row" },
+      el("button", { type: "button", class: "primary", onclick: async () => {
+        try {
+          await api(`${base(project, id)}/dev/push`, { method: "POST" });
+          rerender();
+        } catch (err) {
+          showError(error, err);
+        }
+      } }, t("pushNow")),
+      el("button", { type: "button", class: "link", onclick: () => box.replaceChildren() }, t("cancel")))));
+  box.scrollIntoView({ behavior: "smooth" });
+}
+
+function renderRepoPicker(project, detail, repoNames, error) {
+  const task = detail.task;
+  if (task.status === "done") {
+    return null;
+  }
+  const boxes = repoNames.map((n) => el("label", { class: "check" },
+    el("input", { type: "checkbox", value: n, checked: task.repos.includes(n) }), " ", n));
+  return el("div", { class: "repo-picker" }, boxes,
+    el("button", { type: "button", class: "link", onclick: async () => {
+      try {
+        const repos = boxes.map((b) => b.querySelector("input")).filter((i) => i.checked).map((i) => i.value);
+        await api(`${base(project, task.id)}/repos`, { method: "PUT", body: repos });
+        rerender();
+      } catch (err) {
+        showError(error, err);
+      }
+    } }, t("saveRepos")));
+}
+
+function renderRight(right, project, detail, dev, repoNames, reviewBox) {
   const task = detail.task;
   const from = task.status;
   const error = el("div");
+  const call = async (path) => {
+    try {
+      await api(`${base(project, task.id)}${path}`, { method: "POST" });
+      rerender();
+    } catch (err) {
+      showError(error, err);
+    }
+  };
   const move = async (to, gate) => {
+    if (from === "awaiting_push" && to === "done") {
+      await pushReview(reviewBox, project, detail, dev, error);
+      return;
+    }
+    if (from === "ready" && to === "in_dev") {
+      await call("/dev/start");
+      return;
+    }
     if (gate && !confirm(t("confirmGate", { action: actionLabel(from, to), id: task.id }))) {
       return;
     }
@@ -146,7 +282,8 @@ function renderRight(right, project, detail) {
       el("dt", {}, t("status")), el("dd", {}, el("span", { class: `badge ${task.status}` }, t(`status.${task.status}`))),
       el("dt", {}, t("type")), el("dd", {}, task.type),
       el("dt", {}, t("branch")), el("dd", { class: "path" }, task.branch),
-      el("dt", {}, t("repos")), el("dd", {}, task.repos.length ? task.repos.join(", ") : "–"),
+      el("dt", {}, t("repos")), el("dd", {}, renderRepoPicker(project, detail, repoNames, error)
+        ?? (task.repos.length ? task.repos.join(", ") : "–")),
       el("dt", {}, t("version")), el("dd", {}, String(task.version)),
       el("dt", {}, t("reopened")), el("dd", {}, String(task.reopened)),
       detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null),
@@ -158,6 +295,10 @@ function renderRight(right, project, detail) {
       el("button", { type: "button", class: "secondary", onclick: () => reopen("bug") }, t("reportBug")),
       el("button", { type: "button", class: "secondary", onclick: () => reopen("logic") }, t("addLogic"))) : null,
     reopenBox,
+    from === "in_dev" ? [el("h3", { class: "section" }, t("devSteps")), el("div", { class: "actions" },
+      el("button", { type: "button", class: "secondary", onclick: () => call("/dev/start") }, t("pullBase")),
+      dev.repos.length ? el("button", { type: "button", class: "secondary", onclick: () => call("/dev/gate") }, t("runGate")) : null),
+    el("p", { class: "muted small" }, t("gateHint"))] : null,
     manual.length ? [el("h3", { class: "section" }, t("manualMoves")), el("p", { class: "muted small" }, t("manualHint")),
       el("div", { class: "actions" }, manual.map((a) => el("button", {
         type: "button", class: "secondary", onclick: () => move(a.to, false)
@@ -174,10 +315,16 @@ export async function renderTask(mid, right, project, id, state) {
     showError(mid, err);
     return;
   }
+  const [dev, info] = await Promise.all([
+    api(`${base(project, id)}/dev`).catch(() => ({ repos: [] })),
+    api(`/api/projects/${encodeURIComponent(project)}`)]);
   const notice = state.masked ? el("p", { class: "warn" }, t("masked", { n: state.masked })) : null;
   state.masked = 0;
   const docs = el("div");
-  mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), el("h3", {}, t("docs")), docs);
+  const review = el("div");
+  const code = el("div");
+  mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), review, code, el("h3", {}, t("docs")), docs);
+  renderCode(code, project, detail, dev);
   renderDocs(docs, project, detail, null, notice);
-  renderRight(right, project, detail);
+  renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review);
 }

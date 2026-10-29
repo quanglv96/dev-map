@@ -1,9 +1,10 @@
 // Project workspace (localhost:7070/<project>): task list | task content | details and PMO decisions.
-// Routes: #  overview · #config · #new · #task=<id>
+// Routes: #  overview · #config · #rules · #graph · #new · #task=<id>
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
 import { WAITS_FOR_PMO, api, el, fill, setFavicon, showError } from "./lib.js";
 import { renderConfig } from "./views/config.js";
 import { renderGraph } from "./views/graph.js";
+import { renderRules } from "./views/rules.js";
 import { renderNewTask, renderTask } from "./views/task.js";
 
 applyI18n();
@@ -35,7 +36,7 @@ function route() {
   if (hash.startsWith("task=")) {
     return { view: "task", id: decodeURIComponent(hash.slice(5)) };
   }
-  return { view: ["config", "new", "graph"].includes(hash) ? hash : "overview" };
+  return { view: ["config", "new", "graph", "rules"].includes(hash) ? hash : "overview" };
 }
 
 function setHeader() {
@@ -123,6 +124,10 @@ async function render() {
     refreshGraph = renderGraph(mid, right, name, tasks);
     return;
   }
+  if (r.view === "rules") {
+    await renderRules(mid, right, name);
+    return;
+  }
   renderProjectInfo();
   if (r.view === "config") {
     renderConfig(mid, project, (saved) => {
@@ -152,7 +157,7 @@ function listen() {
     await refreshTasks();
     const r = route();
     const change = JSON.parse(e.data);
-    if (r.view === "task" && r.id === change.taskId && !document.querySelector("textarea.editor, .reopen textarea")) {
+    if (r.view === "task" && r.id === change.taskId && !document.querySelector("textarea.editor, .reopen textarea, .confirm-card, .card input:not(:placeholder-shown)")) {
       await renderTask(mid, right, name, r.id, state);
     }
     renderList();
