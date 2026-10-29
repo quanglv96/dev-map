@@ -207,3 +207,60 @@ Thêm tree-sitter (thư viện native cho 3 hệ điều hành × 4 ngôn ngữ)
 ## D-32 Actor DEVMAP
 
 Tài liệu do chính công cụ sinh (`tests.md`, `changes.md`) ghi với Actor `DEVMAP` trong history.md, để phân biệt với thao tác của PMO, SA, Dev.
+
+## D-33 Agent không có công cụ có sẵn nào, kể cả Dev (khác CLAUDE.md §4)
+
+CLAUDE.md §4 gợi ý cho agent Dev dùng công cụ sửa file của Claude Code và chặn file bí mật bằng hook. Chọn cách chặt hơn: cả SA và Dev chạy với `--tools ""`
+(không Read/Edit/Bash), mọi thao tác đi qua MCP server của DevMap. Dev đọc code bằng `get_snippet` (tối đa 80 dòng, từ worktree) và sửa bằng `edit_file`/`write_file`.
+Lý do: chặn file bí mật ở một chỗ trong tiến trình DevMap (FR-34, NFR-01), không có shell nên AC-06 "kể cả qua lệnh shell" không có đường vòng,
+không phải chạy một JVM cho mỗi lần hook, và Dev cũng không bao giờ nhận nguyên file (AIR-10). Test chạy bằng lệnh PMO cấu hình trong rule (`run_quality_gate`), không phải lệnh agent tự gõ.
+Đoạn code chứa giá trị đã che (`[MASKED_…]`) thì agent không sửa được (PMO tự sửa). Muốn quay lại cách của §4: thêm `Read,Edit,Write` vào `--tools` trong `ClaudeCodeProvider` và một hook PreToolUse.
+
+## D-34 MCP server nội bộ
+
+- JSON-RPC 2.0 qua HTTP POST `/mcp` ngay trong `devmap serve` (MCP "streamable HTTP", trả JSON, không stream từ server; GET trả 405). Các method: `initialize`, `ping`, `tools/list`, `tools/call`.
+- Mỗi phiên agent có một token ngẫu nhiên (header `X-DevMap-Session`) gắn với đúng dự án, ticket, vai. Token này không mở được API của PMO, run token cũng không mở được `/mcp`; vẫn chỉ nhận 127.0.0.1 (NFR-06, NFR-08).
+- Công cụ SA: `get_spec`, `get_ticket_docs`, `search_graph`, `get_signatures`, `get_snippet`, `verify_facts`, `git_diff`, `write_ticket_doc`, `set_status`. Dev thêm `write_file`, `edit_file`, `run_quality_gate`, `commit`, bỏ `verify_facts`.
+- Không công cụ nào trả `task.md` hay `bugs/` (nguyên văn của PMO): agent chỉ thấy spec.json (FR-44, AC-12). `get_snippet` theo node chỉ nhận method/function; class thì chỉ có chữ ký.
+- Agent chỉ chạy khi có `devmap serve`. CLI có `devmap prompt <dự án> <ticket> [--role] [--question]` để xem trước đúng nội dung một phiên sẽ nhận, không gọi LLM (FR-42).
+
+## D-35 Gọi Claude Code
+
+Đã kiểm bằng `claude --help` (2.1.312) và chạy thử: `claude -p --output-format stream-json --verbose --no-session-persistence --setting-sources project --strict-mcp-config
+--mcp-config <mcp.json> --system-prompt-file <system.md> --tools "" --allowed-tools mcp__devmap --permission-mode dontAsk [--model …]`, prompt qua stdin.
+Thư mục làm việc là một folder rỗng `~/.devmap/sessions/<dự án>/<ticket>/<n>/`, xoá ngay sau phiên; `--setting-sources project` trong folder rỗng nghĩa là không nạp hook, plugin, MCP của người dùng.
+Cấu hình (`-D` hoặc biến môi trường Spring): `devmap.agent.command` (mặc định `claude.cmd` trên Windows, `claude` nơi khác), `devmap.agent.model`, `devmap.agent.timeout-minutes` (30),
+`devmap.agent.max-concurrent` (2, NFR-12: phiên sau xếp hàng). Thay agent khác: viết một `AgentProvider` mới (NFR-14).
+
+## D-36 Ngữ cảnh mỗi phiên (FR-37, AIR-09 → AIR-11, 5 lớp tối ưu token)
+
+- System prompt tĩnh theo dự án và vai: hai khối nguyên văn trong SRS (`prompts/execution.md`, `prompts/workflow.md`), `prompts/sa.md` hoặc `prompts/dev.md`, quy tắc tách lớp, mẫu commit, branch bảo vệ, conventions.md.
+  Giống hệt nhau giữa các phiên nên được cache (giao diện hiện "cache đọc"). Chạy thử thật: 40.159/53.919 token đầu vào đọc từ cache ngay ở phiên đầu.
+- Prompt: spec.json, summary.md, analysis.md, plan.md (Dev thêm verify.md, changes.md; SA kiểm chứng thêm changes.md), graph mức service quanh service của ticket (2 tầng) và chữ ký API của chúng, việc DevMap đã làm trước phiên (pull, quét, thay đổi PMO tự làm), câu hỏi của PMO sau khi che bí mật và làm sạch bằng `RequestCleaner`.
+- Không bao giờ có: lịch sử chat, task.md, bugs/, nguyên file code.
+- FR-38: nếu agent không ghi summary.md, DevMap tự thêm câu hỏi + câu trả lời của phiên vào summary.md để phiên sau vẫn có ngữ cảnh.
+
+## D-37 Vai, trạng thái và tự chạy kiểm chứng
+
+- Không chọn vai thì: Sẵn sàng / Đang triển khai → Dev, còn lại → SA. Dev chỉ chạy ở hai trạng thái đó. SA ở "SA kiểm chứng" luôn là phiên kiểm chứng.
+- Trước phiên: SA ở "Mới" → "SA phân tích"; SA luôn fetch và cập nhật chỉ mục theo git diff (AIR-04/06); Dev luôn gọi `TicketGitService.start` (tạo worktree hoặc merge nhánh nền mới nhất, FR-24).
+- Agent chỉ chuyển được: SA `awaiting_approval` (cần analysis.md + plan.md), `in_dev`, `awaiting_push`; Dev `sa_verify` (vẫn qua kiểm gate của D-28). Chốt giải pháp và push vẫn chỉ PMO (NFR-03).
+- AIR-03: phiên Dev kết thúc ở "SA kiểm chứng" thì DevMap tự mở một phiên SA kiểm chứng. SA trả về Dev thì không tự chạy lại Dev (tránh vòng lặp tốn token); PMO hỏi Dev.
+
+## D-38 Kiểm chứng (FR-43, AIR-14, FR-18, FR-11, AC-11)
+
+- `verify_facts` tính không cần LLM: file đổi (đã và chưa commit); file không phải test mà tên (bỏ đuôi) không xuất hiện trong analysis.md/plan.md → "có thể lệch phạm vi"; chữ ký class/method trước/sau (trích lại bằng indexer từ commit nền và worktree) bị đổi/xoá → nơi gọi 1 tầng trong graph, và nếu nơi gọi là API thì cả service gọi API đó qua HTTP; endpoint bị xoá/đổi → service gọi (FR-18).
+- SA chỉ quyết được sau khi ghi verify.md trong chính phiên kiểm chứng. Muốn "đạt" (`awaiting_push`) thì verify.md phải nêu đích danh mọi mục bị gắn cờ; ticket mở lại thì analysis.md phải có mã mục bugs/ mới nhất (ví dụ BUG-01) (FR-11). Không đạt thì DevMap từ chối, PMO không nhận "chờ xác nhận".
+- Heuristic tên file là gần đúng: plan.md phải nêu tên file/class sẽ sửa (prompt SA yêu cầu). File test luôn được coi là trong phạm vi (FR-25).
+
+## D-39 Chat, token và xoá ngữ cảnh (FR-39, FR-40, FR-45)
+
+- `chat.json` trong folder ticket: tin PMO, tin agent (vai, ngữ cảnh đã dùng, các bước, câu trả lời, token). Chỉ để PMO đọc lại; giữ lại khi Done như tài liệu. Mỗi bước được phát qua SSE `agent`.
+- Token mỗi câu = vào (input + cache đọc + cache ghi) + ra, lấy từ dòng `result` của Claude Code; cộng dồn theo ticket và dự án từ các chat.json.
+- Nhật ký đầu vào của mỗi phiên (system prompt, prompt, mọi kết quả công cụ, đã che) ở `~/.devmap/sessions/<dự án>/<ticket>/<n>.log`, xem được bằng nút "Đầu vào agent" (AC-10, AC-12). Ticket sang Done thì xoá cả thư mục đó (FR-45); mở lại thì ngữ cảnh dựng lại từ tài liệu.
+- FR-28: cuối mỗi phiên Dev lưu commit hiện tại của từng worktree; phiên Dev sau thấy commit mới hoặc file chưa commit không do Dev → báo trong ngữ cảnh, ghi history.md, sinh lại changes.md.
+
+## D-40 Che bí mật: chuỗi ghép từ không phải token
+
+Luật "chuỗi ngẫu nhiên ≥ 32 ký tự" (D-14) che cả tên branch (`feature/NYX-9-them-hoan-tien-…`) và đường dẫn (`db/migration/V2__add_refund_column.sql`), phát hiện khi chạy thử thật.
+Riêng luật đó bỏ qua giá trị gồm ≥ 3 đoạn nối bằng `/ - _ +` mà mọi đoạn là từ thường, Từ Hoa đầu, chữ HOA ≤ 10 ký tự, số, hoặc ≤ 3 ký tự. Token ngẫu nhiên có đoạn trộn hoa-thường-số nên vẫn bị che; các luật khác (IP, key=value, tiền tố…) không đổi.

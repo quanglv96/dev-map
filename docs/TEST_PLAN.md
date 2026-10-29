@@ -7,17 +7,17 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | AC | Phase | Trạng thái | Kiểm thử |
 | --- | --- | --- | --- |
 | AC-01 Khởi tạo | 1, 3 | Đạt (phần tự động); pull do Dev ở P4 gọi cùng cơ chế | `ProjectServiceTest.createsDataFolderWithReposAndServices`, `GraphServiceTest.noScanUntilPmoAsks`, `GraphServiceTest.incrementalUpdateParsesOnlyTheGitDiff`, `WebTest`, `CliTest`, K-01, K-03 |
-| AC-02 FEAT trọn luồng | 2, 4, 5 | Một phần: phần Dev bằng tay xong (pull nhánh nền, commit 2 repo cùng mã, gate, xác nhận push); agent SA/Dev ở P5 | `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush`, K-04 |
-| AC-03 Mở lại ticket | 2, 5 | Một phần: mở lại bằng tay xong; SA cập nhật analysis (FR-11) ở P5 | `TaskServiceTest.reopenKeepsCode`, K-02 |
-| AC-04 MAINT | 2, 4, 5 | Một phần: chốt + thứ tự hàng đợi xong; chạy theo thứ tự ở P5 | `TaskServiceTest.flowGatesAndQueue` |
+| AC-02 FEAT trọn luồng | 2, 4, 5 | Một phần: agent SA phân tích → gửi chốt, Dev pull nhánh nền, sửa, gate, commit cùng mã, SA kiểm chứng (agent giả); chạy trọn với Claude Code thật ở P6 | `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush`, K-04, K-05 |
+| AC-03 Mở lại ticket | 2, 5 | Đạt (phần tự động): mở lại cùng mã, ngữ cảnh dựng lại từ tài liệu, SA không đạt được khi analysis.md chưa có case mới (FR-11) | `TaskServiceTest.reopenKeepsCode`, `AgentServiceTest.doneDropsSessionContextAndReopenRebuildsFromDocs`, K-02 |
+| AC-04 MAINT | 2, 4, 5 | Một phần: chốt + thứ tự hàng đợi xong; PMO hỏi Dev theo thứ tự hàng đợi, chưa có nút "chạy hàng đợi" tự động (P6) | `TaskServiceTest.flowGatesAndQueue` |
 | AC-05 Push | 4 | Đạt (phần tự động): chỉ PMO push, chỉ commit đã qua gate, không force-push, không push branch bảo vệ (nhánh nền luôn bảo vệ) | `TicketGitServiceTest` (3 test), `RuleServiceTest.protectedBranchesAlwaysIncludeBaseBranches`, `TaskServiceTest.flowGatesAndQueue`, K-04 |
-| AC-06 Bí mật | 2, 5 | Một phần: tài liệu không chứa bí mật; chặn agent đọc `.env` ở P5 | `SecretMaskerTest`, `TaskServiceTest.createsTicketWithMaskedSpec` |
-| AC-07 Token | 5 | Chưa | |
-| AC-08 Hai dự án song song | 5, 6 | Chưa | |
-| AC-09 Quét toàn bộ | 3, 5 | Một phần: mặc định tắt, PMO bấm mới quét, có cảnh báo trước; bật theo câu hỏi ở P5 | `GraphServiceTest.noScanUntilPmoAsks`, K-03 |
-| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Một phần: chỉ mục chỉ có chữ ký, lân cận ≤ 3 tầng; Controller→Repository làm gate không đạt và chặn chuyển SA kiểm chứng; chỉ sang SA khi phân tích tĩnh + unit test đạt; ngữ cảnh agent và prompt caching ở P5 | `GraphServiceTest.*`, `RuleServiceTest.layerCheckFindsControllerCallingRepository`, `RuleServiceTest.qualityGateRunsConfiguredCommands`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` |
-| AC-11 Kiểm chứng phạm vi | 5 | Chưa | |
-| AC-12 Tối ưu token | 2, 5 | Một phần: spec.json gọn, đã che, không gọi LLM; nhật ký LLM và xoá ngữ cảnh ở P5 | `TaskServiceTest.createsTicketWithMaskedSpec`, `RequestCleanerTest`, K-02 |
+| AC-06 Bí mật | 2, 5 | Đạt (phần tự động): agent không có công cụ đọc file/shell; công cụ DevMap từ chối `.env`, đường dẫn ra ngoài, ghi file bí mật; nhật ký đầu vào không có giá trị nào của `.env` hay IP giả | `SecretMaskerTest`, `TaskServiceTest.createsTicketWithMaskedSpec`, `AgentServiceTest.toolsNeverServeSecretsOrWholeFiles`, `ClaudeCodeProviderTest.runsWithoutBuiltInToolsOrUserSettings`, K-05 |
+| AC-07 Token | 5 | Đạt (phần tự động): 3 câu = 3 phiên mới, không gửi lại chat, câu sau dùng summary.md, token mỗi câu và cộng dồn | `AgentServiceTest.threeQuestionsAreThreeFreshSessions`, K-05 |
+| AC-08 Hai dự án song song | 5, 6 | Một phần: token phiên gắn đúng một dự án/ticket, công cụ chỉ thấy repo của dự án đó, tối đa 2 agent cùng lúc; tiêu đề tab ở P6 | `AgentServiceTest.unknownSessionTokenIsRejected`, `WebTest.mcpNeedsALiveSession` |
+| AC-09 Quét toàn bộ | 3, 5 | Đạt (phần tự động): bật cho một câu hỏi thì quét đúng một lần trước câu đó, câu sau không quét | `GraphServiceTest.noScanUntilPmoAsks`, `AgentServiceTest.toolsNeverServeSecretsOrWholeFiles`, K-03, K-05 |
+| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Đạt (phần tự động): nhật ký đầu vào chỉ có chữ ký và đoạn ≤ 80 dòng, không có nguyên file; system prompt giống hệt giữa các phiên (cache); Controller→Repository chặn ở gate; Dev không sang SA khi gate chưa đạt | `AgentServiceTest.*`, `RuleServiceTest.layerCheckFindsControllerCallingRepository`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` |
+| AC-11 Kiểm chứng phạm vi | 5 | Đạt (phần tự động, agent giả): file ngoài yêu cầu và chữ ký bị đổi có nơi gọi đều được `verify_facts` nêu; SA không đạt được khi chưa xét, trả về Dev; không có `awaiting_push` | `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature` |
+| AC-12 Tối ưu token | 2, 5 | Đạt (phần tự động): prompt không có câu xã giao, nguyên văn hay token; nhật ký đầu vào bị xoá khi Done; mở lại trả lời từ tài liệu | `TaskServiceTest.createsTicketWithMaskedSpec`, `RequestCleanerTest`, `AgentServiceTest.threeQuestionsAreThreeFreshSessions`, `AgentServiceTest.doneDropsSessionContextAndReopenRebuildsFromDocs`, K-02, K-05 |
 
 ## Test tự động Phase 1
 
@@ -139,3 +139,37 @@ Chuẩn bị: dự án `shop` (K-01). Mỗi repo trong `samples/shop/repos` cầ
 7. "Xác nhận push" → khung xem lại: repo → origin/branch, số commit, tests.md, diff. Bấm "Push" → ticket Done; `git -C <tmp>/order-service.git branch` có branch ticket; payment-service (không đổi) không bị push.
 8. CLI: `java -jar target/devmap.jar rules show shop order-service`, `rules check shop --repo order-service` (exit 1, báo vi phạm tách lớp), `rules check shop --path ~/.devmap/worktrees/shop/NYX-7/order-service --repo order-service`.
 9. Cấu hình mặc định dự án thêm `feature/*` vào branch bảo vệ → ticket mới không bắt đầu triển khai được ("branch được bảo vệ"). Xoá đi; xoá `test` khỏi danh sách → `test` vẫn hiện trong nhánh nền được bảo vệ.
+
+## Test tự động Phase 5
+
+Agent giả (`AgentServiceTest.FakeAgent`) gọi công cụ qua đúng `McpServer.handle` (JSON-RPC như Claude Code), chạy đồng bộ.
+
+| Test | Kiểm |
+| --- | --- |
+| `AgentServiceTest.threeQuestionsAreThreeFreshSessions` | AC-07, AC-12, FR-37/38/40, AIR-11: `initialize`/`tools/list` (SA không có công cụ sửa file), 3 phiên 3 token khác nhau, system prompt giống hệt, prompt không có câu xã giao/nguyên văn/token, câu 2 thấy summary.md của câu 1 nhưng không thấy câu hỏi 1, summary.md tự ghi khi agent quên, token theo ticket và dự án, SA không chốt được, task.md không đọc được |
+| `AgentServiceTest.toolsNeverServeSecretsOrWholeFiles` | AC-06, AC-09, AC-10, FR-34/35: `.env` và `../` bị từ chối, đoạn > 80 dòng và snippet cả class bị từ chối, IP trong code bị che, graph 2 tầng trong prompt, quét toàn bộ đúng một lần, nhật ký không có giá trị `.env` hay nguyên file, Dev không chạy trước khi chốt |
+| `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature` | AC-11, FR-43, AIR-03/13/14, FR-25/28: SA phân tích → gửi chốt; Dev pull, không ghi được `.env`/ngoài worktree, chưa gate thì không sang SA, commit mang mã; SA kiểm chứng tự chạy, `verify_facts` nêu `Extra.java` và `OrderService.create` ← `OrderController.create`; verify.md thiếu thì không đạt; trả về Dev; PMO tự commit trong worktree → phiên Dev sau được báo, changes.md cập nhật |
+| `AgentServiceTest.doneDropsSessionContextAndReopenRebuildsFromDocs` | FR-45, AC-12, FR-11, AC-03: Done xoá nhật ký/thư mục phiên, tài liệu còn; mở lại thì prompt có REOPEN_BUG và summary.md cũ; SA không đạt khi analysis.md chưa có BUG-01 |
+| `AgentServiceTest.unknownSessionTokenIsRejected` | NFR-06: token phiên lạ hoặc thiếu bị từ chối |
+| `ClaudeCodeProviderTest.parsesStreamJson` | đọc stream-json của Claude Code 2.1.x: chữ, lời gọi công cụ, kết quả, usage, lỗi |
+| `ClaudeCodeProviderTest.runsWithoutBuiltInToolsOrUserSettings` | `--tools ""`, `--strict-mcp-config`, `--setting-sources project`, `--allowed-tools mcp__devmap`, `--permission-mode dontAsk` |
+| `WebTest.mcpNeedsALiveSession` | `/mcp` cần token phiên còn sống; run token không mở được; IP ngoài máy → 403 |
+| `SecretMaskerTest.keepsBranchNamesAndPathsButNotRandomTokens` | D-40: branch/đường dẫn không bị che, token ngẫu nhiên vẫn bị che |
+
+## Kịch bản thủ công Phase 5
+
+**K-05 (Claude Code thật; AC-06, AC-07, AC-09, AC-12, một phần AC-02)**
+
+Bước 1–3 đã chạy qua API ngày 29/10/2026 trên `samples/shop` với Claude Code 2.1.312: phiên SA dùng `get_ticket_docs`, `search_graph`, `get_signatures`, `write_ticket_doc`;
+nhật ký đầu vào không có "Chào em", "Cảm ơn", IP hay mật khẩu giả; 53.919 token vào (40.159 đọc từ cache), 2.647 ra, $0,17. Các bước còn lại chưa chạy với agent thật.
+
+1. Dự án `shop` đã quét toàn bộ (K-03). Tạo ticket `NYX-9`: "Chào em, nhờ em thêm hoàn tiền một phần cho order-service nhé. Không được đổi API cũ. Cảm ơn!"
+2. Tab Chat (mặc định) → hỏi "Hoàn tiền một phần sẽ chạm những service, API và method nào?" → Gửi. Tin SA bên trái khung nét đứt, ghi "phiên mới", "Ngữ cảnh: spec.json, graph", các bước hiện dần (fetch theo git diff, từng công cụ). Ticket sang "SA phân tích".
+3. "Đầu vào agent" → không có nguyên văn yêu cầu, không có giá trị trong `.env`, không có nguyên file. Cột phải "Token đã dùng" có số của ticket và dự án.
+4. Hỏi tiếp 2 câu → mỗi câu một phiên mới, câu sau nhắc lại đúng điều đã chốt (nhờ summary.md).
+5. Bảo SA "phân tích và gửi chốt" → analysis.md (AC Given/When/Then), plan.md (việc theo repo, tên file) → "Chờ PMO chốt". Bấm "Yêu cầu phân tích lại" một lần, hỏi lại, rồi "Chốt giải pháp".
+6. Ticket "Sẵn sàng" → hỏi "Triển khai" (tự chọn Dev) → Dev pull nhánh nền, sửa, chạy gate, commit `NYX-9: …`, chuyển SA; SA kiểm chứng tự chạy, ghi verify.md.
+7. Cố ý bảo Dev sửa thêm một file ngoài plan và đổi chữ ký `OrderService.create` → SA nêu cả hai trong verify.md, trả về Dev (AC-11).
+8. Tick "Quét toàn bộ dự án cho câu này" → hộp xác nhận báo số file → bước "PMO bật quét toàn bộ…" chỉ có ở câu đó (AC-09).
+9. Xác nhận push → Done → `~/.devmap/sessions/shop/NYX-9/` không còn; "Đầu vào agent" báo đã đóng. "Báo bug" → hỏi SA → trả lời từ tài liệu (AC-12, AC-03).
+10. CLI: `java -jar target/devmap.jar prompt shop NYX-9 --role sa --question "..."` in system prompt, prompt, công cụ; không gọi LLM.
