@@ -115,3 +115,43 @@ Windows đưa tham số dòng lệnh cho Java theo code page ANSI, nên tiếng 
 ## D-19 SSE
 
 `GET /api/events[?project=]` phát sự kiện `task` mỗi khi ticket đổi; trang dự án và trang chủ tự làm mới, không làm mới khi PMO đang mở trình soạn thảo.
+
+## D-20 Chỉ mục đọc từ commit của nhánh nền, không đọc working tree
+
+Indexer đọc file qua JGit từ cây commit của `origin/<nhánh nền>` (sau `git fetch`), nếu không có remote thì `<nhánh nền>` local.
+Vì vậy việc PMO đang checkout nhánh nào hay có thay đổi chưa commit không ảnh hưởng chỉ mục. `git fetch` chạy bằng git CLI để dùng credential manager
+sẵn có của máy (JGit không đọc được kho khoá Windows); fetch lỗi (mất mạng) thì vẫn index trên dữ liệu đã có và ghi chú lại.
+Phase 3 chỉ **fetch**, không đổi working tree của PMO; pull vào worktree của ticket thuộc Phase 4.
+
+## D-21 Khi nào chỉ mục được cập nhật (FR-17, FR-21, AIR-05/06)
+
+- `devmap serve` không quét gì.
+- Dự án mới: graph chỉ có node service; màn hình Graph hiện nút "Quét toàn bộ dự án" (CLAUDE.md §5.8). Trước khi chạy, DevMap đếm và báo số file sẽ đọc (NFR-05).
+- "Cập nhật theo git diff" / `devmap index <dự án>`: fetch, diff commit đã index với commit mới nhất của nhánh nền, chỉ đọc file thêm/sửa, bỏ file xoá.
+  Phase 4–5 sẽ gọi cùng hàm này sau mỗi lần pull.
+- Lịch sử nhánh bị viết lại (force-push) thì không diff được: báo PMO quét lại toàn bộ.
+- `scan_full_project` trong config.yml vẫn luôn là `false`; quét theo câu hỏi (AC-09) thuộc Phase 5.
+
+## D-22 Nội dung chỉ mục và graph
+
+- `graph/<repo>.json`: theo từng file, chỉ có chữ ký class/method/function (kèm dòng bắt đầu/kết thúc), endpoint, lời gọi HTTP, topic, bảng, tham chiếu theo tên.
+  Không có thân hàm. Mọi chuỗi đi qua lớp che bí mật trước khi ghi (FR-36).
+- Không bao giờ chọn đọc: file bí mật (`SecretFiles`, dùng lại cho FR-34 ở Phase 5), test, `node_modules`/`target`/`build`…, file > 1 MB.
+- Java: JavaParser, không dùng symbol solver; lời gọi được nối qua kiểu của field/tham số (đủ cho Spring inject qua constructor).
+  Nhận diện Spring MVC, Feign, RestClient/RestTemplate, Kafka/Rabbit/JMS, JPA entity/repository.
+- TS/JS/Python/Go: tree-sitter (binding `io.github.bonede`, có sẵn bản native Windows/macOS/Linux). Nhận diện route kiểu Express, FastAPI/Flask,
+  net/http/gin và lời gọi axios/fetch/requests/http.Get. NestJS decorator và URL ghép động chưa nhận diện (edge tay hoặc agent SA bù).
+- OpenAPI: swagger-parser; `.proto`: đọc `service`/`rpc` bằng regex. Spring config (`application*.yml/properties`), docker-compose.
+- Graph không lưu ra file; dựng lại trong bộ nhớ từ chỉ mục + `manual-edges.json` (vài trăm ms), tự dựng lại khi cấu hình dự án đổi.
+- Độ tin cậy edge: `high` khi khớp chính xác (method đã biết, host trùng tên service và path khớp API); `medium` khi chỉ khớp một phía
+  (chỉ host, hoặc chỉ path và duy nhất một API khớp); `low` khi đoán (docker-compose `depends_on`, path khớp nhiều API).
+- Truy vấn lân cận luôn giới hạn tối đa 3 tầng (AIR-09) và 300 node.
+
+## D-23 Edge tay nằm ngoài graph/
+
+`manual-edges.json` ở gốc folder dữ liệu dự án, không nằm trong `graph/`: `graph/` là cache tạo lại được, xoá đi không mất edge của PMO.
+Edge tay chỉ nối được giữa hai node đang có; nếu sau này node biến mất, edge vẫn giữ trong file nhưng không hiển thị.
+
+## D-24 Kích thước devmap.jar
+
+Thêm tree-sitter (thư viện native cho 3 hệ điều hành × 4 ngôn ngữ) và swagger-parser làm `devmap.jar` lên khoảng 40 MB. Chấp nhận vì vẫn là một file chạy offline.

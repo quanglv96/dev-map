@@ -6,7 +6,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 
 | AC | Phase | Trạng thái | Kiểm thử |
 | --- | --- | --- | --- |
-| AC-01 Khởi tạo | 1 (graph theo git diff: 3) | Một phần: phần khởi tạo xong | `ProjectServiceTest.createsDataFolderWithReposAndServices`, `WebTest.projectLifecycleOverApi`, `CliTest`, kịch bản K-01 |
+| AC-01 Khởi tạo | 1, 3 | Đạt (phần tự động); pull do Dev ở P4 gọi cùng cơ chế | `ProjectServiceTest.createsDataFolderWithReposAndServices`, `GraphServiceTest.noScanUntilPmoAsks`, `GraphServiceTest.incrementalUpdateParsesOnlyTheGitDiff`, `WebTest`, `CliTest`, K-01, K-03 |
 | AC-02 FEAT trọn luồng | 2, 4, 5 | Chưa | |
 | AC-03 Mở lại ticket | 2, 5 | Một phần: mở lại bằng tay xong; SA cập nhật analysis (FR-11) ở P5 | `TaskServiceTest.reopenKeepsCode`, K-02 |
 | AC-04 MAINT | 2, 4, 5 | Một phần: chốt + thứ tự hàng đợi xong; chạy theo thứ tự ở P5 | `TaskServiceTest.flowGatesAndQueue` |
@@ -14,8 +14,8 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | AC-06 Bí mật | 2, 5 | Một phần: tài liệu không chứa bí mật; chặn agent đọc `.env` ở P5 | `SecretMaskerTest`, `TaskServiceTest.createsTicketWithMaskedSpec` |
 | AC-07 Token | 5 | Chưa | |
 | AC-08 Hai dự án song song | 5, 6 | Chưa | |
-| AC-09 Quét toàn bộ | 3, 5 | Chưa | |
-| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Chưa (đã có vi phạm mẫu `OrderReportController`) | |
+| AC-09 Quét toàn bộ | 3, 5 | Một phần: mặc định tắt, PMO bấm mới quét, có cảnh báo trước; bật theo câu hỏi ở P5 | `GraphServiceTest.noScanUntilPmoAsks`, K-03 |
+| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Một phần: chỉ mục chỉ có chữ ký, lân cận ≤ 3 tầng, vi phạm Controller→Repository thấy được trong graph; chặn ở P4, ngữ cảnh agent ở P5 | `GraphServiceTest.fullScanBuildsCrossRepoGraph`, `GraphServiceTest.indexHoldsNoSecretsAndNeverReadsEnvFiles`, `GraphServiceTest.blastRadiusCrossesServices` |
 | AC-11 Kiểm chứng phạm vi | 5 | Chưa | |
 | AC-12 Tối ưu token | 2, 5 | Một phần: spec.json gọn, đã che, không gọi LLM; nhật ký LLM và xoá ngữ cảnh ở P5 | `TaskServiceTest.createsTicketWithMaskedSpec`, `RequestCleanerTest`, K-02 |
 
@@ -75,3 +75,34 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 5. Mở thêm một tab `localhost:7070/` → "Việc chờ PMO"/"Ticket đang chạy" tự cập nhật khi đổi trạng thái ở tab kia.
 6. Đi tiếp tới Done; "Báo bug" → ticket về "SA phân tích", cùng mã, có `bugs/BUG-01.md`, số lần mở lại = 1.
 7. CLI (tiếng Việt qua stdin): `echo "..." | java -jar target/devmap.jar task new shop --type BUG`; `task list shop`; `task show shop BUG-001`.
+
+## Test tự động Phase 3
+
+| Test | Kiểm |
+| --- | --- |
+| `ExtractorTest.javaSpringServiceAndClients` | FR-19/20: Spring endpoint, lời gọi qua field inject, publish/consume Kafka, entity → bảng, repository, RestClient |
+| `ExtractorTest.javaFeignClientIsAnOutgoingCall` | Feign client là lời gọi ra, không phải endpoint |
+| `ExtractorTest.configComposeAndOpenApi` | FR-20: URL trong application.yml, docker-compose `depends_on`/environment, OpenAPI (swagger-parser), `.proto` |
+| `ExtractorTest.typescriptExpressAndAxios` / `pythonFastApiAndGoNetHttp` | tree-sitter: chữ ký, route, lời gọi HTTP, lời gọi theo tên |
+| `ExtractorTest.neverSelectsSecretsTestsOrBuildOutput` | FR-34 (phía indexer): `.env`, khoá, test, build output không bao giờ được chọn đọc |
+| `GraphServiceTest.noScanUntilPmoAsks` | AC-01/AIR-05: không có chỉ mục thì cập nhật tăng dần không làm gì; `graph/` trống |
+| `GraphServiceTest.fullScanBuildsCrossRepoGraph` | FR-19/20/23: graph 3 repo, độ tin cậy edge, mức Service và mức API |
+| `GraphServiceTest.indexHoldsNoSecretsAndNeverReadsEnvFiles` | FR-36/NFR-02: chỉ mục không chứa IP/token giả, không có thân hàm |
+| `GraphServiceTest.incrementalUpdateParsesOnlyTheGitDiff` | FR-21/AIR-06/NFR-11: chỉ đọc lại file đổi trên nhánh nền, commit ở nhánh khác bị bỏ qua, file xoá bị gỡ |
+| `GraphServiceTest.blastRadiusCrossesServices` | AIR-09/FR-23: blast radius xuyên service qua REST, giới hạn 3 tầng; tìm kiếm |
+| `GraphServiceTest.manualEdgesSurviveReindex` | FR-22: edge tay còn sau khi quét lại; từ chối node không có |
+| `GraphServiceTest.ticketHighlightsItsServices` | FR-23: service của ticket từ spec.json |
+| `GraphPerfTest` (bật bằng `-Dperf=true`) | NFR-11: 232.000 dòng/2.000 file: quét toàn bộ + dựng graph 8,2 s (giới hạn 180 s); cập nhật tăng dần 0,7 s (giới hạn 20 s), đo ngày 29/10/2026 |
+
+## Kịch bản thủ công Phase 3
+
+**K-03 (graph, AC-01 phần graph, AC-09 phần mặc định tắt)**
+
+1. Dự án `shop` vừa tạo (K-01). Mở tab Graph: chỉ có 3 service, khung vàng "chưa có chỉ mục", `graph/` trống.
+2. Bấm "Quét toàn bộ dự án" → hộp xác nhận báo số file sẽ đọc, không tốn token → OK → khoảng 1 giây sau graph có 51 node.
+3. Mức Service: order → payment (http/config/compose), order → topic `order.created` → notification, bảng `orders`, `payment`.
+4. Nhấp đúp `order-service` → các API của order và `POST /api/payments` của payment. Tìm `PaymentService.pay` → chọn tầng 3 → "Blast radius" → thấy `PaymentClient.charge` của order-service.
+5. Chọn một ticket ở "Tô sáng ticket…" → service của ticket có viền vàng.
+6. "Nối edge tay từ node này" → chọn node khác → Lưu. "Quét toàn bộ" lại → edge tay vẫn còn.
+7. Commit một file mới vào nhánh `test` của `samples/shop/repos/order-service`, bấm "Cập nhật theo git diff" → báo "đọc 1" ở order-service, "đã mới nhất" ở repo khác.
+8. CLI: `java -jar target/devmap.jar index shop` và `index shop --full`.
