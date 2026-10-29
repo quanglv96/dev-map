@@ -5,6 +5,7 @@ import com.devmap.config.ProjectConfig;
 import com.devmap.config.ProjectService;
 import com.devmap.config.RepoConfig;
 import com.devmap.config.ServiceInfo;
+import com.devmap.git.GitService;
 import com.devmap.secret.SecretMasker;
 import com.devmap.ticket.TaskRepository.Stored;
 import com.github.difflib.DiffUtils;
@@ -31,8 +32,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class TaskService {
 
-  /** Who asks for an action. Only the PMO passes the gates; agents get their own actor in Phase 5. */
-  public enum Actor { PMO, SA, DEV }
+  /** Who asks for an action. Only the PMO passes the gates. DEVMAP: documents the tool itself writes (tests.md, changes.md). */
+  public enum Actor { PMO, SA, DEV, DEVMAP }
 
   public record Action(String to, boolean pmoGate) {
   }
@@ -57,14 +58,16 @@ public class TaskService {
   private final SecretMasker masker;
   private final RequestCleaner cleaner;
   private final ApplicationEventPublisher events;
+  private final GitService git;
 
   public TaskService(ProjectService projects, TaskRepository repo, SecretMasker masker, RequestCleaner cleaner,
-      ApplicationEventPublisher events) {
+      ApplicationEventPublisher events, GitService git) {
     this.projects = projects;
     this.repo = repo;
     this.masker = masker;
     this.cleaner = cleaner;
     this.events = events;
+    this.git = git;
   }
 
   public List<Task> list(String project) {
@@ -127,6 +130,12 @@ public class TaskService {
     }
     if (to == TaskStatus.READY && repo.readDoc(s.folder(), "plan.md").map(String::isBlank).orElse(true)) {
       throw new IllegalArgumentException("Chưa có plan.md, chưa chốt được giải pháp");
+    }
+    if (from == TaskStatus.IN_DEV && to == TaskStatus.SA_VERIFY) {
+      requireGatePassed(s);
+    }
+    if (to == TaskStatus.DONE) {
+      requirePushed(s);
     }
     Task updated = s.task().withStatus(to, now());
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
@@ -220,6 +229,58 @@ public class TaskService {
     return updated;
   }
 
+  /** Repos the ticket touches; they get a worktree each when Dev starts. Fixed once the ticket is Done. */
+  public synchronized Task setRepos(String project, String id, List<String> names, Actor actor) {
+    Stored s = stored(project, id);
+    if (s.task().status() == TaskStatus.DONE) {
+      throw new IllegalArgumentException("Ticket đã Done");
+    }
+    List<String> known = project(project).config().repos().stream().map(RepoConfig::name).toList();
+    List<String> wanted = names == null ? List.of() : names.stream().distinct().toList();
+    if (!known.containsAll(wanted)) {
+      throw new IllegalArgumentException("Repo phải thuộc dự án: " + known);
+    }
+    Task t = s.task();
+    Task updated = new Task(t.id(), t.type(), t.title(), t.status(), wanted, t.branch(), t.version(), t.reopened(), t.created(), now());
+    repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
+    history(s.folder(), actor, "Repo của ticket: " + wanted);
+    changed(project, id);
+    return updated;
+  }
+
+  /** AIR-13 / FR-31: SA verifies only code whose current commit passed the quality gate, with nothing left uncommitted. */
+  private void requireGatePassed(Stored s) {
+    DevState dev = repo.readDevState(s.folder());
+    List<String> problems = new ArrayList<>();
+    for (String name : s.task().repos()) {
+      DevState.RepoWork w = dev.repo(name);
+      if (w == null) {
+        problems.add(name + ": chưa tạo worktree");
+        continue;
+      }
+      Path wt = Path.of(w.worktree());
+      if (w.gateHead() == null || !w.gateHead().equals(git.head(wt))) {
+        problems.add(name + ": quality gate chưa đạt trên commit hiện tại");
+      } else if (!git.uncommitted(wt).isEmpty()) {
+        problems.add(name + ": còn thay đổi chưa commit");
+      }
+    }
+    if (!problems.isEmpty()) {
+      throw new IllegalArgumentException("Chưa chuyển SA kiểm chứng được: " + String.join("; ", problems));
+    }
+  }
+
+  /** FR-27: Done only after the verified commit of every changed repo was pushed through "Xác nhận push". */
+  private void requirePushed(Stored s) {
+    List<String> missing = repo.readDevState(s.folder()).repos().stream()
+        .filter(w -> !git.head(Path.of(w.worktree())).equals(w.baseCommit()))
+        .filter(w -> w.pushedHead() == null || !w.pushedHead().equals(w.gateHead()))
+        .map(DevState.RepoWork::repo).toList();
+    if (!missing.isEmpty()) {
+      throw new IllegalArgumentException("Chưa push commit đã kiểm chứng ở " + missing + "; dùng \"Xác nhận push\"");
+    }
+  }
+
   /** Ready tickets in the order the PMO set (FR-07); no priorities. */
   public List<Task> queue(String project) {
     List<Task> tasks = list(project);
@@ -294,11 +355,11 @@ public class TaskService {
     }
   }
 
-  private void history(Path folder, Actor actor, String text) {
+  void history(Path folder, Actor actor, String text) {
     repo.appendDoc(folder, "history.md", "- " + now() + " · " + actor + " · " + masker.mask(text).text() + "\n");
   }
 
-  private void changed(String project, String id) {
+  void changed(String project, String id) {
     events.publishEvent(new TaskChanged(project, id));
   }
 
@@ -312,7 +373,7 @@ public class TaskService {
     return LocalDateTime.now().format(TIME);
   }
 
-  private Project project(String name) {
+  Project project(String name) {
     Project p = projects.get(name);
     if (p.error() != null) {
       throw new IllegalStateException(p.error());
@@ -328,7 +389,7 @@ public class TaskService {
     return d;
   }
 
-  private Stored stored(String project, String id) {
+  Stored stored(String project, String id) {
     return repo.find(dir(project), id).orElseThrow(() -> new NoSuchElementException("Không có ticket " + id));
   }
 }

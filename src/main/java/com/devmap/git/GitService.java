@@ -90,6 +90,112 @@ public class GitService {
     }
   }
 
+  /** Result of a git CLI call. */
+  public record Out(int code, String output) {
+    public boolean ok() {
+      return code == 0;
+    }
+  }
+
+  /**
+   * Runs `git -C dir args...` (worktrees, merge, commit, push need the CLI: JGit has no worktree support and the CLI uses the
+   * machine's credentials and hooks). Never used with --force; push refspecs are built by {@link #push} only.
+   */
+  public Out run(Path dir, String... args) {
+    List<String> argv = new ArrayList<>(List.of("git", "-C", dir.toString()));
+    argv.addAll(List.of(args));
+    try {
+      Process p = new ProcessBuilder(argv).redirectErrorStream(true).start();
+      byte[] out = p.getInputStream().readAllBytes();
+      if (!p.waitFor(10, TimeUnit.MINUTES)) {
+        p.destroyForcibly();
+        return new Out(-1, "git " + args[0] + " quá 10 phút");
+      }
+      return new Out(p.exitValue(), new String(out, StandardCharsets.UTF_8).stripTrailing()); // keep leading blanks: porcelain status
+    } catch (IOException e) {
+      return new Out(-1, "Không chạy được git: " + e.getMessage());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return new Out(-1, "git bị ngắt");
+    }
+  }
+
+  private String must(Path dir, String... args) {
+    Out o = run(dir, args);
+    if (!o.ok()) {
+      throw new IllegalStateException("git " + String.join(" ", args) + " lỗi ở " + dir + ": " + o.output());
+    }
+    return o.output();
+  }
+
+  /** NFR-07: a worktree per ticket and repo, on the ticket branch (created from startPoint when it does not exist yet). */
+  public void addWorktree(Path repo, Path worktree, String branch, String startPoint) {
+    boolean exists = run(repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch).ok();
+    if (exists) {
+      must(repo, "worktree", "add", worktree.toString(), branch);
+    } else {
+      must(repo, "worktree", "add", "-b", branch, worktree.toString(), startPoint);
+    }
+  }
+
+  public String head(Path dir) {
+    return must(dir, "rev-parse", "HEAD");
+  }
+
+  /** Uncommitted paths (modified, added, deleted, untracked), relative to the worktree root. */
+  public List<String> uncommitted(Path dir) {
+    List<String> out = new ArrayList<>();
+    for (String entry : must(dir, "-c", "core.quotepath=off", "status", "--porcelain", "--untracked-files=all").split("\n")) {
+      if (entry.length() > 3) {
+        String path = entry.substring(3);
+        out.add(path.contains(" -> ") ? path.substring(path.indexOf(" -> ") + 4) : path);
+      }
+    }
+    return out;
+  }
+
+  /** FR-24: brings the newest base branch into the ticket branch; a conflict is aborted and reported, never left half-merged. */
+  public void merge(Path dir, String ref) {
+    Out o = run(dir, "merge", "--no-edit", ref);
+    if (!o.ok()) {
+      run(dir, "merge", "--abort");
+      throw new IllegalStateException("Không merge được " + ref + " (xung đột?), đã huỷ merge: " + o.output());
+    }
+  }
+
+  public void commitAll(Path dir, String message) {
+    must(dir, "add", "-A");
+    must(dir, "commit", "-q", "-m", message);
+  }
+
+  /** FR-30: pushes exactly one verified commit to the ticket branch. No '+' in the refspec and no --force: never a force-push. */
+  public void push(Path dir, String commit, String branch) {
+    if (!commit.matches("[0-9a-f]{40}") || branch.startsWith("+") || branch.startsWith("-")) {
+      throw new IllegalArgumentException("Commit hoặc branch không hợp lệ: " + commit + " " + branch);
+    }
+    must(dir, "push", "origin", commit + ":refs/heads/" + branch);
+  }
+
+  public boolean hasOrigin(Path dir) {
+    return run(dir, "remote", "get-url", "origin").ok();
+  }
+
+  /** "abc1234 subject" lines of the commits in from..to. */
+  public List<String> log(Path dir, String from, String to) {
+    String out = must(dir, "log", "--format=%h %s", from + ".." + to);
+    return out.isEmpty() ? List.of() : List.of(out.split("\n"));
+  }
+
+  public List<String> changedFiles(Path dir, String from, String to) {
+    String out = must(dir, "-c", "core.quotepath=off", "diff", "--name-only", from + "..." + to);
+    return out.isEmpty() ? List.of() : List.of(out.split("\n"));
+  }
+
+  /** Committed changes since the base plus what is not committed yet. */
+  public String diffText(Path dir, String from) {
+    return must(dir, "diff", from + "...HEAD") + "\n" + must(dir, "diff", "HEAD");
+  }
+
   /** Every file path in the commit's tree. */
   public List<String> listFiles(Path repo, String commit) {
     try (Git git = Git.open(repo.toFile()); RevWalk walk = new RevWalk(git.getRepository());

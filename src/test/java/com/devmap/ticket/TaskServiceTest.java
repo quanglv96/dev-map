@@ -40,7 +40,7 @@ class TaskServiceTest {
         new RepoInput(repos.resolve("order-service").toString(), "test"),
         new RepoInput(repos.resolve("payment-service").toString(), "main"),
         new RepoInput(repos.resolve("notification-service").toString(), "main")), false);
-    tasks = new TaskService(projects, new TaskRepository(), new SecretMasker(), new RequestCleaner(), events::add);
+    tasks = new TaskService(projects, new TaskRepository(), new SecretMasker(), new RequestCleaner(), events::add, new GitService());
     data = tmp.resolve("data/shop/tasks");
   }
 
@@ -172,6 +172,7 @@ class TaskServiceTest {
     tasks.transition("shop", id, "sa_analysis", Actor.PMO);
     tasks.transition("shop", id, "awaiting_approval", Actor.PMO);
     tasks.writeDoc("shop", id, "plan.md", "p", Actor.PMO);
+    tasks.setRepos("shop", id, List.of(), Actor.PMO); // no code in this manual flow: no worktree, gate or push to check
     for (String s : List.of("ready", "in_dev", "sa_verify", "awaiting_push", "done")) {
       tasks.transition("shop", id, s, Actor.PMO);
     }

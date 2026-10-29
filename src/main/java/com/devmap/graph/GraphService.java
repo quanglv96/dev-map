@@ -8,6 +8,7 @@ import com.devmap.git.GitService;
 import com.devmap.git.GitService.Change;
 import com.devmap.secret.SecretMasker;
 import com.devmap.ticket.TaskService;
+import com.devmap.ticket.TicketGitService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -30,6 +31,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.UnaryOperator;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 /**
@@ -275,6 +277,16 @@ public class GraphService {
     }
     store.saveManualEdges(dir, all);
     changed(project);
+  }
+
+  /** FR-21 / D-21: after Dev pulled base branches, update the index by git diff in the background (only once it exists). */
+  @EventListener
+  public void onBasePulled(TicketGitService.BasePulled e) {
+    Path dir = Path.of(project(e.project()).dataDir());
+    boolean indexed = project(e.project()).config().repos().stream().anyMatch(rc -> store.load(dir, rc.name()).isPresent());
+    if (indexed && !running.contains(e.project())) {
+      start(e.project(), false);
+    }
   }
 
   private void changed(String project) {

@@ -91,6 +91,23 @@ public class TaskRepository {
     }
   }
 
+  public DevState readDevState(Path folder) {
+    Path f = folder.resolve("dev.json");
+    try {
+      return Files.exists(f) ? JSON.readValue(f.toFile(), DevState.class) : DevState.EMPTY;
+    } catch (IOException e) {
+      throw new UncheckedIOException("dev.json hỏng: " + e.getMessage(), e);
+    }
+  }
+
+  public void writeDevState(Path folder, DevState state) {
+    try {
+      Yaml.writeText(folder.resolve("dev.json"), JSON.writeValueAsString(state) + "\n");
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
   /** Document names that exist in the ticket folder, e.g. analysis.md, bugs/BUG-01.md. */
   public List<String> docs(Path folder) {
     List<String> out = new ArrayList<>();
