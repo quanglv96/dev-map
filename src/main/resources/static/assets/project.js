@@ -1,26 +1,90 @@
+// Project workspace (localhost:7070/<project>): task list | task content | details and PMO decisions.
+// Routes: #  overview · #config · #new · #task=<id>
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
-import { api, el, setFavicon, showError } from "./lib.js";
+import { WAITS_FOR_PMO, api, el, fill, setFavicon, showError } from "./lib.js";
+import { renderConfig } from "./views/config.js";
+import { renderNewTask, renderTask } from "./views/task.js";
 
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
 
+const STATUSES = ["new", "sa_analysis", "awaiting_approval", "ready", "in_dev", "sa_verify", "awaiting_push", "done"];
 const name = decodeURIComponent(location.pathname.split("/")[1]);
+const api$ = `/api/projects/${encodeURIComponent(name)}`;
 const mid = document.getElementById("mid");
 const right = document.getElementById("right");
+const list = document.getElementById("task-list");
+const queueBox = document.getElementById("queue");
+const filterStatus = document.getElementById("filter-status");
+const filterType = document.getElementById("filter-type");
+const state = { masked: 0 };
 let project;
-let view = "overview";
+let tasks = [];
 
-function setHeader() {
-  const color = project.config.color;
-  document.title = `${project.name} · DevMap`;
-  document.getElementById("project-name").textContent = project.name;
-  document.getElementById("project-dot").style.background = color;
-  setFavicon(color);
+fill(filterStatus, el("option", { value: "" }, t("allStatus")),
+  STATUSES.map((s) => el("option", { value: s }, t(`status.${s}`))));
+fill(filterType, el("option", { value: "" }, t("allTypes")),
+  ["FEAT", "MAINT", "BUG"].map((v) => el("option", { value: v }, v)));
+filterStatus.addEventListener("change", renderList);
+filterType.addEventListener("change", renderList);
+
+function route() {
+  const hash = location.hash.slice(1);
+  if (hash.startsWith("task=")) {
+    return { view: "task", id: decodeURIComponent(hash.slice(5)) };
+  }
+  return { view: hash === "config" || hash === "new" ? hash : "overview" };
 }
 
-function renderRight() {
+function setHeader() {
+  document.title = `${project.name} · DevMap`;
+  document.getElementById("project-name").textContent = project.name;
+  document.getElementById("project-dot").style.background = project.config.color;
+  setFavicon(project.config.color);
+}
+
+function renderList() {
+  const r = route();
+  const shown = tasks.filter((x) => (!filterStatus.value || x.status === filterStatus.value)
+    && (!filterType.value || x.type === filterType.value));
+  list.replaceChildren(...shown.map((x) => el("li", { class: r.id === x.id ? "active" : "" },
+    el("a", { href: `#task=${encodeURIComponent(x.id)}` },
+      el("div", { class: "row" },
+        el("strong", { class: "grow" }, x.id),
+        WAITS_FOR_PMO.includes(x.status) ? el("span", { class: "dot pending", title: t("pending") }) : null),
+      el("div", {}, x.title),
+      el("small", { class: `badge ${x.status}` }, `${x.type} · ${t(`status.${x.status}`)}`)))));
+  if (shown.length === 0) {
+    list.replaceChildren(el("li", { class: "muted" }, t("noTasks")));
+  }
+}
+
+async function renderQueue() {
+  const queue = await api(`${api$}/queue`);
+  if (queue.length === 0) {
+    queueBox.replaceChildren();
+    return;
+  }
+  const ids = queue.map((x) => x.id);
+  const move = async (i, delta) => {
+    const order = [...ids];
+    [order[i], order[i + delta]] = [order[i + delta], order[i]];
+    try {
+      await api(`${api$}/queue`, { method: "PUT", body: order });
+      await renderQueue();
+    } catch (err) {
+      showError(queueBox, err);
+    }
+  };
+  queueBox.replaceChildren(el("h3", { class: "section" }, t("queue")), el("ol", { class: "queue" }, queue.map((x, i) => el("li", {},
+    el("a", { href: `#task=${encodeURIComponent(x.id)}` }, x.id), " ",
+    i > 0 ? el("button", { type: "button", class: "link", title: t("up"), onclick: () => move(i, -1) }, "↑") : null,
+    i < queue.length - 1 ? el("button", { type: "button", class: "link", title: t("down"), onclick: () => move(i, 1) }, "↓") : null))));
+}
+
+function renderProjectInfo() {
   const c = project.config;
-  right.replaceChildren(
+  fill(right,
     el("h3", {}, t("status")),
     el("dl", {},
       el("dt", {}, t("dataDir")), el("dd", { class: "path" }, project.dataDir),
@@ -31,7 +95,7 @@ function renderRight() {
 
 function renderOverview() {
   const repos = project.config.repos;
-  mid.replaceChildren(el("h2", {}, t("services")),
+  fill(mid, el("h2", {}, t("services")),
     repos.length === 0 ? el("p", { class: "muted" }, t("noServices")) : repos.map((r) => el("section", { class: "card" },
       el("h3", {}, r.name, el("span", { class: "muted" }, ` @${r.baseBranch}`)),
       el("small", { class: "muted path" }, r.path),
@@ -43,123 +107,61 @@ function renderOverview() {
             el("td", {}, s.name), el("td", { class: "path" }, s.path || "."), el("td", {}, s.kind))))))));
 }
 
-function serviceRow(s = { name: "", path: "", kind: "" }) {
-  const row = el("tr", { class: "service" },
-    el("td", {}, el("input", { name: "sName", value: s.name, required: true })),
-    el("td", {}, el("input", { name: "sPath", value: s.path })),
-    el("td", {}, el("input", { name: "sKind", value: s.kind, class: "short" })),
-    el("td", {}, el("button", { type: "button", class: "link danger", onclick: () => row.remove() }, t("remove"))));
-  return row;
-}
-
-function repoCard(r = { path: "", baseBranch: "main", services: [] }) {
-  const body = el("tbody", {}, r.services.map((s) => serviceRow(s)));
-  const error = el("div");
-  const pathInput = el("input", { name: "rPath", value: r.path, placeholder: t("repoPath"), required: true });
-  const detect = async () => {
-    try {
-      const services = await api(`/api/services/detect?path=${encodeURIComponent(pathInput.value.trim())}`);
-      body.replaceChildren(...services.map((s) => serviceRow(s)));
-      showError(error, null);
-    } catch (err) {
-      showError(error, err);
-    }
-  };
-  const card = el("fieldset", { class: "repo" },
-    el("div", { class: "row" }, pathInput,
-      el("input", { name: "rBranch", value: r.baseBranch, placeholder: t("baseBranch"), required: true, class: "short" }),
-      el("button", { type: "button", class: "link danger", onclick: () => card.remove() }, t("remove"))),
-    el("table", {},
-      el("thead", {}, el("tr", {}, el("th", {}, t("services")), el("th", {}, t("servicePath")), el("th", {}, t("kind")), el("th"))),
-      body),
-    el("div", { class: "row" },
-      el("button", { type: "button", class: "link", onclick: detect }, t("detectServices")),
-      el("button", { type: "button", class: "link", onclick: () => body.append(serviceRow()) }, t("addService"))),
-    error);
-  return card;
-}
-
-function readRepo(card) {
-  const path = card.querySelector("[name=rPath]").value.trim();
-  return {
-    name: path.replace(/[\\/]+$/, "").split(/[\\/]/).pop(),
-    path,
-    baseBranch: card.querySelector("[name=rBranch]").value.trim(),
-    services: [...card.querySelectorAll("tr.service")].map((tr) => ({
-      name: tr.querySelector("[name=sName]").value.trim(),
-      path: tr.querySelector("[name=sPath]").value.trim(),
-      kind: tr.querySelector("[name=sKind]").value.trim()
-    }))
-  };
-}
-
-function renderConfig() {
-  const c = project.config;
-  const repos = el("div", {}, c.repos.map((r) => repoCard(r)));
-  const status = el("div");
-  const branchInputs = Object.entries(c.branchPatterns).map(([type, pattern]) =>
-    el("label", {}, el("span", {}, type), el("input", { name: `branch-${type}`, value: pattern, required: true })));
-  const form = el("form", { class: "form" },
-    el("label", {}, el("span", {}, t("color")), el("input", { name: "color", type: "color", value: c.color })),
-    el("label", {}, el("span", {}, t("ticketCode")),
-      el("select", { name: "ticketCode" },
-        el("option", { value: "manual", selected: c.ticketCode === "manual" }, t("ticketManual")),
-        el("option", { value: "auto", selected: c.ticketCode === "auto" }, t("ticketAuto")))),
-    el("label", {}, el("span", {}, t("ticketPattern")),
-      el("input", { name: "ticketPattern", value: c.ticketPattern ?? "", placeholder: "^NYX-\\d+$" })),
-    el("fieldset", {}, el("legend", {}, t("branchPatterns")), branchInputs),
-    el("label", {}, el("span", {}, t("environments")), el("input", { name: "environments", value: c.environments.join(", ") })),
-    el("fieldset", {}, el("legend", {}, t("repos")), repos,
-      el("button", { type: "button", class: "link", onclick: () => repos.append(repoCard()) }, t("addRepo"))),
-    status,
-    el("button", { type: "submit", class: "primary" }, t("save")));
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(form);
-    const config = {
-      ...c,
-      color: data.get("color"),
-      ticketCode: data.get("ticketCode"),
-      ticketPattern: data.get("ticketPattern").trim() || null,
-      branchPatterns: Object.fromEntries(Object.keys(c.branchPatterns).map((type) => [type, data.get(`branch-${type}`).trim()])),
-      environments: data.get("environments").split(",").map((s) => s.trim()).filter(Boolean),
-      repos: [...repos.querySelectorAll("fieldset.repo")].map(readRepo)
-    };
-    try {
-      project = await api(`/api/projects/${encodeURIComponent(name)}/config`, { method: "PUT", body: config });
+async function render() {
+  await refreshTasks();
+  const r = route();
+  document.querySelectorAll("nav .tab").forEach((b) => b.classList.toggle("active", b.dataset.view === r.view));
+  renderList();
+  if (r.view === "task") {
+    await renderTask(mid, right, name, r.id, state);
+    return;
+  }
+  renderProjectInfo();
+  if (r.view === "config") {
+    renderConfig(mid, project, (saved) => {
+      project = saved;
       setHeader();
-      renderRight();
-      status.replaceChildren(el("p", { class: "ok" }, t("saved")));
-    } catch (err) {
-      showError(status, err);
-    }
-  });
-  mid.replaceChildren(el("h2", {}, t("projectConfig")), form);
-}
-
-function render() {
-  document.querySelectorAll("nav .tab").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-  if (view === "config") {
-    renderConfig();
+      renderProjectInfo();
+    });
+  } else if (r.view === "new") {
+    renderNewTask(mid, project, (id, masked) => {
+      state.masked = masked;
+      location.hash = `task=${encodeURIComponent(id)}`;
+    });
   } else {
     renderOverview();
   }
 }
 
-document.querySelectorAll("nav .tab").forEach((b) => b.addEventListener("click", () => {
-  view = b.dataset.view;
-  render();
-}));
+async function refreshTasks() {
+  tasks = await api(`${api$}/tasks`);
+  await renderQueue();
+}
+
+/** Another tab, the CLI or (later) an agent changed a ticket: refresh, but never under an open editor. */
+function listen() {
+  const events = new EventSource(`/api/events?project=${encodeURIComponent(name)}`);
+  events.addEventListener("task", async (e) => {
+    await refreshTasks();
+    const r = route();
+    const change = JSON.parse(e.data);
+    if (r.view === "task" && r.id === change.taskId && !document.querySelector("textarea.editor, .reopen textarea")) {
+      await renderTask(mid, right, name, r.id, state);
+    }
+    renderList();
+  });
+}
+
+window.addEventListener("hashchange", render);
 
 try {
-  project = await api(`/api/projects/${encodeURIComponent(name)}`);
+  project = await api(api$);
   if (project.error) {
     throw new Error(project.error);
   }
   setHeader();
-  renderRight();
-  render();
+  await render();
+  listen();
 } catch (err) {
   document.title = `${name} · DevMap`;
   showError(mid, err.message.startsWith("Không có dự án") ? new Error(t("notFound")) : err);

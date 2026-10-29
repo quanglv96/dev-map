@@ -1,4 +1,22 @@
-// Small helpers shared by every page: JSON API calls, DOM building, project-colored favicon.
+// Small helpers shared by every page: JSON API calls, DOM building, Markdown, project-colored favicon.
+import { marked } from "../vendor/marked.esm.js";
+import DOMPurify from "../vendor/purify.es.js";
+
+/** Markdown → sanitized DOM; documents are written by agents, so never trust their HTML. */
+export function markdown(text) {
+  const box = el("div", { class: "md" });
+  box.innerHTML = DOMPurify.sanitize(marked.parse(text ?? ""));
+  return box;
+}
+
+/** Unified diff with +/- lines colored. */
+export function diffView(text) {
+  return el("pre", { class: "diff" }, text.split("\n").map((line) => el("span", {
+    class: line.startsWith("+") && !line.startsWith("+++") ? "add" : line.startsWith("-") && !line.startsWith("---") ? "del" : ""
+  }, line + "\n")));
+}
+
+export const WAITS_FOR_PMO = ["awaiting_approval", "awaiting_push"];
 
 export async function api(path, { method = "GET", body } = {}) {
   const res = await fetch(path, {
@@ -31,8 +49,13 @@ export function el(tag, attrs = {}, ...children) {
       node.setAttribute(k, v === true ? "" : v);
     }
   }
-  node.append(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+  node.append(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
   return node;
+}
+
+/** replaceChildren with el()'s rules: arrays are flattened, null/false are skipped (native would print "null"). */
+export function fill(target, ...children) {
+  target.replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
 }
 
 export function setFavicon(color) {

@@ -56,6 +56,29 @@ function addRepoRow() {
   repoRows.append(row);
 }
 
+/** FR-41: decisions waiting for the PMO and running tickets across all projects. */
+async function loadOverview() {
+  const pending = document.getElementById("pending");
+  const running = document.getElementById("running");
+  try {
+    const overview = await api("/api/overview");
+    const block = (key) => {
+      const rows = overview.flatMap((p) => p[key].map((x) => el("li", {},
+        el("span", { class: "dot", style: `background:${p.color}` }), " ",
+        el("a", { href: `/${p.project}#task=${encodeURIComponent(x.id)}` }, `${p.project} · ${x.id}`),
+        ` ${x.title} `, el("small", { class: `badge ${x.status}` }, t(`status.${x.status}`)))));
+      return rows.length ? el("ul", { class: "plain" }, rows) : el("p", { class: "muted" }, t("none"));
+    };
+    pending.replaceChildren(block("pending"));
+    running.replaceChildren(block("running"));
+  } catch (err) {
+    showError(pending, err);
+  }
+}
+
+new EventSource("/api/events").addEventListener("task", loadOverview);
+loadOverview();
+
 document.getElementById("add-repo").addEventListener("click", addRepoRow);
 addRepoRow();
 

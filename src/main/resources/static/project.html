@@ -13,16 +13,24 @@
     <span class="dot" id="project-dot"></span>
     <strong id="project-name"></strong>
     <nav>
-      <button type="button" class="tab active" data-view="overview" data-i18n="overview"></button>
-      <button type="button" class="tab" data-view="config" data-i18n="projectConfig"></button>
+      <a class="tab" href="#" data-view="overview" data-i18n="overview"></a>
+      <a class="tab" href="#config" data-view="config" data-i18n="projectConfig"></a>
     </nav>
     <span class="spacer"></span>
     <label><span class="sr-only" data-i18n="language"></span><select id="lang"></select></label>
   </header>
   <div class="cols">
     <aside class="col left">
-      <h3 data-i18n="tasks"></h3>
-      <p class="muted" data-i18n="noTasks"></p>
+      <div class="row">
+        <h3 class="grow" data-i18n="tasks"></h3>
+        <a class="primary small" href="#new" data-i18n="newTicket"></a>
+      </div>
+      <div class="row filters">
+        <select id="filter-status"></select>
+        <select id="filter-type"></select>
+      </div>
+      <ul id="task-list" class="task-list"></ul>
+      <div id="queue"></div>
     </aside>
     <main class="col mid" id="mid"></main>
     <aside class="col right" id="right"></aside>
