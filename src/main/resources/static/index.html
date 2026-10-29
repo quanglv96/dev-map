@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevMap</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script type="module" src="/assets/home.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <strong>DevMap</strong>
+    <span class="spacer"></span>
+    <label><span class="sr-only" data-i18n="language"></span><select id="lang"></select></label>
+  </header>
+  <main class="home">
+    <section class="card">
+      <h2 data-i18n="projects"></h2>
+      <div id="projects"></div>
+    </section>
+    <section class="card">
+      <h2 data-i18n="addProject"></h2>
+      <form id="add-form" class="form">
+        <label><span data-i18n="name"></span>
+          <input name="name" required pattern="[a-z0-9][a-z0-9\-]{0,39}" placeholder="nyxhub">
+        </label>
+        <label><span data-i18n="color"></span>
+          <input name="color" type="color" value="#2563eb">
+        </label>
+        <label><span data-i18n="dataRoot"></span>
+          <input name="dataRoot" required placeholder="D:/devmap-data">
+          <small class="muted" data-i18n="dataRootHint"></small>
+        </label>
+        <fieldset>
+          <legend data-i18n="repos"></legend>
+          <div id="repo-rows"></div>
+          <button type="button" id="add-repo" class="link" data-i18n="addRepo"></button>
+        </fieldset>
+        <label class="check"><input name="git" type="checkbox"> <span data-i18n="initGit"></span></label>
+        <div id="add-error"></div>
+        <button type="submit" class="primary" data-i18n="create"></button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

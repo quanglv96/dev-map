@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevMap</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script type="module" src="/assets/project.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand">DevMap</a>
+    <span class="dot" id="project-dot"></span>
+    <strong id="project-name"></strong>
+    <nav>
+      <button type="button" class="tab active" data-view="overview" data-i18n="overview"></button>
+      <button type="button" class="tab" data-view="config" data-i18n="projectConfig"></button>
+    </nav>
+    <span class="spacer"></span>
+    <label><span class="sr-only" data-i18n="language"></span><select id="lang"></select></label>
+  </header>
+  <div class="cols">
+    <aside class="col left">
+      <h3 data-i18n="tasks"></h3>
+      <p class="muted" data-i18n="noTasks"></p>
+    </aside>
+    <main class="col mid" id="mid"></main>
+    <aside class="col right" id="right"></aside>
+  </div>
+</body>
+</html>
