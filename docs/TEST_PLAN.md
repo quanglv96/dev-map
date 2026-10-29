@@ -7,16 +7,16 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | AC | Phase | Trạng thái | Kiểm thử |
 | --- | --- | --- | --- |
 | AC-01 Khởi tạo | 1, 3 | Đạt (phần tự động); pull do Dev ở P4 gọi cùng cơ chế | `ProjectServiceTest.createsDataFolderWithReposAndServices`, `GraphServiceTest.noScanUntilPmoAsks`, `GraphServiceTest.incrementalUpdateParsesOnlyTheGitDiff`, `WebTest`, `CliTest`, K-01, K-03 |
-| AC-02 FEAT trọn luồng | 2, 4, 5 | Một phần: agent SA phân tích → gửi chốt, Dev pull nhánh nền, sửa, gate, commit cùng mã, SA kiểm chứng (agent giả); chạy trọn với Claude Code thật ở P6 | `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush`, K-04, K-05 |
+| AC-02 FEAT trọn luồng | 2, 4, 5, 6 | Đạt (Claude Code thật, K-06): SA phân tích → PMO chốt → Dev pull nhánh nền, sửa, gate, commit `NYX-21: …` → SA kiểm chứng tự chạy → PMO push → Done | `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush`, K-04, K-06 |
 | AC-03 Mở lại ticket | 2, 5 | Đạt (phần tự động): mở lại cùng mã, ngữ cảnh dựng lại từ tài liệu, SA không đạt được khi analysis.md chưa có case mới (FR-11) | `TaskServiceTest.reopenKeepsCode`, `AgentServiceTest.doneDropsSessionContextAndReopenRebuildsFromDocs`, K-02 |
-| AC-04 MAINT | 2, 4, 5 | Một phần: chốt + thứ tự hàng đợi xong; PMO hỏi Dev theo thứ tự hàng đợi, chưa có nút "chạy hàng đợi" tự động (P6) | `TaskServiceTest.flowGatesAndQueue` |
+| AC-04 MAINT | 2, 4, 5, 6 | Đạt (phần tự động): PMO chốt và xếp thứ tự 2 ticket MAINT; "Chạy hàng đợi" cho Dev làm đúng thứ tự, ticket sau chỉ bắt đầu khi ticket trước qua SA kiểm chứng; gate (có unit test) đạt ở cả hai | `AgentServiceTest.queueRunsMaintTicketsInPmoOrder`, `TaskServiceTest.flowGatesAndQueue`, K-07 |
 | AC-05 Push | 4 | Đạt (phần tự động): chỉ PMO push, chỉ commit đã qua gate, không force-push, không push branch bảo vệ (nhánh nền luôn bảo vệ) | `TicketGitServiceTest` (3 test), `RuleServiceTest.protectedBranchesAlwaysIncludeBaseBranches`, `TaskServiceTest.flowGatesAndQueue`, K-04 |
 | AC-06 Bí mật | 2, 5 | Đạt (phần tự động): agent không có công cụ đọc file/shell; công cụ DevMap từ chối `.env`, đường dẫn ra ngoài, ghi file bí mật; nhật ký đầu vào không có giá trị nào của `.env` hay IP giả | `SecretMaskerTest`, `TaskServiceTest.createsTicketWithMaskedSpec`, `AgentServiceTest.toolsNeverServeSecretsOrWholeFiles`, `ClaudeCodeProviderTest.runsWithoutBuiltInToolsOrUserSettings`, K-05 |
 | AC-07 Token | 5 | Đạt (phần tự động): 3 câu = 3 phiên mới, không gửi lại chat, câu sau dùng summary.md, token mỗi câu và cộng dồn | `AgentServiceTest.threeQuestionsAreThreeFreshSessions`, K-05 |
-| AC-08 Hai dự án song song | 5, 6 | Một phần: token phiên gắn đúng một dự án/ticket, công cụ chỉ thấy repo của dự án đó, tối đa 2 agent cùng lúc; tiêu đề tab ở P6 | `AgentServiceTest.unknownSessionTokenIsRejected`, `WebTest.mcpNeedsALiveSession` |
+| AC-08 Hai dự án song song | 5, 6 | Một phần: hai dự án chạy agent cùng lúc (K-06 bước 9, Claude Code thật), mỗi dự án chỉ thấy ticket/repo của mình, nhật ký tách riêng; tiêu đề tab, biểu tượng, thông báo đã làm nhưng chưa kiểm trên trình duyệt (K-07) | `AgentServiceTest.unknownSessionTokenIsRejected`, `WebTest.mcpNeedsALiveSession`, `WebTest.projectLifecycleOverApi`, K-06, K-07 |
 | AC-09 Quét toàn bộ | 3, 5 | Đạt (phần tự động): bật cho một câu hỏi thì quét đúng một lần trước câu đó, câu sau không quét | `GraphServiceTest.noScanUntilPmoAsks`, `AgentServiceTest.toolsNeverServeSecretsOrWholeFiles`, K-03, K-05 |
-| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Đạt (phần tự động): nhật ký đầu vào chỉ có chữ ký và đoạn ≤ 80 dòng, không có nguyên file; system prompt giống hệt giữa các phiên (cache); Controller→Repository chặn ở gate; Dev không sang SA khi gate chưa đạt | `AgentServiceTest.*`, `RuleServiceTest.layerCheckFindsControllerCallingRepository`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` |
-| AC-11 Kiểm chứng phạm vi | 5 | Đạt (phần tự động, agent giả): file ngoài yêu cầu và chữ ký bị đổi có nơi gọi đều được `verify_facts` nêu; SA không đạt được khi chưa xét, trả về Dev; không có `awaiting_push` | `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature` |
+| AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5, 6 | Đạt (phần tự động): nhật ký đầu vào chỉ có chữ ký và đoạn ≤ 80 dòng, không có nguyên file; system prompt giống hệt giữa các phiên (cache); thay đổi thêm Controller→Repository bị chặn ở gate (vi phạm có sẵn ở nhánh nền chỉ liệt kê, D-44); Dev không sang SA khi gate chưa đạt | `AgentServiceTest.*`, `RuleServiceTest.layerCheckFindsControllerCallingRepository`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` |
+| AC-11 Kiểm chứng phạm vi | 5, 6 | Đạt (agent giả và Claude Code thật, K-06 bước 6): file ngoài yêu cầu và chữ ký bị đổi có nơi gọi đều nêu trong verify.md, trả về Dev, không có `awaiting_push`; SA không sửa được plan.md đã chốt | `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature`, K-06 |
 | AC-12 Tối ưu token | 2, 5 | Đạt (phần tự động): prompt không có câu xã giao, nguyên văn hay token; nhật ký đầu vào bị xoá khi Done; mở lại trả lời từ tài liệu | `TaskServiceTest.createsTicketWithMaskedSpec`, `RequestCleanerTest`, `AgentServiceTest.threeQuestionsAreThreeFreshSessions`, `AgentServiceTest.doneDropsSessionContextAndReopenRebuildsFromDocs`, K-02, K-05 |
 
 ## Test tự động Phase 1
@@ -173,3 +173,44 @@ nhật ký đầu vào không có "Chào em", "Cảm ơn", IP hay mật khẩu g
 8. Tick "Quét toàn bộ dự án cho câu này" → hộp xác nhận báo số file → bước "PMO bật quét toàn bộ…" chỉ có ở câu đó (AC-09).
 9. Xác nhận push → Done → `~/.devmap/sessions/shop/NYX-9/` không còn; "Đầu vào agent" báo đã đóng. "Báo bug" → hỏi SA → trả lời từ tài liệu (AC-12, AC-03).
 10. CLI: `java -jar target/devmap.jar prompt shop NYX-9 --role sa --question "..."` in system prompt, prompt, công cụ; không gọi LLM.
+
+## Test tự động Phase 6
+
+| Test | Kiểm |
+| --- | --- |
+| `AgentServiceTest.queueRunsMaintTicketsInPmoOrder` | AC-04, FR-07, NFR-10: PMO đổi thứ tự 2 ticket MAINT; "Chạy hàng đợi" chạy Dev ticket thứ nhất, ticket thứ hai chỉ bắt đầu khi ticket thứ nhất đã "Chờ PMO xác nhận"; gate đạt; hàng đợi tự tắt khi hết; hàng đợi trống thì báo lỗi; audit.jsonl có thao tác PMO, công cụ của DEV/SA kèm service và rule, không có nội dung file |
+| `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature` (thêm) | D-45: SA không ghi được plan.md đã chốt; Dev xoá file bằng `delete_file`, không xoá được `.env`; ghi chú "Commit PMO tự làm" |
+| `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` (sửa) | AC-10, D-44: controller mới gọi thẳng repository làm gate không đạt; vi phạm có sẵn ở nhánh nền chỉ liệt kê, gate đạt |
+| `TaskServiceTest.createsTicketWithMaskedSpec` (thêm) | NFR-10: tạo ticket ghi vào audit.jsonl, đã che |
+| `WebTest.projectLifecycleOverApi` (thêm) | NFR-10: quét chỉ mục của PMO và thao tác ticket có trong `/audit`, request lỗi và lệnh đọc không ghi, lọc theo ticket; `/agents`; "Chạy hàng đợi" khi trống → 400 |
+| `GraphPerfTest` (`-Dperf=true`) | NFR-11, đo lại ngày 29/10/2026 sau Phase 6: 232.000 dòng/2.000 file quét toàn bộ + dựng graph 17,1 s (giới hạn 180 s), tăng dần 0,42 s (giới hạn 20 s) |
+
+NFR-12 (tối đa 2 agent, phiên sau chờ lượt) không đổi từ Phase 5: pool cố định `devmap.agent.max-concurrent`, tin agent hiện "Đang chờ lượt" cho tới khi có chỗ.
+
+## Kịch bản Phase 6
+
+**K-06 (Claude Code thật, đã chạy ngày 29/10/2026; AC-02, AC-03, AC-05, AC-06, AC-07, AC-08, AC-11, AC-12, NFR-10)**
+
+Môi trường: bản sao `samples/shop` (`init-repos.sh <thư mục>`, mỗi repo có remote `origin` là bare repo), `devmap.home` riêng, Claude Code 2.1.312, máy không có `mvn` trong PATH nên rule dự án dùng `mvnw.cmd -q -DskipTests compile` và `mvnw.cmd -q test`. Tổng chi phí 3,39 USD (cộng từ chat.json).
+
+1. Quét toàn bộ một lần. Tạo `NYX-21` bằng câu có "Chào em… nhé… Cảm ơn!" và một token `ghp_…`: spec.json gọn, token thành `[MASKED_TOKEN]` (AC-12).
+2. Hỏi SA "phân tích và gửi chốt": analysis.md có 6 AC Given/When/Then, plan.md có 2 phương án, việc theo file, ghi chú đổi DB schema; → "Chờ PMO chốt". 96.727 token vào (79.660 đọc từ cache), 0,28 USD.
+3. PMO chốt. Hỏi Dev, kèm yêu cầu cố ý lệch phạm vi: Dev pull nhánh nền vào worktree, sửa, viết test, nhưng **từ chối** phần lệch vì trái plan đã chốt; commit bị chặn vì `pom.xml` thêm dependency cần PMO duyệt (FR-32). Gate lần đầu không đạt vì vi phạm có sẵn ở nhánh nền → sửa D-44.
+4. PMO duyệt `pom.xml`; Dev thấy `target/` chưa có `.gitignore` nên dừng hỏi PMO thay vì commit file build → thêm `.gitignore` vào mẫu (D-45).
+5. Dev commit `NYX-21: …`, gate đạt, chuyển SA; SA kiểm chứng tự chạy, nêu đúng 2 file ngoài plan nhưng tự sửa plan.md để chấp nhận → khoá plan.md sau khi chốt (D-45).
+6. AC-11: PMO trả về Dev và tự commit trong worktree: đổi chữ ký `PaymentClient.charge` (nơi gọi `OrderService.create`) và thêm `util/NoteFormatter.java`. Dev chạy gate, chuyển SA. SA kiểm chứng: verify.md nêu đích danh cả hai mục, nơi gọi, "Kết luận: KHÔNG ĐẠT", trả về Dev; không có `awaiting_push`.
+7. Dev làm theo phương án SA đề xuất (khôi phục chữ ký, xoá file bằng `delete_file`), SA kiểm chứng lại: ĐẠT → "Chờ PMO xác nhận".
+8. PMO xác nhận push: `origin` có nhánh `feature/NYX-21-…` với 4 commit đều mang `NYX-21:`; ticket Done; `sessions/shop/NYX-21/` bị xoá, "Đầu vào agent" báo đã đóng (FR-45). Mở lại "Báo bug" → hỏi SA: ngữ cảnh chỉ spec.json, summary.md, analysis.md, plan.md, graph; trả lời đúng quy tắc BR-4 đã chốt (AC-03, AC-12).
+9. AC-08: thêm dự án `lendbiz` (bản sao repo khác), hỏi SA ở `lendbiz/LB-1` và `shop/NYX-22` cùng lúc: `/agents` của mỗi dự án báo đúng ticket đang chạy; nhật ký mỗi dự án không có dòng nào của dự án kia.
+10. Nhật ký đầu vào còn lại không chứa giá trị nào của `.env`, IP `10.12.0.*` hay token `ghp_…` (AC-06). `logs/audit.jsonl` của `shop`: 228 dòng, có PMO/SA/DEV, ticket, repo, service, rule; không có bí mật (NFR-10).
+
+**K-07 (giao diện, kiểm bằng tay; AC-04, AC-08)** — chưa chạy trên trình duyệt trong Phase 6
+
+1. Mở `/shop` và `/lendbiz` ở hai tab. Bấm "Bật thông báo" → cho phép.
+2. Hỏi agent ở `shop`: tiêu đề tab `shop · agent đang chạy (NYX-…)…`, biểu tượng có chấm xanh. Chuyển sang tab khác: khi xong có thông báo "Agent đã chạy xong"; bấm vào → về đúng tab, mở đúng ticket.
+3. Agent gửi PMO chốt: tiêu đề `(1) shop · chờ PMO xác nhận`, chấm vàng, thông báo "Chờ PMO chốt giải pháp…". Trang chủ: `(1) DevMap`.
+4. Phiên agent lỗi (ví dụ đặt `devmap.agent.command` sai): tiêu đề `shop · lỗi (…)`, chấm đỏ, thông báo lỗi.
+5. Hai ticket MAINT Sẵn sàng: đổi thứ tự bằng ↑↓, bấm "Chạy hàng đợi" → nút thành "Dừng hàng đợi", "đang làm <mã>"; ticket thứ hai chỉ bắt đầu khi ticket thứ nhất sang "Chờ PMO xác nhận" (AC-04).
+6. Tab "Nhật ký": lọc theo ticket, thấy thao tác của PMO, SA, DEV.
+7. Đang có agent chạy, Ctrl+C ở cửa sổ `devmap serve` → in cảnh báo, server vẫn chạy; Ctrl+C lần nữa trong 10 giây → tắt. Không có agent → Ctrl+C tắt ngay.
+8. Đóng tab khi agent đang chạy → mở lại thấy agent vẫn chạy tiếp.

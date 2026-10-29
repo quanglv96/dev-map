@@ -15,7 +15,7 @@ Từ câu "luồng ticket, graph và rule phải chạy được bằng tay trư
 | 3 Graph | chỉ mục chữ ký (JavaParser, tree-sitter, OpenAPI, proto), cập nhật tăng dần theo git diff, edge tay, màn hình Graph | FR-17, FR-19→23 |
 | 4 Rule, convention, git | `.devrules.yml`, quality gate, kiểm tách lớp, pull nhánh nền, worktree, commit, xác nhận push | FR-24, 26, 27, 29→33, NFR-03, NFR-07 |
 | 5 Agent | AgentProvider/ClaudeCodeProvider, MCP server nội bộ, SA/Dev, chatbox stream, verify.md, token | FR-12→16, 18, 25, 28, 34, 37→40, 43, 45 |
-| 6 Hoàn thiện & nghiệm thu | thông báo, tiêu đề tab, nhật ký, giới hạn agent, chạy đủ AC-01→12 trên shop và dự án thật | NFR-10→12, toàn bộ AC |
+| 6 Hoàn thiện & nghiệm thu | thông báo, tiêu đề tab, nhật ký, giới hạn agent, chạy hàng đợi, chạy đủ AC-01→12 trên shop (dự án thật: PMO chạy) | NFR-10→12, toàn bộ AC |
 
 ## D-02 Môi trường build
 
@@ -220,7 +220,7 @@ không phải chạy một JVM cho mỗi lần hook, và Dev cũng không bao gi
 
 - JSON-RPC 2.0 qua HTTP POST `/mcp` ngay trong `devmap serve` (MCP "streamable HTTP", trả JSON, không stream từ server; GET trả 405). Các method: `initialize`, `ping`, `tools/list`, `tools/call`.
 - Mỗi phiên agent có một token ngẫu nhiên (header `X-DevMap-Session`) gắn với đúng dự án, ticket, vai. Token này không mở được API của PMO, run token cũng không mở được `/mcp`; vẫn chỉ nhận 127.0.0.1 (NFR-06, NFR-08).
-- Công cụ SA: `get_spec`, `get_ticket_docs`, `search_graph`, `get_signatures`, `get_snippet`, `verify_facts`, `git_diff`, `write_ticket_doc`, `set_status`. Dev thêm `write_file`, `edit_file`, `run_quality_gate`, `commit`, bỏ `verify_facts`.
+- Công cụ SA: `get_spec`, `get_ticket_docs`, `search_graph`, `get_signatures`, `get_snippet`, `verify_facts`, `git_diff`, `write_ticket_doc`, `set_status`. Dev thêm `write_file`, `edit_file`, `delete_file` (D-45), `run_quality_gate`, `commit`, bỏ `verify_facts`.
 - Không công cụ nào trả `task.md` hay `bugs/` (nguyên văn của PMO): agent chỉ thấy spec.json (FR-44, AC-12). `get_snippet` theo node chỉ nhận method/function; class thì chỉ có chữ ký.
 - Agent chỉ chạy khi có `devmap serve`. CLI có `devmap prompt <dự án> <ticket> [--role] [--question]` để xem trước đúng nội dung một phiên sẽ nhận, không gọi LLM (FR-42).
 
@@ -264,3 +264,32 @@ Cấu hình (`-D` hoặc biến môi trường Spring): `devmap.agent.command` (
 
 Luật "chuỗi ngẫu nhiên ≥ 32 ký tự" (D-14) che cả tên branch (`feature/NYX-9-them-hoan-tien-…`) và đường dẫn (`db/migration/V2__add_refund_column.sql`), phát hiện khi chạy thử thật.
 Riêng luật đó bỏ qua giá trị gồm ≥ 3 đoạn nối bằng `/ - _ +` mà mọi đoạn là từ thường, Từ Hoa đầu, chữ HOA ≤ 10 ký tự, số, hoặc ≤ 3 ký tự. Token ngẫu nhiên có đoạn trộn hoa-thường-số nên vẫn bị che; các luật khác (IP, key=value, tiền tố…) không đổi.
+
+## D-41 Nhật ký hành động (NFR-10)
+
+- Mỗi dự án một file `<folder dữ liệu>/logs/audit.jsonl`, mỗi dòng một JSON: `at`, `actor` (PMO/SA/DEV/DEVMAP), `ticket`, `repo`, `service`, `rule`, `action`. Nội dung đã qua bộ che bí mật. Xem ở tab "Nhật ký" (lọc theo ticket) hoặc `GET /api/projects/<dự án>/audit`.
+- Ba nguồn: (1) mọi dòng history.md của ticket (tạo, chuyển trạng thái, pull, commit, gate, push, duyệt file…) kèm repo và rule áp dụng; (2) mọi lời gọi công cụ MCP của agent, service suy ra từ đường dẫn file (`RuleService.serviceOf`), không ghi nội dung file/đoạn sửa; (3) mọi POST/PUT/DELETE thành công của PMO ngoài ticket (cấu hình, rule, convention, edge tay, quét chỉ mục, hàng đợi) qua `AuditFilter`. Request lỗi (≥ 400) và lệnh đọc không ghi.
+- Ghi bằng sự kiện Spring (`AuditLog.Event`) từ các service đã có publisher, nên không đổi constructor. Đọc lại cả file khi xem; file lớn thì tách theo tháng (đánh dấu `ponytail:` trong code).
+
+## D-42 Tiêu đề tab, biểu tượng, thông báo trình duyệt
+
+- Tiêu đề: `(<số ticket chờ PMO>) <dự án> · <trạng thái>`; trạng thái ưu tiên: agent đang chạy (kèm mã ticket) → chờ PMO xác nhận → lỗi (phiên agent gần nhất của ticket lỗi) → DevMap. Trang chủ: `(<tổng chờ PMO>) DevMap`.
+- Biểu tượng: chấm màu dự án, thêm chấm nhỏ xanh (chạy) / vàng (chờ PMO) / đỏ (lỗi). Dữ liệu từ `GET /api/projects/<dự án>/agents`, làm mới theo SSE `task`/`agent`.
+- Thông báo trình duyệt khi ticket sang Chờ PMO chốt / Chờ PMO xác nhận, khi phiên agent xong hoặc lỗi; chỉ khi tab đang ẩn; `tag` theo dự án/ticket nên nhiều tab cùng dự án không chồng thông báo. Bấm vào: focus đúng tab, mở đúng ticket. Quyền thông báo xin bằng nút "Bật thông báo" (trình duyệt yêu cầu thao tác người dùng).
+- Đóng tab không dừng agent (agent chạy trong `devmap serve`). Ctrl+C khi còn phiên chạy hoặc chờ lượt: in cảnh báo, Ctrl+C lần nữa trong 10 giây mới tắt.
+
+## D-43 Chạy hàng đợi (AC-04, FR-07)
+
+Nút "Chạy hàng đợi": Dev làm lần lượt các ticket Sẵn sàng theo thứ tự PMO xếp. Ticket sau chỉ bắt đầu khi ticket trước đã rời triển khai (SA kiểm chứng đạt → chờ push, hoặc Done). Ticket trước lỗi, bị SA trả về Dev, hoặc Dev dừng giữa chừng thì hàng đợi tự dừng để PMO xử lý. Trạng thái chạy chỉ ở bộ nhớ: khởi động lại `serve` thì bấm lại. Các ticket không nằm trong hàng đợi vẫn chạy song song như cũ (worktree riêng).
+
+## D-44 Gate của ticket chỉ chặn vi phạm tách lớp trong file ticket sửa
+
+Phát hiện khi chạy trọn luồng với Claude Code thật: vi phạm có sẵn ở nhánh nền (`OrderReportController`, cài cho AC-10) làm gate của mọi ticket ở order-service không bao giờ đạt. Dự án thật có nợ kỹ thuật cũ cũng sẽ bị như vậy.
+Gate của ticket giờ chỉ chặn vi phạm trong file ticket đã đổi so với nhánh nền (commit + chưa commit); vi phạm có sẵn vẫn liệt kê trong tests.md ("không chặn, nên làm ticket riêng"). `devmap rules check` vẫn kiểm cả repo. AC-10 ("một thay đổi gọi thẳng Controller → Repository bị chặn") giữ nguyên.
+
+## D-45 Sửa sau khi chạy thật (Phase 6)
+
+- SA không ghi được plan.md khi ticket đã qua cổng chốt (Sẵn sàng trở đi): lần chạy thật, SA kiểm chứng đã tự thêm file lệch vào plan.md để hợp thức hoá. Lệch plan thì ghi verify.md và trả về Dev; đổi plan thì PMO yêu cầu phân tích lại.
+- Thêm công cụ `delete_file` cho Dev (cùng kiểm tra đường dẫn và file bí mật): lần chạy thật Dev chỉ làm rỗng được file cần xoá.
+- Ghi chú trước phiên Dev tách "Commit PMO tự làm" (chắc chắn của PMO) và "File chưa commit (phiên Dev trước để lại hoặc PMO sửa tay)": trước đây file chưa commit của chính Dev bị ghi là của PMO.
+- `samples/shop/*/.gitignore` có `target/`: không có thì output build của gate thành "file chưa commit".
