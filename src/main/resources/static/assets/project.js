@@ -3,6 +3,7 @@
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
 import { WAITS_FOR_PMO, api, el, fill, setFavicon, showError } from "./lib.js";
 import { renderConfig } from "./views/config.js";
+import { onAgentEvent } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
 import { renderRules } from "./views/rules.js";
 import { renderNewTask, renderTask } from "./views/task.js";
@@ -157,12 +158,13 @@ function listen() {
     await refreshTasks();
     const r = route();
     const change = JSON.parse(e.data);
-    if (r.view === "task" && r.id === change.taskId && !document.querySelector("textarea.editor, .reopen textarea, .confirm-card, .card input:not(:placeholder-shown)")) {
+    if (r.view === "task" && r.id === change.taskId && !document.querySelector("textarea.editor, .reopen textarea, .confirm-card, .card input:not(:placeholder-shown), .chat-input:not(:placeholder-shown)")) {
       await renderTask(mid, right, name, r.id, state);
     }
     renderList();
   });
   events.addEventListener("graph", () => refreshGraph?.());
+  events.addEventListener("agent", (e) => onAgentEvent(JSON.parse(e.data)));
 }
 
 window.addEventListener("hashchange", render);

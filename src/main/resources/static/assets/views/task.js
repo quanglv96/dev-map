@@ -1,9 +1,11 @@
 // A ticket: create form, Documents tab (versions + diff), right column with status and PMO decisions.
 import { t } from "../i18n.js";
 import { api, diffView, el, fill, markdown, showError } from "../lib.js";
+import { renderChat } from "./chat.js";
 
 const EDITABLE = ["analysis.md", "plan.md", "summary.md"];
 const selectedDoc = new Map();
+const selectedTab = new Map();
 
 const base = (project, id) => `/api/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(id)}`;
 
@@ -228,7 +230,7 @@ function renderRepoPicker(project, detail, repoNames, error) {
     } }, t("saveRepos")));
 }
 
-function renderRight(right, project, detail, dev, repoNames, reviewBox) {
+function renderRight(right, project, detail, dev, repoNames, reviewBox, totals) {
   const task = detail.task;
   const from = task.status;
   const error = el("div");
@@ -286,7 +288,8 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox) {
         ?? (task.repos.length ? task.repos.join(", ") : "–")),
       el("dt", {}, t("version")), el("dd", {}, String(task.version)),
       el("dt", {}, t("reopened")), el("dd", {}, String(task.reopened)),
-      detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null),
+      detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null,
+      el("dt", {}, t("tokens")), el("dd", {}, totals)),
     gates.length || from === "done" ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
     el("div", { class: "actions" }, gates.map((a) => el("button", {
       type: "button", class: a.pmoGate ? "primary" : "secondary", onclick: () => move(a.to, a.pmoGate)
@@ -320,11 +323,25 @@ export async function renderTask(mid, right, project, id, state) {
     api(`/api/projects/${encodeURIComponent(project)}`)]);
   const notice = state.masked ? el("p", { class: "warn" }, t("masked", { n: state.masked })) : null;
   state.masked = 0;
-  const docs = el("div");
+  const body = el("div");
   const review = el("div");
   const code = el("div");
-  mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), review, code, el("h3", {}, t("docs")), docs);
+  const totals = el("span", { class: "small" }, "–");
+  const tab = selectedTab.get(id) ?? (notice ? "docs" : "chat");
+  const show = (name) => {
+    selectedTab.set(id, name);
+    tabs.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+    if (name === "chat") {
+      renderChat(body, project, detail, totals);
+    } else {
+      renderDocs(body, project, detail, null, notice);
+    }
+  };
+  const tabs = el("div", { class: "tabs" }, ["chat", "docs"].map((name) => el("button", {
+    type: "button", class: "tab", "data-tab": name, onclick: () => show(name)
+  }, t(name === "chat" ? "chat" : "docs"))));
+  mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), review, code, tabs, body);
   renderCode(code, project, detail, dev);
-  renderDocs(docs, project, detail, null, notice);
-  renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review);
+  renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review, totals);
+  show(tab);
 }
