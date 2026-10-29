@@ -97,7 +97,8 @@ class TicketGitServiceTest {
     // FR-32: a dependency file needs the PMO; FR-34: a secret file is never committed
     Files.writeString(order.resolve("src/main/java/com/shop/order/service/RefundService.java"),
         "package com.shop.order.service;\n\npublic class RefundService {\n}\n");
-    Files.writeString(order.resolve("pom.xml"), Files.readString(order.resolve("pom.xml")).replace("</project>", "<!-- dep -->\n</project>"));
+    Path pom = order.resolve("pom.xml");
+    Files.writeString(pom, Files.readString(pom).replace("</project>", "<!-- dep -->\n</project>"));
     TicketGitService.ScopeCheck sc = dev.checkScope("shop", id, "order-service");
     assertThat(sc.needApproval()).containsExactly("pom.xml");
     assertThatThrownBy(() -> dev.commit("shop", id, "order-service", "add refund", Actor.DEV)).isInstanceOf(PmoOnlyException.class);

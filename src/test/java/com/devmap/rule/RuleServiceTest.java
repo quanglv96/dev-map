@@ -10,6 +10,7 @@ import com.devmap.config.ProjectService.RepoInput;
 import com.devmap.config.ServiceDetector;
 import com.devmap.config.WorkspaceRepository;
 import com.devmap.git.GitService;
+import com.devmap.secret.SecretMasker;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -23,13 +24,14 @@ class RuleServiceTest {
   Path tmp;
 
   RuleService rules;
+  ProjectService projects;
   Path repos;
   Path data;
 
   @BeforeEach
   void setUp() throws Exception {
     repos = SampleRepos.create(tmp.resolve("repos"));
-    ProjectService projects = new ProjectService(new WorkspaceRepository(tmp.resolve("home")), new ProjectRepository(),
+    projects = new ProjectService(new WorkspaceRepository(tmp.resolve("home")), new ProjectRepository(),
         new ServiceDetector(), new GitService());
     projects.create("shop", tmp.resolve("data"), "#ff8800", List.of(
         new RepoInput(repos.resolve("order-service").toString(), "test"),
@@ -94,6 +96,26 @@ class RuleServiceTest {
     assertThat(r.schema()).containsExactly("src/main/resources/db/migration/V2__refund.sql");
     assertThat(r.dependency()).containsExactly("pom.xml");
     assertThat(rules.scope("shop", "order-service", List.of("README.md")).clean()).isTrue();
+  }
+
+  /** FR-33: draft collected from the base branches (no .env read, secrets masked), PMO text kept, approval explicit. */
+  @Test
+  void conventionsCollectedFromCodeThenApproved() throws Exception {
+    ConventionService conv = new ConventionService(projects, new RuleRepository(), new GitService(), new SecretMasker());
+    conv.write("shop", "# Coding convention – shop\n\n## Chuẩn của PMO\n\nTên biến tiếng Anh. DB 10.1.2.3\n");
+    ConventionService.View v = conv.collect("shop");
+    assertThat(v.approved()).isFalse();
+    assertThat(v.content()).contains("bản nháp", "Chuẩn của PMO", "### order-service", "**Java**", "2 dấu cách",
+        "repository, service, web", "inject qua constructor", "[MASKED_IP]").doesNotContain("10.1.2.3");
+    String secretInEnv = Files.readString(repos.resolve("order-service/.env")).lines()
+        .filter(l -> l.contains("=")).findFirst().orElseThrow().split("=", 2)[1].strip();
+    assertThat(v.content()).doesNotContain(secretInEnv);
+
+    assertThat(conv.approve("shop").approved()).isTrue();
+    v = conv.collect("shop");
+    assertThat(v.approved()).isFalse();
+    assertThat(v.content()).containsOnlyOnce("<!-- devmap:collected -->").contains("Chuẩn của PMO");
+    assertThat(Files.readString(data.resolve("conventions.md"))).isEqualTo(v.content());
   }
 
   @Test

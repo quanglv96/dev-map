@@ -72,7 +72,8 @@ public class QualityGate {
       if (!p.waitFor(timeoutMinutes, TimeUnit.MINUTES)) {
         p.descendants().forEach(ProcessHandle::destroyForcibly);
         p.destroyForcibly();
-        return new Step(name, command, false, -1, System.currentTimeMillis() - t0, "Quá " + timeoutMinutes + " phút, đã dừng\n" + tail(log));
+        return new Step(name, command, false, -1, System.currentTimeMillis() - t0,
+            "Quá " + timeoutMinutes + " phút, đã dừng\n" + tail(log));
       }
       return new Step(name, command, p.exitValue() == 0, p.exitValue(), System.currentTimeMillis() - t0, tail(log));
     } catch (IOException e) {
