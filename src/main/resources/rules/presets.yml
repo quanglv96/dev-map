@@ -1,0 +1,52 @@
+# Built-in rules (FR-29 → FR-32). Effective rules of a service = defaults ← preset ← rules/_default.devrules.yml ← rules/<service>.devrules.yml.
+# The preset comes from the rule files ("preset: maven") or, when unset, from the service kind found by the detector.
+defaults:
+  git:
+    commit_template: "{code}: {message}"
+    # Base branches of every repo are always protected on top of this list (cannot be removed).
+    protected_branches: [main, master, develop, test, "release/*"]
+  quality:
+    layering: true
+    static_analysis: true
+    static_commands: []
+    unit_test: true
+    unit_test_command: ""
+    integration_test: false
+    integration_test_command: ""
+    timeout_minutes: 15
+  scope:
+    forbidden_paths: []
+    schema_paths: ["**/db/migration/**", "**/migrations/**", "**/liquibase/**", "**/flyway/**", "**/*.sql", "**/schema.prisma"]
+    dependency_files: [pom.xml, build.gradle, build.gradle.kts, settings.gradle, package.json, package-lock.json, yarn.lock,
+      pnpm-lock.yaml, go.mod, go.sum, requirements.txt, pyproject.toml, poetry.lock]
+
+presets:
+  maven:
+    quality:
+      static_commands: ["mvn -q -DskipTests checkstyle:check"]
+      unit_test_command: "mvn -q test"
+      integration_test_command: "mvn -q verify"
+  gradle:
+    quality:
+      static_commands: ["gradle -q checkstyleMain"]
+      unit_test_command: "gradle -q test"
+      integration_test_command: "gradle -q check"
+  node:
+    quality:
+      static_commands: ["npx eslint ."]
+      unit_test_command: "npm test"
+      integration_test_command: ""
+  python:
+    quality:
+      static_commands: ["ruff check ."]
+      unit_test_command: "pytest -q"
+      integration_test_command: ""
+  go:
+    quality:
+      static_commands: ["go vet ./..."]
+      unit_test_command: "go test ./..."
+      integration_test_command: ""
+  none:
+    quality:
+      static_analysis: false
+      unit_test: false

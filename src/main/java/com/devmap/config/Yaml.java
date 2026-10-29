@@ -1,11 +1,13 @@
 package com.devmap.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,6 +43,32 @@ public final class Yaml {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
+  }
+
+  public static JsonNode readTree(Path file) {
+    try {
+      JsonNode n = Files.exists(file) ? MAPPER.readTree(file.toFile()) : null;
+      return n == null || n.isMissingNode() || n.isNull() ? MAPPER.createObjectNode() : n;
+    } catch (IOException e) {
+      throw new UncheckedIOException("Không đọc được " + file + ": " + e.getMessage(), e);
+    }
+  }
+
+  public static JsonNode readTree(InputStream in) {
+    try {
+      return MAPPER.readTree(in);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /** Object ↔ tree with the same snake_case naming as the files. */
+  public static <T> T convert(Object value, Class<T> type) {
+    return MAPPER.convertValue(value, type);
+  }
+
+  public static JsonNode toTree(Object value) {
+    return MAPPER.valueToTree(value);
   }
 
   public static <T> T parse(String text, Class<T> type) {
