@@ -1,5 +1,6 @@
 package com.devmap.config;
 
+import com.devmap.secret.SecretsConfig;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -13,7 +14,8 @@ public record ProjectConfig(
     Map<String, String> branchPatterns,
     List<RepoConfig> repos,
     List<String> environments,
-    boolean scanFullProject) {
+    boolean scanFullProject,
+    SecretsConfig secrets) {
 
   /** manual: PMO may type a code, blank means auto-generate; auto: always generate. */
   public static final List<String> TICKET_CODE_MODES = List.of("manual", "auto");
@@ -28,13 +30,14 @@ public record ProjectConfig(
     branchPatterns = branchPatterns == null ? DEFAULT_BRANCH_PATTERNS : new TreeMap<>(branchPatterns);
     repos = repos == null ? List.of() : List.copyOf(repos);
     environments = environments == null ? List.of() : List.copyOf(environments);
+    secrets = secrets == null ? SecretsConfig.EMPTY : secrets;
   }
 
   public static ProjectConfig create(String project, String color, List<RepoConfig> repos) {
-    return new ProjectConfig(project, color, null, null, null, repos, null, false);
+    return new ProjectConfig(project, color, null, null, null, repos, null, false, null);
   }
 
   public ProjectConfig withProject(String name) {
-    return new ProjectConfig(name, color, ticketCode, ticketPattern, branchPatterns, repos, environments, scanFullProject);
+    return new ProjectConfig(name, color, ticketCode, ticketPattern, branchPatterns, repos, environments, scanFullProject, secrets);
   }
 }

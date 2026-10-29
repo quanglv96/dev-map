@@ -10,6 +10,7 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
 /** FR-01 → FR-04: register projects, their data folders, repos, base branches and services. */
@@ -127,6 +128,13 @@ public class ProjectService {
         out.add("Mẫu mã ticket không phải regex hợp lệ: " + e.getDescription());
       }
     }
+    Stream.concat(config.secrets().patterns().stream(), config.secrets().allow().stream()).forEach(p -> {
+      try {
+        Pattern.compile(p);
+      } catch (PatternSyntaxException e) {
+        out.add("Mẫu trong secrets không phải regex hợp lệ: " + p);
+      }
+    });
     for (String type : ProjectConfig.DEFAULT_BRANCH_PATTERNS.keySet()) {
       String p = config.branchPatterns().get(type);
       if (p == null || !p.contains("{code}")) {

@@ -11,8 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
-/** snake_case YAML files, written atomically so a crash never leaves a half-written config. */
-final class Yaml {
+/** snake_case YAML (config.yml, workspaces.yml, task.md front matter), written atomically so a crash never leaves a half-written config. */
+public final class Yaml {
 
   private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory()
       .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
@@ -23,7 +23,7 @@ final class Yaml {
   private Yaml() {
   }
 
-  static <T> T read(Path file, Class<T> type) {
+  public static <T> T read(Path file, Class<T> type) {
     try {
       return MAPPER.readValue(file.toFile(), type);
     } catch (IOException e) {
@@ -31,15 +31,27 @@ final class Yaml {
     }
   }
 
-  static void write(Path file, Object value) {
+  public static void write(Path file, Object value) {
+    writeText(file, toText(value));
+  }
+
+  public static String toText(Object value) {
     try {
-      writeText(file, MAPPER.writeValueAsString(value));
+      return MAPPER.writeValueAsString(value);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
   }
 
-  static void writeText(Path file, String text) {
+  public static <T> T parse(String text, Class<T> type) {
+    try {
+      return MAPPER.readValue(text, type);
+    } catch (IOException e) {
+      throw new UncheckedIOException("YAML không hợp lệ: " + e.getMessage(), e);
+    }
+  }
+
+  public static void writeText(Path file, String text) {
     try {
       Files.createDirectories(file.getParent());
       Path tmp = file.resolveSibling(file.getFileName() + ".tmp");

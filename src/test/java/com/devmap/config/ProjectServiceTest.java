@@ -101,7 +101,7 @@ class ProjectServiceTest {
 
     ProjectConfig c = p.config();
     ProjectConfig onlyOrder = new ProjectConfig("ignored", "#123456", "auto", "^SHOP-\\d+$", c.branchPatterns(),
-        c.repos().subList(0, 1), List.of("staging"), false);
+        c.repos().subList(0, 1), List.of("staging"), false, null);
     Project updated = service.update("shop", onlyOrder);
 
     assertThat(updated.config().project()).isEqualTo("shop");
@@ -109,10 +109,10 @@ class ProjectServiceTest {
     assertThat(Files.readString(md)).contains("Hệ thống bán hàng.", "order-service").doesNotContain("payment-service");
 
     ProjectConfig broken = new ProjectConfig("shop", "red", "sometimes", "([", java.util.Map.of("FEAT", "feature/x"),
-        c.repos(), List.of(), false);
+        c.repos(), List.of(), false, new com.devmap.secret.SecretsConfig(List.of("["), List.of()));
     assertThatThrownBy(() -> service.update("shop", broken))
         .hasMessageContaining("#rrggbb").hasMessageContaining("ticket_code")
-        .hasMessageContaining("regex").hasMessageContaining("MAINT");
+        .hasMessageContaining("regex").hasMessageContaining("MAINT").hasMessageContaining("secrets");
   }
 
   @Test
