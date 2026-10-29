@@ -2,7 +2,9 @@ package com.devmap.cli;
 
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -12,7 +14,7 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "devmap", mixinStandardHelpOptions = true, version = "devmap 0.1.0",
     description = "DevMap: PMO requirement -> SA/Dev agents -> traced code changes.",
-    subcommands = {InitCommand.class, WorkspaceCommand.class, ServeCommand.class, DoctorCommand.class})
+    subcommands = {InitCommand.class, WorkspaceCommand.class, TaskCommand.class, ServeCommand.class, DoctorCommand.class})
 public class DevMapCommand implements Runnable {
 
   @Spec
@@ -25,9 +27,11 @@ public class DevMapCommand implements Runnable {
 
 
   public static void run(String[] args) {
-    // Same encoding as picocli's stderr (UTF-8 since Java 18); the console code page would garble Vietnamese.
+    // UTF-8 regardless of the platform default (Cp1252 on Windows with Java 17), or Vietnamese text is garbled.
     System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8));
     CommandLine cli = new CommandLine(new DevMapCommand());
+    cli.setOut(new PrintWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8), true));
+    cli.setErr(new PrintWriter(new OutputStreamWriter(new FileOutputStream(FileDescriptor.err), StandardCharsets.UTF_8), true));
     cli.setExecutionExceptionHandler((e, cmd, parsed) -> {
       cmd.getErr().println("Lỗi: " + e.getMessage());
       return 1;

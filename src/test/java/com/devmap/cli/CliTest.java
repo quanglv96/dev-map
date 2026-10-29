@@ -50,6 +50,11 @@ class CliTest {
     assertThat(run(0, "workspace", "list")).contains("shop", "2 repo");
     assertThat(run(1, "workspace", "add", "shop", "--data", data)).isEmpty();
 
+    assertThat(run(0, "task", "new", "shop", "--type", "BUG", "--request", "Đơn hàng lỗi ở order-service, ip 10.1.2.3"))
+        .contains("Đã tạo BUG-001", "bugfix/BUG-001-don-hang-loi-o-order-service-ip", "đã che 1");
+    assertThat(run(0, "task", "list", "shop")).contains("BUG-001\tBUG\tnew");
+    assertThat(run(0, "task", "show", "shop", "BUG-001")).contains("repo: [order-service]", "spec.json", "sa_analysis");
+
     String doctor = run(0, "doctor");
     assertThat(doctor).contains("[OK]   Java", "[OK]   Dự án shop");
 
