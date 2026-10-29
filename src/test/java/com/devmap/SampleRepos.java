@@ -34,6 +34,25 @@ public final class SampleRepos {
     return target;
   }
 
+  /** Commits file changes on a branch (null content = delete), leaving main checked out. */
+  public static void commit(Path repo, String branch, java.util.Map<String, String> files) throws Exception {
+    try (Git git = Git.open(repo.toFile())) {
+      git.checkout().setName(branch).call();
+      for (var e : files.entrySet()) {
+        Path f = repo.resolve(e.getKey());
+        if (e.getValue() == null) {
+          git.rm().addFilepattern(e.getKey()).call();
+        } else {
+          Files.createDirectories(f.getParent());
+          Files.writeString(f, e.getValue());
+          git.add().addFilepattern(e.getKey()).call();
+        }
+      }
+      git.commit().setAuthor(AUTHOR).setCommitter(AUTHOR).setMessage("change on " + branch).call();
+      git.checkout().setName("main").call();
+    }
+  }
+
   private static void copy(Path from, Path to) throws IOException {
     try (Stream<Path> files = Files.walk(from)) {
       for (Path f : files.toList()) {

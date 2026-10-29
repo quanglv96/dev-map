@@ -21,6 +21,7 @@
     <picocli.version>4.7.7</picocli.version>
     <jgit.version>7.4.0.202509020913-r</jgit.version>
     <node.version>v22.12.0</node.version>
+    <tree-sitter.version>0.25.3</tree-sitter.version>
   </properties>
 
   <dependencies>
@@ -43,6 +44,48 @@
       <version>${jgit.version}</version>
     </dependency>
 
+    <dependency>
+      <groupId>com.github.javaparser</groupId>
+      <artifactId>javaparser-core</artifactId>
+      <version>3.26.4</version>
+    </dependency>
+    <dependency>
+      <groupId>io.swagger.parser.v3</groupId>
+      <artifactId>swagger-parser</artifactId>
+      <version>2.1.22</version>
+      <exclusions>
+        <!-- spring-jcl already provides the commons-logging API -->
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>io.github.bonede</groupId>
+      <artifactId>tree-sitter</artifactId>
+      <version>${tree-sitter.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.bonede</groupId>
+      <artifactId>tree-sitter-typescript</artifactId>
+      <version>0.23.2</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.bonede</groupId>
+      <artifactId>tree-sitter-javascript</artifactId>
+      <version>0.23.1</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.bonede</groupId>
+      <artifactId>tree-sitter-python</artifactId>
+      <version>0.23.4</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.bonede</groupId>
+      <artifactId>tree-sitter-go</artifactId>
+      <version>0.23.3</version>
+    </dependency>
     <dependency>
       <groupId>io.github.java-diff-utils</groupId>
       <artifactId>java-diff-utils</artifactId>
