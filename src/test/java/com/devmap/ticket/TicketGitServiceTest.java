@@ -110,15 +110,22 @@ class TicketGitServiceTest {
     dev.commit("shop", id, "order-service", "add refund", Actor.DEV);
     assertThat(git.run(order, "log", "-1", "--format=%s").output()).isEqualTo("NYX-7: add refund");
 
-    // AIR-13 / AC-10: SA only after a passing gate; the Controller → Repository shortcut fails it
+    // AIR-13 / AC-10: SA only after a passing gate; a change that adds a Controller → Repository shortcut fails it
     assertThatThrownBy(() -> tasks.transition("shop", id, "sa_verify", Actor.DEV)).hasMessageContaining("quality gate");
+    Path refund = order.resolve("src/main/java/com/shop/order/web/RefundController.java");
+    Files.writeString(refund, "package com.shop.order.web;\n\nimport com.shop.order.repository.OrderRepository;\n\n"
+        + "@org.springframework.web.bind.annotation.RestController\npublic class RefundController {\n"
+        + "  private final OrderRepository orders = null;\n}\n");
+    dev.commit("shop", id, "order-service", "refund endpoint", Actor.DEV);
     List<QualityGate.Result> results = dev.gate("shop", id, Actor.DEV);
     assertThat(results).filteredOn(r -> r.service().equals("order-service")).singleElement()
         .satisfies(r -> assertThat(r.passed()).isFalse());
-    assertThat(tasks.readDoc("shop", id, "tests.md").content()).contains("OrderReportController", "KHÔNG ĐẠT");
-    Files.delete(order.resolve("src/main/java/com/shop/order/web/OrderReportController.java"));
-    dev.commit("shop", id, "order-service", "route report through service", Actor.DEV);
+    assertThat(tasks.readDoc("shop", id, "tests.md").content()).contains("RefundController → OrderRepository", "KHÔNG ĐẠT");
+    Files.delete(refund);
+    dev.commit("shop", id, "order-service", "route refund through service", Actor.DEV);
+    // the violation already on the base branch (OrderReportController) is listed but does not block this ticket
     assertThat(dev.gate("shop", id, Actor.DEV)).allMatch(QualityGate.Result::passed);
+    assertThat(tasks.readDoc("shop", id, "tests.md").content()).contains("Vi phạm có sẵn", "OrderReportController", "ĐẠT");
     tasks.transition("shop", id, "sa_verify", Actor.DEV);
     tasks.transition("shop", id, "awaiting_push", Actor.SA);
 

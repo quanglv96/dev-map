@@ -213,7 +213,9 @@ public class TicketGitService {
     StringBuilder md = new StringBuilder("# Test và quality gate – " + id + "\n\n_Chạy lúc " + now() + "_\n");
     for (RepoWork w : dev.repos()) {
       Path wt = Path.of(w.worktree());
-      List<QualityGate.Result> results = rules.runGate(project, w.repo(), wt);
+      Set<String> touched = new LinkedHashSet<>(git.changedFiles(wt, w.baseCommit(), "HEAD"));
+      touched.addAll(git.uncommitted(wt));
+      List<QualityGate.Result> results = rules.runGate(project, w.repo(), wt, List.copyOf(touched));
       List<String> dirty = git.uncommitted(wt);
       boolean passed = results.stream().allMatch(QualityGate.Result::passed) && dirty.isEmpty();
       dev = dev.with(w.withGate(passed ? git.head(wt) : null));
@@ -226,7 +228,7 @@ public class TicketGitService {
         md.append("### ").append(r.service()).append("\n\n| Bước | Lệnh | Kết quả | Thời gian |\n| --- | --- | --- | --- |\n");
         r.steps().forEach(st -> md.append("| ").append(st.name()).append(" | `").append(st.command()).append("` | ")
             .append(st.passed() ? "đạt" : "không đạt (" + st.exitCode() + ")").append(" | ").append(st.millis()).append(" ms |\n"));
-        r.steps().stream().filter(st -> !st.passed() && !st.output().isBlank())
+        r.steps().stream().filter(st -> (!st.passed() || st.name().equals("layering")) && !st.output().isBlank())
             .forEach(st -> md.append("\n<details><summary>").append(st.name()).append("</summary>\n\n```\n").append(st.output())
                 .append("\n```\n\n</details>\n"));
         md.append('\n');

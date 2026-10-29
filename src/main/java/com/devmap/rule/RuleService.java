@@ -147,8 +147,15 @@ public class RuleService {
 
   /** Runs the quality gate of every service of a repo, in its folder under root (a ticket worktree or the repo itself). */
   public List<QualityGate.Result> runGate(String project, String repoName, Path root) {
+    return runGate(project, repoName, root, null);
+  }
+
+  /** changed: repo-relative files of a ticket (layering only blocks on those, see QualityGate); null = whole repo. */
+  public List<QualityGate.Result> runGate(String project, String repoName, Path root, List<String> changed) {
     return units(project).stream().filter(u -> u.repo().equals(repoName))
-        .map(u -> gate.run(u.service(), u.path().isEmpty() ? root : root.resolve(u.path()), effective(project, u.service()).quality()))
+        .map(u -> gate.run(u.service(), u.path().isEmpty() ? root : root.resolve(u.path()), effective(project, u.service()).quality(),
+            changed == null ? null : changed.stream().filter(f -> u.path().isEmpty() || f.startsWith(u.path() + "/"))
+                .map(f -> u.path().isEmpty() ? f : f.substring(u.path().length() + 1)).toList()))
         .toList();
   }
 

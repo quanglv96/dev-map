@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -30,16 +31,32 @@ public class QualityGate {
   }
 
   private static final int TAIL_LINES = 60;
+
+  private static String lines(List<LayerChecker.Violation> v) {
+    return String.join("\n", v.stream().map(LayerChecker.Violation::toString).toList());
+  }
   private static final boolean WINDOWS = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
 
   public Result run(String service, Path dir, Rules.Quality q) {
+    return run(service, dir, q, null);
+  }
+
+  /**
+   * changed: files (relative to dir) a ticket touched; layering then fails only on those, so a violation already on the base
+   * branch does not block every ticket of the repo (it is still listed). null = the whole tree (`devmap rules check`).
+   */
+  public Result run(String service, Path dir, Rules.Quality q, Collection<String> changed) {
     List<Step> steps = new ArrayList<>();
     if (q.layering()) {
       long t0 = System.currentTimeMillis();
-      List<LayerChecker.Violation> v = LayerChecker.check(dir);
+      List<LayerChecker.Violation> all = LayerChecker.check(dir);
+      List<LayerChecker.Violation> v = changed == null ? all : all.stream().filter(x -> changed.contains(x.file())).toList();
+      List<LayerChecker.Violation> old = all.stream().filter(x -> !v.contains(x)).toList();
+      String out = (v.isEmpty() ? "" : "Controller gọi thẳng Repository:\n" + lines(v))
+          + (old.isEmpty() ? "" : (v.isEmpty() ? "" : "\n\n")
+              + "Vi phạm có sẵn ở file ticket không sửa (không chặn, nên làm ticket riêng):\n" + lines(old));
       steps.add(new Step("layering", "Controller → Service → Repository", v.isEmpty(), v.isEmpty() ? 0 : 1,
-          System.currentTimeMillis() - t0, v.isEmpty() ? "" : "Controller gọi thẳng Repository:\n"
-              + String.join("\n", v.stream().map(LayerChecker.Violation::toString).toList())));
+          System.currentTimeMillis() - t0, out));
     }
     if (q.staticAnalysis()) {
       if (q.staticCommands().isEmpty()) {
