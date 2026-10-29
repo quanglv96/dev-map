@@ -8,16 +8,16 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | --- | --- | --- | --- |
 | AC-01 Khởi tạo | 1 (graph theo git diff: 3) | Một phần: phần khởi tạo xong | `ProjectServiceTest.createsDataFolderWithReposAndServices`, `WebTest.projectLifecycleOverApi`, `CliTest`, kịch bản K-01 |
 | AC-02 FEAT trọn luồng | 2, 4, 5 | Chưa | |
-| AC-03 Mở lại ticket | 2, 5 | Chưa | |
-| AC-04 MAINT | 2, 4, 5 | Chưa | |
-| AC-05 Push | 4 | Chưa | |
-| AC-06 Bí mật | 2, 5 | Chưa (đã có dữ liệu giả trong `samples/shop`) | |
+| AC-03 Mở lại ticket | 2, 5 | Một phần: mở lại bằng tay xong; SA cập nhật analysis (FR-11) ở P5 | `TaskServiceTest.reopenKeepsCode`, K-02 |
+| AC-04 MAINT | 2, 4, 5 | Một phần: chốt + thứ tự hàng đợi xong; chạy theo thứ tự ở P5 | `TaskServiceTest.flowGatesAndQueue` |
+| AC-05 Push | 4 | Một phần: cổng "Xác nhận push" chỉ PMO, kiểm ở server; push thật ở P4 | `TaskServiceTest.flowGatesAndQueue` |
+| AC-06 Bí mật | 2, 5 | Một phần: tài liệu không chứa bí mật; chặn agent đọc `.env` ở P5 | `SecretMaskerTest`, `TaskServiceTest.createsTicketWithMaskedSpec` |
 | AC-07 Token | 5 | Chưa | |
 | AC-08 Hai dự án song song | 5, 6 | Chưa | |
 | AC-09 Quét toàn bộ | 3, 5 | Chưa | |
 | AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5 | Chưa (đã có vi phạm mẫu `OrderReportController`) | |
 | AC-11 Kiểm chứng phạm vi | 5 | Chưa | |
-| AC-12 Tối ưu token | 2, 5 | Chưa | |
+| AC-12 Tối ưu token | 2, 5 | Một phần: spec.json gọn, đã che, không gọi LLM; nhật ký LLM và xoá ngữ cảnh ở P5 | `TaskServiceTest.createsTicketWithMaskedSpec`, `RequestCleanerTest`, K-02 |
 
 ## Test tự động Phase 1
 
@@ -47,3 +47,31 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 6. Trên trang chủ thêm dự án thứ hai qua form → mở được ở URL riêng.
 7. Kiểm `<folder>/shop/graph/` vẫn trống: không có lần quét nào tự chạy.
 8. Mở `http://localhost:7070/` trong cửa sổ ẩn danh (không cookie) → 401.
+
+## Test tự động Phase 2
+
+| Test | Kiểm |
+| --- | --- |
+| `SecretMaskerTest.masksEverySecretInSampleRepos` | NFR-02 (phía tài liệu): không giá trị giả nào trong `samples/shop` (kể cả `.env`) còn sót sau khi che |
+| `SecretMaskerTest.masksCommonFormats` / `leavesCodeAndAllowedValuesAlone` / `projectRulesAddPatternsAndAllowValues` | FR-35/36: các dạng bí mật; không che code, `${placeholder}`, 127.0.0.1, SHA commit; mẫu và allowlist theo dự án |
+| `RequestCleanerTest` | FR-44: bỏ câu xã giao, tách ràng buộc, tìm module đích, slug tiếng Việt |
+| `TaskServiceTest.createsTicketWithMaskedSpec` | AC-12 (phần cục bộ), FR-05/06/36/44: mã PMO nhập, branch chung, spec.json gọn và đã che, không file nào chứa token/IP |
+| `TaskServiceTest.ticketCodes` | FR-05: mã tự sinh theo loại, trùng mã, regex của dự án, chế độ `auto` |
+| `TaskServiceTest.flowGatesAndQueue` | FR-07/08, NFR-03: chuyển trạng thái hợp lệ, 2 cổng chỉ PMO, cần plan.md mới chốt, hàng đợi đổi thứ tự, tổng quan |
+| `TaskServiceTest.versionsAndDiff` | FR-09: version + diff, che khi ghi, chặn tên tài liệu lạ (path traversal) |
+| `TaskServiceTest.reopenKeepsCode` | FR-10: mở lại giữ mã, ghi `bugs/`, spec.json REOPEN_BUG/ADD_LOGIC |
+| `WebTest.projectLifecycleOverApi` (phần ticket) | API ticket, diff, overview, SSE |
+| `CliTest` (phần task) | FR-42: `task new/list/show` |
+
+## Kịch bản thủ công Phase 2
+
+**K-02 (FEAT bằng tay, AC-12 phần cục bộ)**
+
+1. Ở `localhost:7070/shop` bấm "+ Ticket", loại FEAT, mã `NYX-231`, yêu cầu:
+   `Chào em, nhờ em thêm hoàn tiền một phần cho order-service nhé. Token ghp_abcdefghijklmnopqrstuvwxyz0123456789. Không được đổi API cũ. Cảm ơn!`
+2. Thấy cảnh báo "Đã che 1 giá trị". Tài liệu `spec.json`: không có "Chào/nhé/Cảm ơn", token là `[MASKED_TOKEN]`, `target_modules` = order-service, ràng buộc tách riêng.
+3. Bấm "Bắt đầu phân tích", "Gửi PMO chốt". Sửa analysis.md hai lần → chọn v1 ↔ v2, "So sánh" thấy diff.
+4. "Chốt giải pháp" khi chưa có plan.md → báo lỗi. Viết plan.md rồi chốt → ticket vào Hàng đợi.
+5. Mở thêm một tab `localhost:7070/` → "Việc chờ PMO"/"Ticket đang chạy" tự cập nhật khi đổi trạng thái ở tab kia.
+6. Đi tiếp tới Done; "Báo bug" → ticket về "SA phân tích", cùng mã, có `bugs/BUG-01.md`, số lần mở lại = 1.
+7. CLI (tiếng Việt qua stdin): `echo "..." | java -jar target/devmap.jar task new shop --type BUG`; `task list shop`; `task show shop BUG-001`.

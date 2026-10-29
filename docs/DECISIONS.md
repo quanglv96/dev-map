@@ -72,3 +72,46 @@ Checkstyle `ImportControl` cấm package `web` và `cli` import `*Repository`: l
 SRS (Kiến trúc, Giả định) và CLAUDE.md ghi Java 21. PMO yêu cầu dùng JDK 17 (29/10/2026), nên `java.version` là 17 cho DevMap và repo mẫu;
 `devmap doctor` yêu cầu Java 17+. Spring Boot 3 và JGit 7 đều chạy trên 17. Không dùng API chỉ có từ Java 18+.
 Muốn quay lại 21: đổi `java.version` trong `pom.xml` và ngưỡng trong `DoctorCommand`.
+
+## D-13 Tám trạng thái ticket (SRS chỉ có ảnh)
+
+Sơ đồ luồng trong SRS là ảnh nhúng. Suy ra từ chữ: `new` → `sa_analysis` → `awaiting_approval` → `ready` → `in_dev` → `sa_verify` → `awaiting_push` → `done`.
+Quay lại: `awaiting_approval → sa_analysis` (PMO yêu cầu phân tích lại), `sa_verify → in_dev` (SA trả về Dev), `awaiting_push → in_dev`.
+Hai cổng chỉ PMO: `awaiting_approval → ready` (Chốt giải pháp, bắt buộc có plan.md) và `awaiting_push → done` (Xác nhận push). Kiểm ở `TaskService` (NFR-03), không ở giao diện.
+Phase 2 chưa có agent nên các bước của SA/Dev được bấm tay; nút "Xác nhận push" mới chỉ chuyển trạng thái, việc push thật gắn vào ở Phase 4.
+**Cần PMO xác nhận** hoặc gửi lại nội dung ảnh.
+
+## D-14 Lớp che bí mật
+
+Module `secret`: luật dựng sẵn (khoá riêng PEM, connection string, URL có user:pass, `key=value` với tên chứa password/secret/token/api_key…, Bearer, token có tiền tố
+ghp_/sk_/AKIA/xox…/JWT, chuỗi ngẫu nhiên ≥32 ký tự lẫn hoa-thường-số, IPv4). Giá trị bị thay bằng `[MASKED_IP]`, `[MASKED_SECRET]`, `[MASKED_TOKEN]`, `[MASKED_CONN]`, `[MASKED_KEY]`.
+Mặc định giữ nguyên `127.0.0.1`, `0.0.0.0`, `${placeholder}`. Dự án thêm mẫu/giá trị giữ nguyên trong `config.yml` (`secrets.patterns`, `secrets.allow`) hoặc màn hình Cấu hình.
+Ưu tiên che thừa hơn lọt: số phiên bản dạng `1.2.3.4` cũng bị che như IP. Khoá chỉ gồm hex không có tên biến gợi ý thì có thể lọt (đã ghi `ponytail:` trong code).
+
+## D-15 task.md cũng được che
+
+SRS vừa nói "nguyên văn lưu ở task.md" vừa nói "luôn che trước khi ghi vào bất kỳ file nào". Chọn che: task.md giữ nguyên câu chữ của PMO nhưng bí mật đã bị thay.
+Giao diện/CLI báo số giá trị đã che khi tạo ticket.
+
+## D-16 Làm sạch cục bộ → spec.json
+
+Luật thuần (không NLP nặng): bỏ cụm xã giao tiếng Việt/Anh (chào, nhờ em, giúp, nhé, ạ, cảm ơn, please…), tách câu có từ ràng buộc (không được, phải, giữ nguyên, must…) vào `constraints`,
+phần còn lại là `summary`. `target_modules` = tên service/repo xuất hiện trong yêu cầu (không phân biệt hoa thường, `-`/`_`/khoảng trắng). Không tìm được thì để rỗng (CLAUDE.md §5.10).
+Tiêu đề trống thì lấy câu đầu của summary. Mở lại ticket ghi đè spec.json với `action_type` `REOPEN_BUG`/`ADD_LOGIC` và `source` là file trong `bugs/`.
+
+## D-17 Version tài liệu, hàng đợi, bug
+
+- Mỗi lần lưu analysis.md/plan.md có nội dung khác: bản lưu ở `versions/<doc>.v<N>.md`, `version` trong task.md tăng 1. Diff dạng unified (java-diff-utils).
+- PMO sửa tay được analysis.md, plan.md, summary.md; các tài liệu khác do agent ghi (Phase 4–5).
+- Hàng đợi (FR-07): `tasks/queue.yml`, gồm các ticket `ready` theo thứ tự PMO xếp; vào `ready` thì thêm cuối, rời `ready` thì bỏ ra.
+- Mở lại: `bugs/BUG-NN.md` (Báo bug) hoặc `bugs/LOGIC-NN.md` (Bổ sung logic), cùng mã ticket, `reopened` tăng 1.
+- `history.md` ghi mọi thao tác có giờ và người làm (PMO/SA/DEV) – phần đầu của NFR-10.
+
+## D-18 Tiếng Việt trên dòng lệnh Windows
+
+Windows đưa tham số dòng lệnh cho Java theo code page ANSI, nên tiếng Việt trong `--request` có thể thành `?`.
+`devmap task new` nhận thêm `--request-file <file UTF-8>` hoặc đọc stdin khi không có `--request`. Giao diện web không bị ảnh hưởng.
+
+## D-19 SSE
+
+`GET /api/events[?project=]` phát sự kiện `task` mỗi khi ticket đổi; trang dự án và trang chủ tự làm mới, không làm mới khi PMO đang mở trình soạn thảo.
