@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.audit.AuditLog;
 import com.devmap.config.Project;
 import com.devmap.config.ProjectConfig;
 import com.devmap.config.ProjectService;
@@ -27,9 +28,11 @@ public class ProjectController {
   }
 
   private final ProjectService service;
+  private final AuditLog audit;
 
-  public ProjectController(ProjectService service) {
+  public ProjectController(ProjectService service, AuditLog audit) {
     this.service = service;
+    this.audit = audit;
   }
 
   @GetMapping("/projects")
@@ -58,6 +61,14 @@ public class ProjectController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void remove(@PathVariable String name) {
     service.remove(name);
+  }
+
+  /** NFR-10: the audit log of the project, newest first; ticket filters to one ticket. */
+  @GetMapping("/projects/{name}/audit")
+  public List<AuditLog.Entry> audit(@PathVariable String name, @RequestParam(required = false) String ticket,
+      @RequestParam(defaultValue = "500") int limit) {
+    return audit.read(Path.of(service.get(name).dataDir()), ticket == null || ticket.isBlank() ? null : ticket,
+        Math.max(1, Math.min(limit, 5000)));
   }
 
   @GetMapping("/services/detect")

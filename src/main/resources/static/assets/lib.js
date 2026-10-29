@@ -1,4 +1,4 @@
-// Small helpers shared by every page: JSON API calls, DOM building, Markdown, project-colored favicon.
+// Small helpers shared by every page: JSON API calls, DOM building, Markdown, project-colored favicon, browser notifications.
 import { marked } from "../vendor/marked.esm.js";
 import DOMPurify from "../vendor/purify.es.js";
 
@@ -58,8 +58,12 @@ export function fill(target, ...children) {
   target.replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
 }
 
-export function setFavicon(color) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="${color}"/></svg>`;
+/** Project-colored icon; dot: "running" (green), "pending" (yellow), "error" (red) or none. */
+const DOT = { running: "#16a34a", pending: "#eab308", error: "#dc2626" };
+
+export function setFavicon(color, dot) {
+  const mark = DOT[dot] ? `<circle cx="12" cy="12" r="4" fill="${DOT[dot]}" stroke="#fff" stroke-width="1.5"/>` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="7" cy="7" r="6.5" fill="${color}"/>${mark}</svg>`;
   let link = document.querySelector("link[rel=icon]");
   if (!link) {
     link = el("link", { rel: "icon" });
@@ -70,4 +74,17 @@ export function setFavicon(color) {
 
 export function showError(target, err) {
   target.replaceChildren(err ? el("p", { class: "error" }, err.message || String(err)) : "");
+}
+
+/** Browser notification (SRS "Hiển thị tiến trình"); the same tag replaces, so several tabs of one project do not stack. */
+export function notify(title, body, tag, onclick) {
+  if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) {
+    return;
+  }
+  const n = new Notification(title, { body, tag, icon: document.querySelector("link[rel=icon]")?.href });
+  n.onclick = () => {
+    window.focus();
+    onclick?.();
+    n.close();
+  };
 }

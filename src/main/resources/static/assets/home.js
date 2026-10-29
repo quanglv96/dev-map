@@ -69,6 +69,9 @@ async function loadOverview() {
         ` ${x.title} `, el("small", { class: `badge ${x.status}` }, t(`status.${x.status}`)))));
       return rows.length ? el("ul", { class: "plain" }, rows) : el("p", { class: "muted" }, t("none"));
     };
+    const waiting = overview.reduce((n, p) => n + p.pending.length, 0);
+    document.title = `${waiting ? `(${waiting}) ` : ""}DevMap`;
+    setFavicon("#2563eb", waiting ? "pending" : null);
     pending.replaceChildren(block("pending"));
     running.replaceChildren(block("running"));
   } catch (err) {

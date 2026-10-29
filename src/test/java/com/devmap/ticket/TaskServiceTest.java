@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.devmap.SampleRepos;
+import com.devmap.audit.AuditLog;
 import com.devmap.config.ProjectConfig;
 import com.devmap.config.ProjectRepository;
 import com.devmap.config.ProjectService;
@@ -40,7 +41,14 @@ class TaskServiceTest {
         new RepoInput(repos.resolve("order-service").toString(), "test"),
         new RepoInput(repos.resolve("payment-service").toString(), "main"),
         new RepoInput(repos.resolve("notification-service").toString(), "main")), false);
-    tasks = new TaskService(projects, new TaskRepository(), new SecretMasker(), new RequestCleaner(), events::add, new GitService());
+    AuditLog audit = new AuditLog(new SecretMasker());
+    tasks = new TaskService(projects, new TaskRepository(), new SecretMasker(), new RequestCleaner(), e -> {
+      if (e instanceof AuditLog.Event a) {
+        audit.on(a);
+      } else {
+        events.add(e);
+      }
+    }, new GitService());
     data = tmp.resolve("data/shop/tasks");
   }
 
@@ -86,6 +94,9 @@ class TaskServiceTest {
         .contains("## Yêu cầu gốc của PMO", "[MASKED_TOKEN]");
     assertThat(Files.readString(f.resolve("history.md"))).contains("PMO · Tạo ticket FEAT, đã che 2");
     assertThat(events).containsExactly(new TaskChanged("shop", "NYX-231"));
+    // NFR-10: the same action is in the project audit log, masked
+    String log = Files.readString(f.getParent().getParent().resolve("logs/audit.jsonl"));
+    assertThat(log).contains("\"actor\":\"PMO\"", "\"ticket\":\"NYX-231\"", "Tạo ticket FEAT").doesNotContain("ghp_abcdefghij");
   }
 
   @Test

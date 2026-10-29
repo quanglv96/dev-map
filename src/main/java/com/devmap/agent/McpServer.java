@@ -58,7 +58,7 @@ public class McpServer {
           text = tools.mask(s, "Lỗi: " + e.getMessage());
           error = true;
         }
-        agents.logTool(s, name, args, text);
+        agents.logTool(s, name, args, text, error);
         ObjectNode r = res.putObject("result").put("isError", error);
         r.putArray("content").addObject().put("type", "text").put("text", text);
       }

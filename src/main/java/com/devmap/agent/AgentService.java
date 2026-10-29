@@ -4,10 +4,12 @@ import com.devmap.agent.AgentProvider.Usage;
 import com.devmap.agent.AgentSession.Mode;
 import com.devmap.agent.AgentSession.Role;
 import com.devmap.agent.ChatMessage.Step;
+import com.devmap.audit.AuditLog;
 import com.devmap.config.ProjectService;
 import com.devmap.git.GitService;
 import com.devmap.graph.GraphService;
 import com.devmap.secret.SecretMasker;
+import com.devmap.secret.SecretsConfig;
 import com.devmap.ticket.PmoOnlyException;
 import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskChanged;
@@ -17,6 +19,7 @@ import com.devmap.ticket.TaskStatus;
 import com.devmap.ticket.TicketGitService;
 import com.devmap.ticket.TicketGitService.RepoView;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -56,6 +59,10 @@ public class AgentService {
   public record AgentProgress(String project, String taskId, int messageId, String state) {
   }
 
+  /** Tab title and icon (SRS "Hiển thị tiến trình"): tickets with an agent running, tickets whose last session failed. */
+  public record Activity(List<String> running, List<String> failed, String queueTicket, boolean queueRunning) {
+  }
+
   private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
   private final TaskService tasks;
@@ -74,6 +81,8 @@ public class AgentService {
   private final Executor runner;
   private final Map<String, AgentSession> live = new ConcurrentHashMap<>();
   private final Set<String> busy = ConcurrentHashMap.newKeySet();
+  // ponytail: queue runs live in memory; a restart stops them and the PMO presses "Chạy hàng đợi" again
+  private final Map<String, String> queueRuns = new ConcurrentHashMap<>();
 
   @Autowired
   public AgentService(TaskService tasks, TicketGitService dev, GraphService graphs, GitService git, ProjectService projects,
@@ -261,6 +270,78 @@ public class AgentService {
     } catch (RuntimeException e) {
       // the PMO can start verification by asking SA
     }
+    nextInQueue(project);
+  }
+
+  /**
+   * AC-04 / FR-07: Dev works the Ready tickets one by one in the order the PMO set. The next one starts only when the previous
+   * left development (SA verification passed → waits for push, or Done); a failed or returned ticket stops the line for the PMO.
+   */
+  public Activity runQueue(String project, boolean on) {
+    projects.get(project);
+    if (!on) {
+      queueRuns.remove(project);
+    } else if (!queueRuns.containsKey(project)) {
+      tasks.note(project, firstQueued(project), Actor.PMO, "Chạy hàng đợi: Dev làm lần lượt theo thứ tự PMO xếp");
+      queueRuns.put(project, "");
+      nextInQueue(project);
+    }
+    return activity(project);
+  }
+
+  private String firstQueued(String project) {
+    List<Task> q = tasks.queue(project);
+    if (q.isEmpty()) {
+      throw new IllegalArgumentException("Hàng đợi trống: chưa có ticket nào Sẵn sàng");
+    }
+    return q.get(0).id();
+  }
+
+  private synchronized void nextInQueue(String project) {
+    String current = queueRuns.get(project);
+    if (current == null) {
+      return;
+    }
+    try {
+      if (!current.isEmpty() && (busy.contains(project + "/" + current) || inDevelopment(project, current))) {
+        return;
+      }
+      List<Task> q = tasks.queue(project);
+      if (q.isEmpty() || !current.isEmpty() && tasks.detail(project, current).task().status() == TaskStatus.IN_DEV) {
+        queueRuns.remove(project);
+        return;
+      }
+      String next = q.get(0).id();
+      queueRuns.put(project, next);
+      submit(project, next, Role.DEV, Mode.ASK, "Triển khai theo plan.md đã chốt (hàng đợi, ticket kế tiếp)", false);
+    } catch (RuntimeException e) {
+      queueRuns.remove(project);
+    }
+  }
+
+  private boolean inDevelopment(String project, String id) {
+    TaskStatus st = tasks.detail(project, id).task().status();
+    return st == TaskStatus.SA_VERIFY || st == TaskStatus.IN_DEV && busy.contains(project + "/" + id);
+  }
+
+  public Activity activity(String project) {
+    List<String> running = new ArrayList<>();
+    List<String> failed = new ArrayList<>();
+    for (Task t : tasks.list(project)) {
+      if (busy.contains(project + "/" + t.id())) {
+        running.add(t.id());
+        continue;
+      }
+      chats.read(tasks.folder(project, t.id())).stream().filter(m -> !m.from().equals("PMO")).reduce((a, b) -> b)
+          .filter(m -> m.state().equals("error")).ifPresent(m -> failed.add(t.id()));
+    }
+    String q = queueRuns.get(project);
+    return new Activity(running, failed, q == null || q.isEmpty() ? null : q, q != null);
+  }
+
+  /** Sessions running or waiting for a slot on this machine; `devmap serve` warns before stopping while this is above 0. */
+  public int runningCount() {
+    return busy.size();
   }
 
   /** FR-38: the next session must find this one in summary.md even if the agent forgot to write it. */
@@ -290,9 +371,14 @@ public class AgentService {
     return s;
   }
 
-  void logTool(AgentSession s, String name, JsonNode args, String result) {
-    chats.log(s.log, "### " + name + " " + masker.mask(String.valueOf(args), projects.get(s.project).config().secrets()).text()
-        + "\n\n```\n" + result + "\n```\n\n");
+  void logTool(AgentSession s, String name, JsonNode args, String result, boolean error) {
+    SecretsConfig secrets = projects.get(s.project).config().secrets();
+    chats.log(s.log, "### " + name + " " + masker.mask(String.valueOf(args), secrets).text() + "\n\n```\n" + result + "\n```\n\n");
+    JsonNode brief = args.isObject() ? ((ObjectNode) args.deepCopy()).without(List.of("content", "old", "new")) : args;
+    String[] f = tools.auditFields(s, name, args);
+    events.publishEvent(new AuditLog.Event(Path.of(projects.get(s.project).dataDir()), s.role.name(), s.taskId, f[0], f[1], f[2],
+        "Công cụ " + name + " " + clip(masker.mask(String.valueOf(brief), secrets).text(), 300)
+            + (error ? " → lỗi: " + clip(result, 200) : "")));
   }
 
   public ChatView chat(String project, String id) {
@@ -320,6 +406,9 @@ public class AgentService {
   public void onTaskChanged(TaskChanged e) {
     if (e.taskId() == null) {
       return;
+    }
+    if (queueRuns.containsKey(e.project())) {
+      nextInQueue(e.project());
     }
     try {
       if (tasks.detail(e.project(), e.taskId()).task().status() == TaskStatus.DONE && !busy.contains(e.project() + "/" + e.taskId())) {

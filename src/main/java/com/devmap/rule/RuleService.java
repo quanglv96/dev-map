@@ -165,8 +165,7 @@ public class RuleService {
     List<String> schema = new ArrayList<>();
     List<String> dependency = new ArrayList<>();
     for (String path : changed) {
-      Unit owner = units.stream().filter(u -> u.path().isEmpty() || path.startsWith(u.path() + "/"))
-          .max((a, b) -> Integer.compare(a.path().length(), b.path().length())).orElse(null);
+      Unit owner = owner(units, path);
       Rules.Scope s = owner == null ? projectDefault(project).scope() : effective(project, owner.service()).scope();
       String rel = owner == null || owner.path().isEmpty() ? path : path.substring(owner.path().length() + 1);
       if (Glob.any(s.forbiddenPaths(), rel)) {
@@ -178,6 +177,17 @@ public class RuleService {
       }
     }
     return new ScopeReport(forbidden, schema, dependency);
+  }
+
+  /** The service a file of a repo belongs to (deepest service folder), or the repo name when no service holds it. */
+  public String serviceOf(String project, String repoName, String path) {
+    Unit u = owner(units(project).stream().filter(x -> x.repo().equals(repoName)).toList(), path == null ? "" : path);
+    return u == null ? repoName : u.service();
+  }
+
+  private static Unit owner(List<Unit> units, String path) {
+    return units.stream().filter(u -> u.path().isEmpty() || path.startsWith(u.path() + "/"))
+        .max((a, b) -> Integer.compare(a.path().length(), b.path().length())).orElse(null);
   }
 
   public List<String> problems(Rules r) {

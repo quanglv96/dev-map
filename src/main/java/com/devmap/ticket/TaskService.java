@@ -1,5 +1,6 @@
 package com.devmap.ticket;
 
+import com.devmap.audit.AuditLog;
 import com.devmap.config.Project;
 import com.devmap.config.ProjectConfig;
 import com.devmap.config.ProjectService;
@@ -113,7 +114,8 @@ public class TaskService {
         cleaned.summary().isBlank() ? name : cleaned.summary(), cleaned.constraints(), "task.md"));
     int masked = req.count() + head.count();
     repo.writeDoc(folder, "history.md", "# Nhật ký – " + id + "\n\n");
-    history(folder, Actor.PMO, "Tạo ticket " + type + (masked > 0 ? ", đã che " + masked + " giá trị giống bí mật" : ""));
+    history(new Stored(folder, task), Actor.PMO,
+        "Tạo ticket " + type + (masked > 0 ? ", đã che " + masked + " giá trị giống bí mật" : ""));
     changed(project, id);
     return new Created(task, masked);
   }
@@ -140,7 +142,8 @@ public class TaskService {
     Task updated = s.task().withStatus(to, now());
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
     updateQueue(dir(project), id, to);
-    history(s.folder(), actor, "Chuyển trạng thái " + from.code() + " → " + to.code());
+    history(s, actor, null, from.isPmoGate(to) ? "cổng duyệt PMO (NFR-03)" : "luồng 8 trạng thái",
+        "Chuyển trạng thái " + from.code() + " → " + to.code());
     changed(project, id);
     return updated;
   }
@@ -173,7 +176,7 @@ public class TaskService {
       repo.writeTask(s.folder(), s.task().withVersion(s.task().version() + 1, now()), repo.readTaskBody(s.folder()));
       note += " → v" + v;
     }
-    history(s.folder(), actor, note + (masked.count() > 0 ? ", đã che " + masked.count() + " giá trị" : ""));
+    history(s, actor, note + (masked.count() > 0 ? ", đã che " + masked.count() + " giá trị" : ""));
     changed(project, id);
     return new Doc(name, masked.text(), repo.versionCount(s.folder(), name), true, masked.count());
   }
@@ -224,7 +227,7 @@ public class TaskService {
     repo.writeSpec(s.folder(), new Spec(id, project, bug ? "REOPEN_BUG" : "ADD_LOGIC",
         modules.isEmpty() ? repo.readSpec(s.folder()).targetModules() : modules,
         cleaned.summary().isBlank() ? s.task().title() : cleaned.summary(), cleaned.constraints(), entry));
-    history(s.folder(), actor, (bug ? "Báo bug " : "Bổ sung logic ") + entry + ", mở lại lần " + updated.reopened());
+    history(s, actor, (bug ? "Báo bug " : "Bổ sung logic ") + entry + ", mở lại lần " + updated.reopened());
     changed(project, id);
     return updated;
   }
@@ -243,7 +246,7 @@ public class TaskService {
     Task t = s.task();
     Task updated = new Task(t.id(), t.type(), t.title(), t.status(), wanted, t.branch(), t.version(), t.reopened(), t.created(), now());
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
-    history(s.folder(), actor, "Repo của ticket: " + wanted);
+    history(s, actor, "Repo của ticket: " + wanted);
     changed(project, id);
     return updated;
   }
@@ -357,11 +360,18 @@ public class TaskService {
 
   /** NFR-10: a line in history.md for something done outside this service (agent sessions, Q&A). */
   public void note(String project, String id, Actor actor, String text) {
-    history(stored(project, id).folder(), actor, text);
+    history(stored(project, id), actor, text);
   }
 
-  void history(Path folder, Actor actor, String text) {
-    repo.appendDoc(folder, "history.md", "- " + now() + " · " + actor + " · " + masker.mask(text).text() + "\n");
+  void history(Stored s, Actor actor, String text) {
+    history(s, actor, null, null, text);
+  }
+
+  /** history.md of the ticket plus the project audit log (NFR-10); repoName and rule may be null. */
+  void history(Stored s, Actor actor, String repoName, String rule, String text) {
+    String clean = masker.mask(text).text();
+    repo.appendDoc(s.folder(), "history.md", "- " + now() + " · " + actor + " · " + clean + "\n");
+    events.publishEvent(new AuditLog.Event(s.folder().getParent().getParent(), actor.name(), s.task().id(), repoName, null, rule, clean));
   }
 
   void changed(String project, String id) {

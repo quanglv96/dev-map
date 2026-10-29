@@ -411,6 +411,28 @@ class AgentTools {
     return r.clean() ? "" : ". Lưu ý: file thuộc thư mục cấm/DB schema/dependency, commit sẽ chờ PMO duyệt";
   }
 
+  /** NFR-10: repo, service and rule of a tool call for the audit log; the service comes from the file path when there is one. */
+  String[] auditFields(AgentSession s, String name, JsonNode args) {
+    String repo = args.path("repo").asText(null);
+    String path = args.hasNonNull("path") ? args.path("path").asText() : args.path("file").asText(null);
+    String service = null;
+    if (repo != null) {
+      try {
+        service = rules.serviceOf(s.project, repo, path);
+      } catch (RuntimeException e) {
+        // unknown repo: the tool call already failed and says so
+      }
+    }
+    String rule = switch (name) {
+      case "write_file", "edit_file" -> "scope + chặn file bí mật (FR-32, FR-34)";
+      case "commit" -> "git.commit_template, scope";
+      case "run_quality_gate" -> "quality: tách lớp, phân tích tĩnh, unit test";
+      case "set_status" -> "luồng 8 trạng thái, cổng duyệt PMO";
+      default -> "lọc bí mật, ngữ cảnh 2–3 tầng, không nguyên file (FR-34/35)";
+    };
+    return new String[] {repo, service, rule};
+  }
+
   /** Relative path inside a repo, never a secret file (refused before any read, FR-34). */
   static String safePath(String path) {
     String p = path.replace('\\', '/').replaceAll("^\\./", "");

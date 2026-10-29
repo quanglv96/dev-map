@@ -1,10 +1,11 @@
 // Project workspace (localhost:7070/<project>): task list | task content | details and PMO decisions.
-// Routes: #  overview · #config · #rules · #graph · #new · #task=<id>
+// Routes: #  overview · #config · #rules · #graph · #log · #new · #task=<id>
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
-import { WAITS_FOR_PMO, api, el, fill, setFavicon, showError } from "./lib.js";
+import { WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError } from "./lib.js";
 import { renderConfig } from "./views/config.js";
 import { onAgentEvent } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
+import { renderLog } from "./views/log.js";
 import { renderRules } from "./views/rules.js";
 import { renderNewTask, renderTask } from "./views/task.js";
 
@@ -24,6 +25,7 @@ const state = { masked: 0 };
 let project;
 let tasks = [];
 let refreshGraph = null;
+let activity = { running: [], failed: [], queueRunning: false };
 
 fill(filterStatus, el("option", { value: "" }, t("allStatus")),
   STATUSES.map((s) => el("option", { value: s }, t(`status.${s}`))));
@@ -37,14 +39,65 @@ function route() {
   if (hash.startsWith("task=")) {
     return { view: "task", id: decodeURIComponent(hash.slice(5)) };
   }
-  return { view: ["config", "new", "graph", "rules"].includes(hash) ? hash : "overview" };
+  return { view: ["config", "new", "graph", "rules", "log"].includes(hash) ? hash : "overview" };
 }
 
 function setHeader() {
-  document.title = `${project.name} · DevMap`;
   document.getElementById("project-name").textContent = project.name;
   document.getElementById("project-dot").style.background = project.config.color;
-  setFavicon(project.config.color);
+  setTabState();
+}
+
+/** Tab title and icon follow the project: "(1) shop · chờ PMO xác nhận", green/yellow/red dot (AC-08). */
+function setTabState() {
+  const pending = tasks.filter((x) => WAITS_FOR_PMO.includes(x.status)).length;
+  const state = activity.running.length ? "running" : pending ? "pending" : activity.failed.length ? "error" : null;
+  const label = state === "running" ? t("tab.running", { ids: activity.running.join(", ") })
+    : state === "pending" ? t("tab.pending") : state === "error" ? t("tab.error", { ids: activity.failed.join(", ") }) : "DevMap";
+  document.title = `${pending ? `(${pending}) ` : ""}${project.name} · ${label}`;
+  setFavicon(project.config.color, state);
+}
+
+const openTask = (id) => () => {
+  location.hash = `task=${encodeURIComponent(id)}`;
+};
+
+/** Notify when the agent needs the PMO, finished, or failed; only while this tab is in the background. */
+function notifyChanges(before, after) {
+  for (const x of tasks) {
+    const old = before.get(x.id);
+    if (old && old !== x.status && WAITS_FOR_PMO.includes(x.status)) {
+      notify(`${project.name} · ${x.id}`, t(`notify.${x.status}`, { title: x.title }), `${name}/${x.id}`, openTask(x.id));
+    }
+  }
+  for (const id of after.failed.filter((x) => !activity.failed.includes(x))) {
+    notify(`${project.name} · ${id}`, t("notify.error"), `${name}/${id}`, openTask(id));
+  }
+  for (const id of activity.running.filter((x) => !after.running.includes(x) && !after.failed.includes(x))) {
+    const x = tasks.find((y) => y.id === id);
+    if (x && !WAITS_FOR_PMO.includes(x.status)) {
+      notify(`${project.name} · ${id}`, t("notify.done"), `${name}/${id}`, openTask(id));
+    }
+  }
+}
+
+async function refreshActivity(before) {
+  const after = await api(`${api$}/agents`);
+  if (before) {
+    notifyChanges(before, after);
+  }
+  activity = after;
+  setTabState();
+  renderQueueRun();
+}
+
+function mountNotifyButton() {
+  const b = document.getElementById("notify-on");
+  b.hidden = !("Notification" in window) || Notification.permission !== "default";
+  b.addEventListener("click", async () => {
+    await Notification.requestPermission();
+    b.hidden = true;
+  });
 }
 
 function renderList() {
@@ -63,10 +116,26 @@ function renderList() {
   }
 }
 
+const queueRun = el("div", { class: "row small" });
+
+function renderQueueRun() {
+  const on = activity.queueRunning;
+  fill(queueRun,
+    el("button", { type: "button", class: on ? "small" : "primary small", onclick: async () => {
+      try {
+        activity = await api(`${api$}/queue/run`, { method: "POST", body: { on: !on } });
+        renderQueueRun();
+      } catch (err) {
+        showError(queueRun, err);
+      }
+    } }, t(on ? "queueStop" : "queueRun")),
+    on ? el("span", { class: "muted" }, activity.queueTicket ? t("queueAt", { id: activity.queueTicket }) : "") : null);
+}
+
 async function renderQueue() {
   const queue = await api(`${api$}/queue`);
   if (queue.length === 0) {
-    queueBox.replaceChildren();
+    queueBox.replaceChildren(activity.queueRunning ? queueRun : "");
     return;
   }
   const ids = queue.map((x) => x.id);
@@ -80,7 +149,7 @@ async function renderQueue() {
       showError(queueBox, err);
     }
   };
-  queueBox.replaceChildren(el("h3", { class: "section" }, t("queue")), el("ol", { class: "queue" }, queue.map((x, i) => el("li", {},
+  queueBox.replaceChildren(el("h3", { class: "section" }, t("queue")), queueRun, el("ol", { class: "queue" }, queue.map((x, i) => el("li", {},
     el("a", { href: `#task=${encodeURIComponent(x.id)}` }, x.id), " ",
     i > 0 ? el("button", { type: "button", class: "link", title: t("up"), onclick: () => move(i, -1) }, "↑") : null,
     i < queue.length - 1 ? el("button", { type: "button", class: "link", title: t("down"), onclick: () => move(i, 1) }, "↓") : null))));
@@ -129,6 +198,10 @@ async function render() {
     await renderRules(mid, right, name);
     return;
   }
+  if (r.view === "log") {
+    await renderLog(mid, right, name, tasks);
+    return;
+  }
   renderProjectInfo();
   if (r.view === "config") {
     renderConfig(mid, project, (saved) => {
@@ -155,7 +228,9 @@ async function refreshTasks() {
 function listen() {
   const events = new EventSource(`/api/events?project=${encodeURIComponent(name)}`);
   events.addEventListener("task", async (e) => {
+    const before = new Map(tasks.map((x) => [x.id, x.status]));
     await refreshTasks();
+    await refreshActivity(before);
     const r = route();
     const change = JSON.parse(e.data);
     if (r.view === "task" && r.id === change.taskId && !document.querySelector("textarea.editor, .reopen textarea, .confirm-card, .card input:not(:placeholder-shown), .chat-input:not(:placeholder-shown)")) {
@@ -164,7 +239,13 @@ function listen() {
     renderList();
   });
   events.addEventListener("graph", () => refreshGraph?.());
-  events.addEventListener("agent", (e) => onAgentEvent(JSON.parse(e.data)));
+  events.addEventListener("agent", async (e) => {
+    const change = JSON.parse(e.data);
+    onAgentEvent(change);
+    if (change.state !== "running" || !activity.running.includes(change.taskId)) {
+      await refreshActivity(new Map(tasks.map((x) => [x.id, x.status])));
+    }
+  });
 }
 
 window.addEventListener("hashchange", render);
@@ -174,7 +255,10 @@ try {
   if (project.error) {
     throw new Error(project.error);
   }
+  await refreshTasks();
+  await refreshActivity(null);
   setHeader();
+  mountNotifyButton();
   await render();
   listen();
 } catch (err) {

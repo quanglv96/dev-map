@@ -154,6 +154,21 @@ class WebTest {
     mvc.perform(post("/api/projects/webshop/graph/update").header(TokenFilter.HEADER, h)
         .contentType(MediaType.APPLICATION_JSON).content("{\"full\":false}")).andExpect(status().isAccepted());
 
+    // NFR-10: PMO actions outside a ticket (index run) and ticket actions are both in the audit log; reads are not
+    mvc.perform(get("/api/projects/webshop/audit").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$[0].action").value("POST chạy cập nhật chỉ mục"))
+        .andExpect(jsonPath("$[0].actor").value("PMO"))
+        .andExpect(jsonPath("$[?(@.action =~ /PUT.*/)]").isEmpty()) // the config PUT above was refused (400): not an action
+        .andExpect(jsonPath("$[?(@.ticket == 'FEAT-001')]").isNotEmpty())
+        .andExpect(jsonPath("$[?(@.action =~ /GET.*/)]").isEmpty());
+    mvc.perform(get("/api/projects/webshop/audit").param("ticket", "FEAT-001").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$[?(@.ticket != 'FEAT-001')]").isEmpty());
+    // tab title and icon of the project page
+    mvc.perform(get("/api/projects/webshop/agents").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$.running").isEmpty()).andExpect(jsonPath("$.queueRunning").value(false));
+    mvc.perform(post("/api/projects/webshop/queue/run").header(TokenFilter.HEADER, h)
+        .contentType(MediaType.APPLICATION_JSON).content("{\"on\":true}")).andExpect(status().isBadRequest());
+
     mvc.perform(get("/api/projects/nope").header(TokenFilter.HEADER, token.value())).andExpect(status().isNotFound());
     mvc.perform(delete("/api/projects/webshop").header(TokenFilter.HEADER, token.value())).andExpect(status().isNoContent());
     assertThat(tmp.resolve("data/webshop/config.yml")).exists();

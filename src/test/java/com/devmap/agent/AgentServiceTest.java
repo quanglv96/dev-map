@@ -7,6 +7,7 @@ import com.devmap.SampleRepos;
 import com.devmap.agent.AgentProvider.Call;
 import com.devmap.agent.AgentProvider.Result;
 import com.devmap.agent.AgentProvider.Usage;
+import com.devmap.audit.AuditLog;
 import com.devmap.config.ProjectRepository;
 import com.devmap.config.ProjectService;
 import com.devmap.config.ProjectService.RepoInput;
@@ -97,8 +98,12 @@ class AgentServiceTest {
         new RepoInput(repos.resolve("notification-service").toString(), "main")), false);
     SecretMasker masker = new SecretMasker();
     TaskRepository taskRepo = new TaskRepository();
+    AuditLog audit = new AuditLog(masker);
     org.springframework.context.ApplicationEventPublisher publish = e -> {
       events.add(e);
+      if (e instanceof AuditLog.Event a) {
+        audit.on(a);
+      }
       if (agents != null && e instanceof TaskChanged tc) {
         agents.onTaskChanged(tc);
       }
@@ -289,6 +294,55 @@ class AgentServiceTest {
     });
     agents.ask("shop", id, "", "Sửa theo verify.md", false);
     assertThat(tasks.readDoc("shop", id, "changes.md").content()).contains("PMO sửa tay");
+  }
+
+  /** AC-04, FR-07, NFR-10: "Chạy hàng đợi" – Dev works Ready MAINT tickets one by one in the PMO's order; every step is logged. */
+  @Test
+  void queueRunsMaintTicketsInPmoOrder() throws Exception {
+    List<String> ids = new ArrayList<>();
+    for (String n : List.of("1", "2")) {
+      String id = tasks.create("shop", "MAINT", "", "", "Dọn log ở order-service " + n).task().id();
+      tasks.transition("shop", id, "sa_analysis", Actor.SA);
+      tasks.writeDoc("shop", id, "analysis.md", "- AC-1: Given log When dọn Then gọn\n", Actor.SA);
+      tasks.writeDoc("shop", id, "plan.md", "- order-service: Maint" + n + ".java\n", Actor.SA);
+      tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+      tasks.transition("shop", id, "ready", Actor.PMO);
+      ids.add(id);
+    }
+    tasks.reorderQueue("shop", List.of(ids.get(1), ids.get(0))); // the PMO puts the second one first
+    List<String> started = new ArrayList<>();
+    for (String n : List.of("2", "1")) {
+      fake.scripts.add(c -> { // Dev
+        started.add(c.prompt().contains(ids.get(1)) ? ids.get(1) : ids.get(0));
+        if (n.equals("1")) { // the first ticket of the line already left development when this one starts
+          assertThat(tasks.detail("shop", ids.get(1)).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH);
+        }
+        tool(c, "write_file", Map.of("repo", "order-service", "path", "src/main/java/com/shop/order/Maint" + n + ".java",
+            "content", "package com.shop.order;\n\nclass Maint" + n + " {\n}\n"));
+        tool(c, "commit", Map.of("repo", "order-service", "message", "maint " + n));
+        assertThat(tool(c, "run_quality_gate", Map.of())).contains("ĐẠT"); // regression: unit tests in the gate
+        assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).contains("sa_verify");
+        return "ok";
+      });
+      fake.scripts.add(c -> { // SA verification, started by DevMap
+        tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "Maint" + n + ".java theo plan. Kết luận: ĐẠT"));
+        assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).contains("awaiting_push");
+        return "ok";
+      });
+    }
+    agents.runQueue("shop", true); // the test runner is synchronous: the whole line has run when this returns
+
+    assertThat(started).containsExactly(ids.get(1), ids.get(0));
+    assertThat(ids).allSatisfy(id -> assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH));
+    AgentService.Activity a = agents.activity("shop");
+    assertThat(a.queueRunning()).isFalse();
+    assertThat(a.running()).isEmpty();
+    assertThat(a.failed()).isEmpty();
+    assertThatThrownBy(() -> agents.runQueue("shop", true)).hasMessageContaining("trống");
+
+    String log = Files.readString(tmp.resolve("data/shop/logs/audit.jsonl"));
+    assertThat(log).contains("Chạy hàng đợi", "\"actor\":\"DEV\"", "Công cụ write_file", "\"service\":\"order-service\"",
+        "scope + chặn file bí mật", "git.commit_template", "cổng duyệt PMO", "\"actor\":\"SA\"").doesNotContain("class Maint");
   }
 
   /** FR-45, AC-12, FR-11, AC-03: Done drops the session context; a reopened ticket is answered from documents and must fix analysis. */

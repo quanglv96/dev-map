@@ -106,7 +106,8 @@ public class TicketGitService {
       }
       w = w != null ? w : new RepoWork(name, wt.toString().replace('\\', '/'), t.branch(), rc.baseBranch(), null, null, null, null);
       dev = dev.with(w.withBase(base, now()));
-      tasks.history(s.folder(), actor, name + ": pull nhánh nền " + rc.baseBranch() + " @" + base.substring(0, 8)
+      tasks.history(s, actor, name, "pull nhánh nền trước khi làm (AIR-04)",
+          name + ": pull nhánh nền " + rc.baseBranch() + " @" + base.substring(0, 8)
           + (fetchError == null ? "" : " (fetch lỗi, dùng dữ liệu đã có: " + fetchError + ")"));
     }
     repo.writeDevState(s.folder(), dev);
@@ -166,7 +167,7 @@ public class TicketGitService {
     Set<String> all = new LinkedHashSet<>(dev.approved());
     files.forEach(f -> all.add(repoName + ":" + f));
     repo.writeDevState(s.folder(), dev.withApproved(List.copyOf(all)));
-    tasks.history(s.folder(), actor, repoName + ": PMO duyệt sửa " + files);
+    tasks.history(s, actor, repoName, "scope: thư mục cấm, DB schema, dependency", repoName + ": PMO duyệt sửa " + files);
     return checkScope(project, id, repoName);
   }
 
@@ -194,7 +195,8 @@ public class TicketGitService {
     git.commitAll(Path.of(w.worktree()), text);
     DevState dev = repo.readDevState(s.folder());
     repo.writeDevState(s.folder(), dev.withApproved(dev.approved().stream().filter(a -> !a.startsWith(repoName + ":")).toList()));
-    tasks.history(s.folder(), actor, repoName + ": commit \"" + text + "\" (" + check.files().size() + " file)");
+    tasks.history(s, actor, repoName, "git.commit_template, scope",
+        repoName + ": commit \"" + text + "\" (" + check.files().size() + " file)");
     writeChanges(project, id);
     tasks.changed(project, id);
     return view(project, id);
@@ -232,7 +234,7 @@ public class TicketGitService {
     }
     repo.writeDevState(s.folder(), dev);
     tasks.writeDoc(project, id, "tests.md", md.toString(), Actor.DEVMAP);
-    tasks.history(s.folder(), actor, "Chạy quality gate: "
+    tasks.history(s, actor, null, "quality: tách lớp, phân tích tĩnh, unit test", "Chạy quality gate: "
         + (dev.repos().stream().allMatch(w -> w.gateHead() != null) ? "đạt" : "không đạt"));
     tasks.changed(project, id);
     return all;
@@ -269,7 +271,8 @@ public class TicketGitService {
       git.push(wt, head, w.branch());
       dev = dev.with(w.withPushed(head));
       repo.writeDevState(s.folder(), dev);
-      tasks.history(s.folder(), actor, w.repo() + ": PMO xác nhận push " + head.substring(0, 8) + " → origin/" + w.branch());
+      tasks.history(s, actor, w.repo(), "git.protected_branches, PMO xác nhận push",
+          w.repo() + ": PMO xác nhận push " + head.substring(0, 8) + " → origin/" + w.branch());
     }
     writeChanges(project, id);
     tasks.transition(project, id, TaskStatus.DONE.code(), actor);

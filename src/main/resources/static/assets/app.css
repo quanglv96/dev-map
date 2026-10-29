@@ -148,3 +148,4 @@ details summary { cursor: pointer; }
 .step pre, .input-log { max-height: 320px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
 .chat-form { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .chat-form textarea { width: 100%; }
+.nowrap { white-space: nowrap; }
