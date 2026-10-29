@@ -1,0 +1,9 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: ${DB_URL}
+gateway:
+  url: https://203.0.113.10/charge

@@ -1,0 +1,11 @@
+services:
+  order-service:
+    build: .
+    environment:
+      PAYMENT_BASE_URL: http://payment-service:8081
+    depends_on: [payment-service, kafka]
+  payment-service:
+    image: shop/payment-service:1.0.0
+    ports: ["8081:8081"]
+  kafka:
+    image: bitnami/kafka:3.7

@@ -1,0 +1,13 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  kafka:
+    bootstrap-servers: 10.12.0.50:9092
+payment:
+  base-url: http://payment-service:8081
