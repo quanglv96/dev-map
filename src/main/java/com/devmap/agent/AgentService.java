@@ -243,20 +243,27 @@ public class AgentService {
     Map<String, String> last = chats.read(tasks.folder(project, id)).stream().filter(m -> m.from().equals("DEV") && !m.heads().isEmpty())
         .reduce((a, b) -> b).map(ChatMessage::heads).orElse(Map.of());
     List<String> out = new ArrayList<>();
+    boolean pmo = false;
     for (RepoView r : dev.view(project, id).repos()) {
       if (r.head() == null) {
         continue;
       }
       String before = last.get(r.repo());
       List<String> commits = before == null || before.equals(r.head()) ? List.of() : git.log(Path.of(r.worktree()), before, r.head());
-      if (!commits.isEmpty() || !r.uncommitted().isEmpty()) {
-        out.add("Thay đổi PMO tự làm ở " + r.repo() + (commits.isEmpty() ? "" : ": commit " + commits)
-            + (r.uncommitted().isEmpty() ? "" : "; file chưa commit " + r.uncommitted()) + ". Đọc lại trước khi sửa tiếp.");
+      // commits after the last Dev session are the PMO's; an uncommitted file may also be left by that session itself
+      if (!commits.isEmpty()) {
+        out.add("Commit PMO tự làm ở " + r.repo() + ": " + commits + ". Đọc lại trước khi sửa tiếp.");
       }
+      if (!r.uncommitted().isEmpty()) {
+        out.add("File chưa commit ở " + r.repo() + " (phiên Dev trước để lại hoặc PMO sửa tay): " + r.uncommitted()
+            + ". Xem git_diff trước khi sửa tiếp.");
+      }
+      pmo |= !commits.isEmpty();
     }
     if (!out.isEmpty()) {
       dev.writeChanges(project, id);
-      tasks.note(project, id, Actor.DEVMAP, "Phát hiện thay đổi PMO tự làm, đã ghi changes.md");
+      tasks.note(project, id, Actor.DEVMAP,
+          (pmo ? "Phát hiện commit PMO tự làm" : "Worktree còn file chưa commit") + ", đã ghi changes.md");
     }
     return out;
   }

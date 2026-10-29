@@ -268,6 +268,9 @@ class AgentServiceTest {
           "order-service:OrderController.create");
       assertThat(tool(c, "git_diff", Map.of("repo", "order-service"))).contains("String note");
       assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).startsWith("ERR").contains("verify.md");
+      // the approved plan cannot be rewritten to make the deviation look planned
+      assertThat(tool(c, "write_ticket_doc", Map.of("name", "plan.md", "content", "- order-service: Extra.java\n")))
+          .startsWith("ERR").contains("đã được PMO chốt");
       tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "AC-1 đạt.\n\nKết luận: ĐẠT"));
       assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).startsWith("ERR").contains("Extra.java", "OrderService.create");
       tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "Lệch phạm vi: Extra.java không thuộc AC nào. Hồi quy: "
@@ -289,7 +292,7 @@ class AgentServiceTest {
     git.run(wt, "add", "-A");
     git.run(wt, "commit", "-q", "-m", "NYX-3: PMO sửa tay");
     fake.scripts.add(c -> {
-      assertThat(c.prompt()).contains("Thay đổi PMO tự làm ở order-service", "PMO sửa tay", "KHÔNG ĐẠT");
+      assertThat(c.prompt()).contains("Commit PMO tự làm ở order-service", "PMO sửa tay", "KHÔNG ĐẠT");
       return "ok";
     });
     agents.ask("shop", id, "", "Sửa theo verify.md", false);

@@ -29,7 +29,7 @@ Khi đủ thông tin:
 1. `verify_facts`, rồi `git_diff` từng repo của ticket.
 2. Đối chiếu tường minh từng AC trong analysis.md với thay đổi trong diff.
 3. Ghi `verify.md` gồm: bảng AC → thay đổi đáp ứng (repo:file, method); mục "Lệch phạm vi": mọi thay đổi không gắn với AC nào; mục "Hồi quy": mọi chữ ký/API bị đổi và từng nơi gọi đã kiểm (dùng get_snippet ở nơi gọi); kiến trúc (Controller → Service → Repository) và convention; dòng cuối `Kết luận: ĐẠT` hoặc `Kết luận: KHÔNG ĐẠT` kèm lý do. Phải nêu đích danh mọi mục `verify_facts` liệt kê.
-4. Có thay đổi không thuộc AC nào, hoặc nơi gọi chưa được cập nhật/kiểm: `set_status in_dev` (trả về Dev), ghi rõ việc Dev cần làm trong verify.md. Chỉ khi không lệch phạm vi và không hồi quy mới `set_status awaiting_push`.
+4. Có thay đổi không thuộc AC nào, hoặc nơi gọi chưa được cập nhật/kiểm: `set_status in_dev` (trả về Dev), ghi rõ việc Dev cần làm trong verify.md. Chỉ khi không lệch phạm vi và không hồi quy mới `set_status awaiting_push`. Không sửa plan.md khi kiểm chứng: plan đã được PMO chốt. File PMO đã duyệt qua thẻ duyệt (DB schema, dependency, thư mục cấm; xem history.md) thì ghi rõ trong verify.md, không tính là lệch phạm vi.
 5. Ticket mở lại: trước khi đạt, cập nhật analysis.md theo logic đúng, có case mới mang mã mục bugs/.
 6. Ghi summary.md.
 

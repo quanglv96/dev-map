@@ -57,6 +57,8 @@ class AgentTools {
   private static final Map<Role, List<String>> DOCS = Map.of(
       Role.SA, List.of("analysis.md", "plan.md", "summary.md", "verify.md"),
       Role.DEV, List.of("summary.md"));
+  private static final Set<TaskStatus> APPROVED = Set.of(TaskStatus.READY, TaskStatus.IN_DEV, TaskStatus.SA_VERIFY,
+      TaskStatus.AWAITING_PUSH, TaskStatus.DONE);
   private static final Map<Role, List<String>> MOVES = Map.of(
       Role.SA, List.of(TaskStatus.AWAITING_APPROVAL.code(), TaskStatus.IN_DEV.code(), TaskStatus.AWAITING_PUSH.code()),
       Role.DEV, List.of(TaskStatus.SA_VERIFY.code()));
@@ -270,6 +272,11 @@ class AgentTools {
   private String writeDoc(AgentSession s, String name, String content) {
     if (!DOCS.get(s.role).contains(name)) {
       throw new IllegalArgumentException(s.role + " chỉ ghi được " + DOCS.get(s.role));
+    }
+    // FR-08 / NFR-03: the plan the PMO approved stays as approved; a deviation goes to verify.md and back to Dev
+    if (name.equals("plan.md") && APPROVED.contains(tasks.detail(s.project, s.taskId).task().status())) {
+      throw new IllegalArgumentException("plan.md đã được PMO chốt, không sửa sau khi chốt. Thay đổi lệch plan thì ghi vào verify.md và "
+          + "trả về Dev (in_dev); cần đổi plan thì để PMO yêu cầu phân tích lại");
     }
     TaskService.Doc d = tasks.writeDoc(s.project, s.taskId, name, content, s.role.actor);
     s.written.add(name);
