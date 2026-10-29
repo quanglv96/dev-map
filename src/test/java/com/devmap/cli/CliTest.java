@@ -55,6 +55,9 @@ class CliTest {
     assertThat(run(0, "task", "list", "shop")).contains("BUG-001\tBUG\tnew");
     assertThat(run(0, "task", "show", "shop", "BUG-001")).contains("repo: [order-service]", "spec.json", "sa_analysis");
 
+    assertThat(run(0, "index", "shop")).contains("chưa có chỉ mục", "Graph: 2 node");
+    assertThat(run(0, "index", "shop", "--full")).contains("Quét toàn bộ:", "đọc 10", "ok");
+
     String doctor = run(0, "doctor");
     assertThat(doctor).contains("[OK]   Java", "[OK]   Dự án shop");
 

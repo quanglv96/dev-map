@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.graph.GraphService.GraphChanged;
 import com.devmap.ticket.TaskChanged;
 import java.io.IOException;
 import java.util.Map;
@@ -10,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-/** Server-Sent Events: every open tab learns about ticket changes (all projects, or one with ?project=). */
+/** Server-Sent Events: open tabs learn about ticket ("task") and graph ("graph") changes, all projects or ?project=. */
 @RestController
 public class EventController {
 
@@ -28,12 +29,21 @@ public class EventController {
 
   @EventListener
   public void onTaskChanged(TaskChanged change) {
+    send(change.project(), "task", change);
+  }
+
+  @EventListener
+  public void onGraphChanged(GraphChanged change) {
+    send(change.project(), "graph", change);
+  }
+
+  private void send(String changed, String name, Object data) {
     emitters.forEach((emitter, project) -> {
-      if (!project.isEmpty() && !project.equals(change.project())) {
+      if (!project.isEmpty() && !project.equals(changed)) {
         return;
       }
       try {
-        emitter.send(SseEmitter.event().name("task").data(change));
+        emitter.send(SseEmitter.event().name(name).data(data));
       } catch (IOException | IllegalStateException e) {
         emitters.remove(emitter);
       }

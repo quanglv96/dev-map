@@ -129,6 +129,15 @@ class WebTest {
         .andExpect(jsonPath("$[0].running[0].id").value("FEAT-001"));
     mvc.perform(get("/api/events").header(TokenFilter.HEADER, h)).andExpect(status().isOk());
 
+    mvc.perform(get("/api/projects/webshop/graph/services").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$.nodes.length()").value(2));
+    mvc.perform(get("/api/projects/webshop/graph/estimate").header(TokenFilter.HEADER, h))
+        .andExpect(jsonPath("$.files").value(org.hamcrest.Matchers.greaterThan(5)));
+    mvc.perform(get("/api/projects/webshop/graph/neighborhood").param("node", "svc:order-service").param("dir", "sideways")
+        .header(TokenFilter.HEADER, h)).andExpect(status().isBadRequest());
+    mvc.perform(post("/api/projects/webshop/graph/update").header(TokenFilter.HEADER, h)
+        .contentType(MediaType.APPLICATION_JSON).content("{\"full\":false}")).andExpect(status().isAccepted());
+
     mvc.perform(get("/api/projects/nope").header(TokenFilter.HEADER, token.value())).andExpect(status().isNotFound());
     mvc.perform(delete("/api/projects/webshop").header(TokenFilter.HEADER, token.value())).andExpect(status().isNoContent());
     assertThat(tmp.resolve("data/webshop/config.yml")).exists();
