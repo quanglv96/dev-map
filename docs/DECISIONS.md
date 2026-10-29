@@ -19,7 +19,7 @@ Từ câu "luồng ticket, graph và rule phải chạy được bằng tay trư
 
 ## D-02 Môi trường build
 
-Máy dev chỉ có JDK 17 nên đã cài Temurin JDK 21 vào `~/.jdks/jdk-21.0.12.1+1`; dùng Maven Wrapper (`./mvnw`, Maven 3.9.11).
+Dùng JDK 17 có sẵn trên máy (xem D-12) và Maven Wrapper (`./mvnw`, Maven 3.9.11).
 `mvn verify` tự tải Node vào `target/node` để chạy ESLint, không cần Node cài sẵn.
 
 ## D-03 Token kết nối (NFR-08)
@@ -66,3 +66,9 @@ test JUnit dùng `SampleRepos` (JGit) làm việc tương tự trong thư mục 
 ## D-11 Tách lớp trong code DevMap
 
 Checkstyle `ImportControl` cấm package `web` và `cli` import `*Repository`: lớp giao diện/CLI chỉ gọi Service.
+
+## D-12 Java 17 thay cho Java 21 (khác SRS)
+
+SRS (Kiến trúc, Giả định) và CLAUDE.md ghi Java 21. PMO yêu cầu dùng JDK 17 (29/10/2026), nên `java.version` là 17 cho DevMap và repo mẫu;
+`devmap doctor` yêu cầu Java 17+. Spring Boot 3 và JGit 7 đều chạy trên 17. Không dùng API chỉ có từ Java 18+.
+Muốn quay lại 21: đổi `java.version` trong `pom.xml` và ngưỡng trong `DoctorCommand`.

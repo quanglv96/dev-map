@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 
-/** Checks the machine (Java 21, git, agent CLI) and every registered project. */
+/** Checks the machine (Java 17+, git, agent CLI) and every registered project. */
 @Command(name = "doctor", mixinStandardHelpOptions = true, description = "Check environment and project configs.")
 class DoctorCommand implements Callable<Integer> {
 
@@ -18,7 +18,7 @@ class DoctorCommand implements Callable<Integer> {
   @Override
   public Integer call() {
     int java = Runtime.version().feature();
-    report(java >= 21, true, "Java " + java + (java >= 21 ? "" : " (cần 21+)"));
+    report(java >= 17, true, "Java " + java + (java >= 17 ? "" : " (cần 17+)"));
     String git = firstLine("git", "--version");
     report(git != null, true, git != null ? git : "không tìm thấy git trên PATH");
     String claude = firstLine("claude", "--version");
