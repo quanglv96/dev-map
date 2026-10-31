@@ -27,7 +27,7 @@ public class GraphRepository {
       return Optional.empty();
     }
     try {
-      return Optional.of(JSON.readValue(f.toFile(), RepoIndex.class));
+      return Optional.of(JSON.readValue(Files.readAllBytes(f), RepoIndex.class));
     } catch (IOException e) {
       return Optional.empty(); // unreadable cache = not indexed; the PMO can rescan
     }
@@ -44,7 +44,7 @@ public class GraphRepository {
   public List<ManualEdge> manualEdges(Path projectDir) {
     Path f = projectDir.resolve("manual-edges.json");
     try {
-      return Files.exists(f) ? JSON.readValue(f.toFile(), new TypeReference<List<ManualEdge>>() { }) : List.of();
+      return Files.exists(f) ? JSON.readValue(Files.readAllBytes(f), new TypeReference<List<ManualEdge>>() { }) : List.of();
     } catch (IOException e) {
       throw new UncheckedIOException("manual-edges.json hỏng: " + e.getMessage(), e);
     }

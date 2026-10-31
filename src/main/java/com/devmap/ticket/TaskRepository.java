@@ -85,7 +85,7 @@ public class TaskRepository {
 
   public Spec readSpec(Path folder) {
     try {
-      return JSON.readValue(folder.resolve("spec.json").toFile(), Spec.class);
+      return JSON.readValue(Files.readAllBytes(folder.resolve("spec.json")), Spec.class);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -94,7 +94,7 @@ public class TaskRepository {
   public DevState readDevState(Path folder) {
     Path f = folder.resolve("dev.json");
     try {
-      return Files.exists(f) ? JSON.readValue(f.toFile(), DevState.class) : DevState.EMPTY;
+      return Files.exists(f) ? JSON.readValue(Files.readAllBytes(f), DevState.class) : DevState.EMPTY;
     } catch (IOException e) {
       throw new UncheckedIOException("dev.json hỏng: " + e.getMessage(), e);
     }

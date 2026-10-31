@@ -24,7 +24,7 @@ public class ChatRepository {
   public List<ChatMessage> read(Path ticketFolder) {
     Path f = ticketFolder.resolve("chat.json");
     try {
-      return Files.exists(f) ? JSON.readValue(f.toFile(), new TypeReference<List<ChatMessage>>() { }) : List.of();
+      return Files.exists(f) ? JSON.readValue(Files.readAllBytes(f), new TypeReference<List<ChatMessage>>() { }) : List.of();
     } catch (IOException e) {
       throw new UncheckedIOException("chat.json hỏng: " + e.getMessage(), e);
     }

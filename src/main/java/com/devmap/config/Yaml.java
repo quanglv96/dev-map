@@ -27,7 +27,7 @@ public final class Yaml {
 
   public static <T> T read(Path file, Class<T> type) {
     try {
-      return MAPPER.readValue(file.toFile(), type);
+      return MAPPER.readValue(Files.readAllBytes(file), type);
     } catch (IOException e) {
       throw new UncheckedIOException("Không đọc được " + file + ": " + e.getMessage(), e);
     }
@@ -47,7 +47,7 @@ public final class Yaml {
 
   public static JsonNode readTree(Path file) {
     try {
-      JsonNode n = Files.exists(file) ? MAPPER.readTree(file.toFile()) : null;
+      JsonNode n = Files.exists(file) ? MAPPER.readTree(Files.readAllBytes(file)) : null;
       return n == null || n.isMissingNode() || n.isNull() ? MAPPER.createObjectNode() : n;
     } catch (IOException e) {
       throw new UncheckedIOException("Không đọc được " + file + ": " + e.getMessage(), e);
@@ -79,14 +79,42 @@ public final class Yaml {
     }
   }
 
+  /**
+   * Own temp file per call (two writers never share one), then an atomic replace. Windows refuses to replace a file while anyone
+   * has it open (the UI reading chat.json during a session, antivirus, an editor): retried briefly, then the content is written
+   * in place, which open readers allow. Losing an agent's answer is worse than a non-atomic write.
+   */
   public static void writeText(Path file, String text) {
+    Path tmp = null;
     try {
       Files.createDirectories(file.getParent());
-      Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+      tmp = Files.createTempFile(file.getParent(), file.getFileName() + ".", ".tmp");
       Files.writeString(tmp, text);
-      Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      for (int attempt = 1; ; attempt++) {
+        try {
+          Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+          return;
+        } catch (java.nio.file.FileSystemException e) {
+          if (attempt == 5) {
+            Files.writeString(file, text);
+            return;
+          }
+          Thread.sleep(40L * attempt);
+        }
+      }
     } catch (IOException e) {
       throw new UncheckedIOException("Không ghi được " + file + ": " + e.getMessage(), e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new UncheckedIOException("Không ghi được " + file + ": bị ngắt", new IOException(e));
+    } finally {
+      if (tmp != null) {
+        try {
+          Files.deleteIfExists(tmp);
+        } catch (IOException ignored) {
+          // a stray .tmp is harmless; the target is already written or the error above says why not
+        }
+      }
     }
   }
 }
