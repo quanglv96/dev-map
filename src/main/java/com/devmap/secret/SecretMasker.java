@@ -44,8 +44,12 @@ public class SecretMasker {
       Pattern.compile("127\\.0\\.0\\.1"), Pattern.compile("0\\.0\\.0\\.0"), Pattern.compile("\\$\\{[^}]*\\}"),
       Pattern.compile("\\[MASKED_[A-Z]+\\].*"));
 
-  /** Segments of a branch name or path: lowercase/Capitalized words, numbers, short CAPS (NYX) or anything up to 3 chars. */
-  private static final Pattern WORD = Pattern.compile("[a-z]+|[A-Z][a-z]+|[A-Z]{1,10}|[0-9]+|.{1,3}");
+  /**
+   * Segments of a branch name or path: words of 2+ lowercase letters, camelCase/PascalCase made of them (ArticlePathService,
+   * HTTPClient, OAuth2Config), numbers, short CAPS (NYX) or anything up to 3 chars. A random token has lone lowercase letters.
+   * Possessive quantifiers keep the match linear on long CAPS runs.
+   */
+  private static final Pattern WORD = Pattern.compile("(?:[A-Z]{0,10}+[a-z]{2,}+|[A-Z]{1,10}+|[0-9]++)++|.{1,3}");
 
   private static Rule rule(String label, String regex, int group) {
     return new Rule(label, Pattern.compile(regex), group, false);

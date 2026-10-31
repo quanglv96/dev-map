@@ -240,7 +240,7 @@ public class AgentService {
             if (e.kind().equals("quota")) {
               quota(e.text());
             } else {
-              step(project, id, no, new Step(e.kind(), masker.mask(e.text()).text()));
+              step(project, id, no, new Step(e.kind(), e.text()));
             }
           });
     } catch (java.io.IOException e) {
@@ -600,10 +600,12 @@ public class AgentService {
     return r;
   }
 
+  /** Every step goes through the masker here: notes carry git output and error messages, not only agent events. */
   private void step(String project, String id, int no, Step step) {
+    String text = clip(masker.mask(step.text(), projects.get(project).config().secrets()).text(), 4000);
     update(project, id, no, m -> {
       List<Step> steps = new ArrayList<>(m.steps());
-      steps.add(new Step(step.kind(), clip(step.text(), 4000)));
+      steps.add(new Step(step.kind(), text));
       return m.with(m.text(), steps, m.usage(), m.state(), m.heads());
     });
     progress(project, id, no, "running");

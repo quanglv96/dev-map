@@ -60,6 +60,8 @@ class SecretMaskerTest {
   void keepsBranchNamesAndPathsButNotRandomTokens() {
     String text = "branch feature/NYX-9-them-hoan-tien-mot-phan-cho-order, file src/main/resources/db/migration/V2__add_refund_column.sql";
     assertThat(masker.mask(text).text()).isEqualTo(text);
+    String java = "[src/main/java/com/nyxhub/sentix/article/ArticlePathV2ServiceImpl.java, src/main/java/vn/x/OAuth2HTTPConfig.java]";
+    assertThat(masker.mask(java).text()).isEqualTo(java);
     assertThat(masker.mask("k Zx9Qm2Lp7Rt4Vw8Yb3Nc6Hd1Jf5Gs0Ke").text()).isEqualTo("k [MASKED_TOKEN]");
     assertThat(masker.mask("k aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3-zA5bC7").text()).isEqualTo("k [MASKED_TOKEN]");
   }
