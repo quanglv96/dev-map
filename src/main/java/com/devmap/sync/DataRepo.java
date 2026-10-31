@@ -226,7 +226,8 @@ public class DataRepo {
     for (int step = 0; !o.ok() && rebasing(root); step++) {
       if (step == MAX_REBASE_STEPS) {
         git.run(root, "rebase", "--abort");
-        throw new IllegalStateException("Không rebase được dữ liệu sau " + MAX_REBASE_STEPS + " bước, đã huỷ (không mất gì): " + o.output());
+        throw new IllegalStateException("Không rebase được dữ liệu sau " + MAX_REBASE_STEPS + " bước, đã huỷ (không mất gì): "
+            + o.output());
       }
       for (String path : unmerged(root)) {
         keepBoth(root, path, machine, created);

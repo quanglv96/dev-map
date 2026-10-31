@@ -2,7 +2,7 @@ package com.devmap.cli;
 
 import com.devmap.config.Project;
 import com.devmap.config.ProjectService;
-import com.devmap.config.WorkspaceRepository;
+import com.devmap.sync.SyncService;
 import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskService;
 import com.devmap.ticket.TaskService.Actor;
@@ -92,10 +92,11 @@ class TaskCommand implements Runnable {
         return 1;
       }
     }
-    String machine = Core.get(WorkspaceRepository.class).machine();
+    String machine = Core.get(SyncService.class).machine();
     dev.handoff(p, id, machine, Actor.PMO).forEach(r ->
         System.out.println(r.repo() + ": đã push " + r.commit().substring(0, 8) + " → origin/" + r.branch()));
-    System.out.println("Đã ghi handoff vào task.md. Trên máy kia: mở ticket rồi bấm \"Tiếp tục trên máy này\", hoặc `devmap ticket resume " + id + "`.");
+    System.out.println("Đã ghi handoff vào task.md. Trên máy kia: mở ticket rồi bấm \"Tiếp tục trên máy này\", "
+        + "hoặc `devmap ticket resume " + id + "`.");
     return 0;
   }
 
@@ -103,7 +104,7 @@ class TaskCommand implements Runnable {
   int resume(@Parameters(paramLabel = "id") String id,
       @Option(names = "--project", description = "Project; needed only when several projects have this ticket code.") String project) {
     String p = project != null ? project : projectOf(id);
-    TicketGitService.View v = Core.get(TicketGitService.class).resume(p, id, Core.get(WorkspaceRepository.class).machine(), Actor.PMO);
+    TicketGitService.View v = Core.get(TicketGitService.class).resume(p, id, Core.get(SyncService.class).machine(), Actor.PMO);
     v.repos().forEach(r -> System.out.println(r.repo() + ": " + r.branch() + " @" + (r.head() == null ? "-" : r.head().substring(0, 8))));
     return 0;
   }
@@ -114,7 +115,8 @@ class TaskCommand implements Runnable {
     List<String> found = Core.get(ProjectService.class).list().stream().filter(x -> x.config() != null).map(Project::name)
         .filter(n -> tasks.list(n).stream().anyMatch(t -> t.id().equals(id))).toList();
     if (found.size() != 1) {
-      throw new IllegalArgumentException(found.isEmpty() ? "Không có ticket " + id : "Nhiều dự án có " + id + ": " + found + "; thêm --project");
+      throw new IllegalArgumentException(found.isEmpty() ? "Không có ticket " + id
+          : "Nhiều dự án có " + id + ": " + found + "; thêm --project");
     }
     return found.get(0);
   }

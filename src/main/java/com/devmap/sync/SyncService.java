@@ -627,7 +627,8 @@ public class SyncService {
     Set<String> scopes = new LinkedHashSet<>();
     for (Change c : real) {
       Matcher m = TASK_DIR.matcher(c.path());
-      scopes.add(m.matches() ? m.group(1) + "/" + ticketId(root, m) : c.path().contains("/") ? c.path().substring(0, c.path().indexOf('/')) : "devmap");
+      String top = c.path().contains("/") ? c.path().substring(0, c.path().indexOf('/')) : "devmap";
+      scopes.add(m.matches() ? m.group(1) + "/" + ticketId(root, m) : top);
     }
     String scope = scopes.size() == 1 ? scopes.iterator().next()
         : scopes.stream().map(s -> s.contains("/") ? s.substring(0, s.indexOf('/')) : s).distinct().count() == 1

@@ -151,7 +151,8 @@ class SyncServiceTest {
     assertThat(a.sync.message(a.data, List.of(new Change("shop/tasks/" + folder + "/analysis.md", false, false))))
         .isEqualTo("data(shop/NYX-231): cập nhật analysis.md");
     assertThat(a.sync.message(a.data, List.of(new Change("shop/config.yml", false, false),
-        new Change("shop/rules/default.devrules.yml", true, false)))).isEqualTo("data(shop): cập nhật config.yml, thêm rules/default.devrules.yml");
+        new Change("shop/rules/default.devrules.yml", true, false))))
+        .isEqualTo("data(shop): cập nhật config.yml, thêm rules/default.devrules.yml");
     assertThat(a.sync.message(a.data, List.of(new Change(DataRepo.LOCK, false, false)))).isEqualTo("data(lock): heartbeat machineA");
 
     Files.writeString(a.data.resolve("shop/project.md"), "# shop\n\nđổi\n");

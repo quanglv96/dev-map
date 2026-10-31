@@ -1,6 +1,6 @@
 package com.devmap.web;
 
-import com.devmap.config.WorkspaceRepository;
+import com.devmap.sync.SyncService;
 import com.devmap.rule.QualityGate;
 import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskService;
@@ -33,12 +33,12 @@ public class DevController {
 
   private final TicketGitService dev;
   private final TaskService tasks;
-  private final WorkspaceRepository workspaces;
+  private final SyncService sync;
 
-  public DevController(TicketGitService dev, TaskService tasks, WorkspaceRepository workspaces) {
+  public DevController(TicketGitService dev, TaskService tasks, SyncService sync) {
     this.dev = dev;
     this.tasks = tasks;
-    this.workspaces = workspaces;
+    this.sync = sync;
   }
 
   @PutMapping("/repos")
@@ -100,12 +100,12 @@ public class DevController {
   /** FR-55: the PMO confirmed the push; WIP commit, push the ticket branches, record the handoff. */
   @PostMapping("/dev/handoff")
   public List<Task.Handoff.Repo> handoff(@PathVariable String project, @PathVariable String id) {
-    return dev.handoff(project, id, workspaces.machine(), Actor.PMO);
+    return dev.handoff(project, id, sync.machine(), Actor.PMO);
   }
 
   /** FR-55 on the other machine: continue from the handed-over commits. */
   @PostMapping("/dev/resume")
   public TicketGitService.View resume(@PathVariable String project, @PathVariable String id) {
-    return dev.resume(project, id, workspaces.machine(), Actor.PMO);
+    return dev.resume(project, id, sync.machine(), Actor.PMO);
   }
 }

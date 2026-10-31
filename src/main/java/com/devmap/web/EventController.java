@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-/** Server-Sent Events: open tabs learn about ticket ("task"), graph ("graph") and agent ("agent") changes, all projects or ?project=; data sync ("sync") always. */
+/**
+ * Server-Sent Events: open tabs learn about ticket ("task"), graph ("graph") and agent ("agent") changes, all projects or
+ * ?project=; data sync ("sync") always.
+ */
 @RestController
 public class EventController {
 
