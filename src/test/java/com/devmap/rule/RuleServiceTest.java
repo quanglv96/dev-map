@@ -119,6 +119,15 @@ class RuleServiceTest {
   }
 
   @Test
+  void gateUsesBuildWrapperWhenRepoHasOne(@TempDir Path dir) throws Exception {
+    assertThat(QualityGate.withWrapper("mvn -q test", dir)).isEqualTo("mvn -q test");
+    boolean win = System.getProperty("os.name").toLowerCase().contains("win");
+    Files.writeString(dir.resolve(win ? "mvnw.cmd" : "mvnw"), "");
+    assertThat(QualityGate.withWrapper("mvn -q test", dir)).isEqualTo((win ? "mvnw" : "./mvnw") + " -q test");
+    assertThat(QualityGate.withWrapper("mvnx test", dir)).isEqualTo("mvnx test");
+  }
+
+  @Test
   void globs() {
     assertThat(Glob.matches("pom.xml", "a/b/pom.xml")).isTrue();
     assertThat(Glob.matches("**/*.sql", "V1.sql")).isTrue();

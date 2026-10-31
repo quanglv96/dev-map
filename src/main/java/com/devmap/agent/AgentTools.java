@@ -53,6 +53,7 @@ class AgentTools {
   static final int SNIPPET_LINES = 80;
   private static final int MAX_TEXT = 40_000;
   private static final ObjectMapper JSON = new ObjectMapper();
+  private static final Pattern COMMIT = Pattern.compile("[0-9a-fA-F]{7,40}");
   private static final Pattern DIFF_FILE = Pattern.compile("(?m)^diff --git a/(\\S+) b/");
   private static final Map<Role, List<String>> DOCS = Map.of(
       Role.SA, List.of("analysis.md", "plan.md", "summary.md", "verify.md"),
@@ -85,9 +86,9 @@ class AgentTools {
           + "Chỉ khi đang phân tích, trước khi PMO chốt.", Set.of(Role.SA), "repos:array:Tên repo thuộc dự án"),
       tool("verify_facts", "Dữ kiện kiểm chứng DevMap tính từ git diff và graph: file lệch phạm vi, chữ ký/API bị đổi và nơi gọi.",
           Set.of(Role.SA)),
-      tool("git_diff", "Diff của branch ticket so với nhánh nền ở một repo (cả phần chưa commit); đã che bí mật.",
-          Set.of(Role.SA, Role.DEV),
-          "repo:string:Tên repo"),
+      tool("git_diff", "Diff của branch ticket so với nhánh nền ở một repo (cả phần chưa commit); có commit thì là nội dung đúng "
+          + "commit đó (ví dụ commit PMO hay commit mới của nhánh nền). Đã che bí mật.", Set.of(Role.SA, Role.DEV),
+          "repo:string:Tên repo", "commit?:string:Mã commit (7-40 ký tự hex)"),
       tool("run_quality_gate", "Chạy quality gate (tách lớp, phân tích tĩnh, unit test) ở mọi repo của ticket, ghi tests.md.",
           Set.of(Role.DEV)),
       tool("commit", "Commit mọi thay đổi trong worktree của repo, message tự gắn mã ticket.", Set.of(Role.DEV),
@@ -143,7 +144,7 @@ class AgentTools {
       case "set_status" -> setStatus(s, text(args, "to"));
       case "set_repos" -> setRepos(s, args.path("repos"));
       case "verify_facts" -> facts(s).markdown();
-      case "git_diff" -> diff(s, text(args, "repo"));
+      case "git_diff" -> args.hasNonNull("commit") ? show(s, text(args, "repo"), text(args, "commit")) : diff(s, text(args, "repo"));
       case "run_quality_gate" -> gate(s);
       case "commit" -> commit(s, text(args, "repo"), text(args, "message"));
       case "write_file" -> writeFile(s, text(args, "repo"), text(args, "path"), text(args, "content"));
@@ -351,6 +352,17 @@ class AgentTools {
     return withoutSecretFiles(dev.diff(s.project, s.taskId, repo));
   }
 
+  private String show(AgentSession s, String repo, String commit) {
+    if (!COMMIT.matcher(commit).matches()) {
+      throw new IllegalArgumentException("Mã commit phải là 7-40 ký tự hex: " + commit);
+    }
+    GitService.Out o = git.run(Path.of(repoConfig(s, repo).path()), "show", "--stat", "--patch", "--format=%H %an %ad%n%s%n", commit);
+    if (!o.ok()) {
+      throw new NoSuchElementException(repo + ": không có commit " + commit);
+    }
+    return withoutSecretFiles(o.output());
+  }
+
   /** Drops whole file blocks of secret files from a diff before masking (FR-34). */
   static String withoutSecretFiles(String diff) {
     StringBuilder out = new StringBuilder();
@@ -378,7 +390,7 @@ class AgentTools {
   private String commit(AgentSession s, String repo, String message) {
     RepoView r = dev.commit(s.project, s.taskId, repo, message, s.role.actor).repos().stream()
         .filter(v -> v.repo().equals(repo)).findFirst().orElseThrow();
-    return "Đã commit ở " + repo + ": " + (r.commits().isEmpty() ? "" : r.commits().get(0));
+    return "Đã commit ở " + repo + " trên nhánh " + r.branch() + ": " + (r.commits().isEmpty() ? "" : r.commits().get(0));
   }
 
   private String writeFile(AgentSession s, String repo, String path, String content) {

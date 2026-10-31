@@ -33,8 +33,9 @@ presets:
       integration_test_command: "gradle -q check"
   node:
     quality:
-      static_commands: ["npx eslint ."]
-      unit_test_command: "npm test"
+      # package.json scripts, not a bare eslint: a repo without an ESLint config still gets its build (compile) checked
+      static_commands: ["npm run lint --if-present", "npm run build --if-present"]
+      unit_test_command: "npm run test --if-present -- --watch=false"
       integration_test_command: ""
   python:
     quality:

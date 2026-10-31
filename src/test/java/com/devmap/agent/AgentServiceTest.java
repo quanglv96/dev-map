@@ -121,7 +121,7 @@ class AgentServiceTest {
     graphs = new GraphService(projects, git, new GraphRepository(), indexer, masker, tasks, e -> { });
     AgentTools tools = new AgentTools(tasks, dev, graphs, git, projects, rules, masker, new VerifyFacts(dev, graphs, git, indexer));
     ContextBuilder context = new ContextBuilder(tasks, graphs, new ConventionService(projects, new RuleRepository(), git, masker), rules,
-        projects, new RequestCleaner(), masker);
+        projects, new RequestCleaner(), masker, dev);
     agents = new AgentService(tasks, dev, graphs, git, projects, context, tools, fake, new ChatRepository(), masker, publish,
         new MockEnvironment(), home, Runnable::run);
     mcp = new McpServer(agents, tools);
@@ -298,6 +298,10 @@ class AgentServiceTest {
       assertThat(facts).contains("order-service:src/main/java/com/shop/order/Extra.java", "OrderService.create",
           "order-service:OrderController.create");
       assertThat(tool(c, "git_diff", Map.of("repo", "order-service"))).contains("String note");
+      String head = dev.view("shop", id).repos().stream().filter(r -> r.repo().equals("order-service")).findFirst()
+          .orElseThrow().head();
+      assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "commit", head.substring(0, 8)))).contains("add note", "String note");
+      assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "commit", "--output=x"))).startsWith("ERR");
       assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).startsWith("ERR").contains("verify.md");
       // the approved plan cannot be rewritten to make the deviation look planned
       assertThat(tool(c, "write_ticket_doc", Map.of("name", "plan.md", "content", "- order-service: Extra.java\n")))

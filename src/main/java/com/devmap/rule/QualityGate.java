@@ -78,21 +78,40 @@ public class QualityGate {
     return new Step(name, "", false, -1, 0, "Rule bật bước này nhưng chưa cấu hình lệnh chạy");
   }
 
+  // ponytail: wrapper looked up in the service folder only, walk up to the repo root if a multi-module repo needs it
+  /** mvn/gradle → the repo's wrapper when it has one, so the gate runs on a machine without Maven/Gradle installed. */
+  static String withWrapper(String command, Path dir) {
+    for (String tool : List.of("mvn", "gradle")) {
+      String wrapper = tool + "w";
+      String file = WINDOWS ? wrapper + (tool.equals("mvn") ? ".cmd" : ".bat") : wrapper;
+      if (command.startsWith(tool + " ") && Files.exists(dir.resolve(file))) {
+        return (WINDOWS ? wrapper : "./" + wrapper) + command.substring(tool.length());
+      }
+    }
+    return command;
+  }
+
   /** Runs one configured command through the OS shell, output to a temp file (no pipe to drain, no deadlock). */
-  static Step command(String name, String command, Path dir, int timeoutMinutes) {
+  static Step command(String name, String configured, Path dir, int timeoutMinutes) {
+    String command = withWrapper(configured, dir);
     long t0 = System.currentTimeMillis();
     Path log = null;
     try {
       log = Files.createTempFile("devmap-gate", ".log");
       List<String> argv = WINDOWS ? List.of("cmd", "/c", command) : List.of("sh", "-c", command);
-      Process p = new ProcessBuilder(argv).directory(dir.toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+      ProcessBuilder pb = new ProcessBuilder(argv).directory(dir.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+      pb.environment().put("CI", "true"); // jest/vitest/karma etc. run once instead of watching
+      Process p = pb.start();
       if (!p.waitFor(timeoutMinutes, TimeUnit.MINUTES)) {
         p.descendants().forEach(ProcessHandle::destroyForcibly);
         p.destroyForcibly();
         return new Step(name, command, false, -1, System.currentTimeMillis() - t0,
             "Quá " + timeoutMinutes + " phút, đã dừng\n" + tail(log));
       }
-      return new Step(name, command, p.exitValue() == 0, p.exitValue(), System.currentTimeMillis() - t0, tail(log));
+      // cmd: 9009, sh: 127 = command not found
+      String hint = p.exitValue() == 9009 || p.exitValue() == 127 ? "\nKhông tìm thấy lệnh trên máy chạy DevMap: cài công cụ "
+          + "(có trong PATH khi chạy devmap) hoặc sửa lệnh ở trang Quy tắc" : "";
+      return new Step(name, command, p.exitValue() == 0, p.exitValue(), System.currentTimeMillis() - t0, tail(log) + hint);
     } catch (IOException e) {
       return new Step(name, command, false, -1, System.currentTimeMillis() - t0, "Không chạy được: " + e.getMessage());
     } catch (InterruptedException e) {

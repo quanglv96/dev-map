@@ -12,6 +12,7 @@ import com.devmap.secret.SecretMasker;
 import com.devmap.ticket.RequestCleaner;
 import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskService;
+import com.devmap.ticket.TicketGitService;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -44,9 +45,11 @@ class ContextBuilder {
   private final ProjectService projects;
   private final RequestCleaner cleaner;
   private final SecretMasker masker;
+  private final TicketGitService dev;
 
   ContextBuilder(TaskService tasks, GraphService graphs, ConventionService conventions, RuleService rules, ProjectService projects,
-      RequestCleaner cleaner, SecretMasker masker) {
+      RequestCleaner cleaner, SecretMasker masker, TicketGitService dev) {
+    this.dev = dev;
     this.tasks = tasks;
     this.graphs = graphs;
     this.conventions = conventions;
@@ -78,7 +81,8 @@ class ContextBuilder {
     StringBuilder sb = new StringBuilder("# Phiên mới · ").append(role).append(" · ").append(id).append(" · câu hỏi #").append(sessionNo)
         .append("\n\nKhông có lịch sử chat: mọi ngữ cảnh ở dưới và trong công cụ devmap.\n")
         .append("Ticket: ").append(t.type()).append(", trạng thái `").append(t.status().code()).append("`, repo ").append(t.repos())
-        .append(", branch `").append(t.branch()).append("`, mở lại ").append(t.reopened()).append(" lần.\n");
+        .append(dev.view(project, id).direct() ? ", code và commit thẳng trên nhánh nền (PMO chọn, không có branch ticket)"
+            : ", branch `" + t.branch() + "`").append(", mở lại ").append(t.reopened()).append(" lần.\n");
     List<String> docs = new ArrayList<>(List.of("spec.json", "summary.md", "analysis.md", "plan.md"));
     if (role == Role.DEV) {
       docs.addAll(List.of("verify.md", "changes.md"));
