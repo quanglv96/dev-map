@@ -19,12 +19,16 @@ class ClaudeCodeProviderTest {
     assertThat(ClaudeCodeProvider.parseLine("{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Đang xem\"},"
         + "{\"type\":\"tool_use\",\"name\":\"mcp__devmap__search_graph\",\"input\":{\"query\":\"Order\"}}]}}", events::add)).isNull();
     assertThat(ClaudeCodeProvider.parseLine("not json", events::add)).isNull();
+    assertThat(ClaudeCodeProvider.parseLine("{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\","
+        + "\"resetsAt\":1761900000,\"rateLimitType\":\"five_hour\"}}", events::add)).isNull();
     Result r = ClaudeCodeProvider.parseLine("{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"pong\","
         + "\"total_cost_usd\":0.0057,\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":702,\"cache_read_input_tokens\":10,"
         + "\"output_tokens\":4}}", events::add);
     assertThat(events).extracting(Event::kind, Event::text)
         .containsExactly(org.assertj.core.groups.Tuple.tuple("text", "Đang xem"),
-            org.assertj.core.groups.Tuple.tuple("tool", "search_graph {\"query\":\"Order\"}"));
+            org.assertj.core.groups.Tuple.tuple("tool", "search_graph {\"query\":\"Order\"}"),
+            org.assertj.core.groups.Tuple.tuple("quota",
+                "{\"status\":\"allowed\",\"resetsAt\":1761900000,\"rateLimitType\":\"five_hour\"}"));
     assertThat(r.ok()).isTrue();
     assertThat(r.text()).isEqualTo("pong");
     assertThat(r.usage()).isEqualTo(new AgentProvider.Usage(2, 4, 10, 702, 0.0057));

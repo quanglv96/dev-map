@@ -11,7 +11,7 @@ const STYLE = [
     label: "data(short)", "font-size": 10, "text-valign": "bottom", "text-margin-y": 4, color: "#1f2937",
     "background-color": (n) => COLORS[n.data("kind")] ?? "#999", shape: (n) => SHAPES[n.data("kind")] ?? "ellipse",
     width: (n) => n.data("kind") === "service" ? 46 : 22, height: (n) => n.data("kind") === "service" ? 30 : 22,
-    "text-wrap": "ellipsis", "text-max-width": 140 } },
+    "text-wrap": "ellipsis", "text-max-width": 140, "min-zoomed-font-size": 7 } },
   { selector: "node:selected", style: { "border-width": 3, "border-color": "#111827" } },
   { selector: "node.ticket", style: { "border-width": 4, "border-color": "#f59e0b" } },
   { selector: "node.radius", style: { "background-color": "#dc2626" } },
@@ -19,17 +19,51 @@ const STYLE = [
   { selector: "edge", style: {
     width: 1.5, "curve-style": "bezier", "target-arrow-shape": "triangle", "arrow-scale": 0.8,
     "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", label: "data(type)", "font-size": 8, color: "#64748b",
-    "text-rotation": "autorotate" } },
+    "text-rotation": "autorotate", "min-zoomed-font-size": 9 } },
   { selector: "edge.medium", style: { "line-style": "dashed" } },
   { selector: "edge.low", style: { "line-style": "dotted" } },
   { selector: "edge.manual", style: { "line-color": "#f59e0b", "target-arrow-color": "#f59e0b" } },
-  { selector: "edge.contains", style: { "line-color": "#e5e7eb", "target-arrow-color": "#e5e7eb", label: "" } }
+  { selector: "edge.contains", style: { "line-color": "#e5e7eb", "target-arrow-color": "#e5e7eb", label: "" } },
+  { selector: ".faded", style: { opacity: 0.12 } }
 ];
+
+/** Per view: how the nodes are placed when no saved positions exist. */
+const LAYOUTS = ["auto", "cose", "breadthfirst", "concentric", "circle", "grid"];
+
+function layoutOptions(name, level, focus) {
+  const tree = level === "node" || level === "radius" || level === "service";
+  const pick = name === "auto" ? (tree ? "breadthfirst" : "cose") : name;
+  return { name: pick, animate: false, padding: 30, nodeDimensionsIncludeLabels: true, directed: true, spacingFactor: 1.25,
+    roots: pick === "breadthfirst" && focus ? [focus] : undefined, nodeRepulsion: 20000, idealEdgeLength: 140, avoidOverlap: true,
+    concentric: (n) => (n.id() === focus ? 10 : n.degree()), levelWidth: () => 2 };
+}
+
+// dragged node positions per view survive re-renders and reloads; only a viewer convenience, so storage may fail
+const POS_KEY = "devmap.graph.pos";
+
+function loadPositions() {
+  try {
+    return JSON.parse(localStorage.getItem(POS_KEY)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function savePositions(all) {
+  try {
+    localStorage.setItem(POS_KEY, JSON.stringify(all));
+  } catch {
+    // private window or full storage: positions just are not remembered
+  }
+}
 
 /** Mounts the screen; returns a refresh(eventState) function for SSE "graph" events. */
 export function renderGraph(mid, right, project, tasks) {
   const base = `/api/projects/${encodeURIComponent(project)}/graph`;
-  const state = { level: "services", focus: null, trail: [], depth: 2, selected: null, edgeFrom: null, ticket: "", radius: null };
+  const state = { level: "services", focus: null, trail: [], depth: 2, selected: null, edgeFrom: null, ticket: "", radius: null,
+    layout: "auto" };
+  const positions = loadPositions();
+  const viewKey = () => `${project}|${state.level}|${state.focus}|${state.depth}|${state.layout}|${state.radius ? "r" : ""}`;
   const crumbs = el("div", { class: "crumbs" });
   const error = el("div");
   const box = el("div", { id: "cy", class: "cy" });
@@ -39,12 +73,47 @@ export function renderGraph(mid, right, project, tasks) {
     [1, 2, 3].map((d) => el("option", { value: d, selected: d === 2 }, `${t("depth")} ${d}`)));
   const ticket = el("select", { onchange: () => { state.ticket = ticket.value; draw(); } },
     el("option", { value: "" }, t("highlightTicket")), tasks.map((x) => el("option", { value: x.id }, `${x.id} · ${x.title}`)));
+  const layout = el("select", { title: t("graphLayout"), onchange: () => { state.layout = layout.value; draw(); } },
+    LAYOUTS.map((v) => el("option", { value: v }, t(`layout.${v}`))));
+  const zoomBy = (f) => cy.zoom({ level: cy.zoom() * f, renderedPosition: { x: box.clientWidth / 2, y: box.clientHeight / 2 } });
+  const canvasTools = el("div", { class: "row graph-canvas-tools small" },
+    el("button", { type: "button", class: "secondary", title: t("zoomIn"), onclick: () => zoomBy(1.25) }, "+"),
+    el("button", { type: "button", class: "secondary", title: t("zoomOut"), onclick: () => zoomBy(0.8) }, "−"),
+    el("button", { type: "button", class: "secondary", onclick: () => cy.fit(undefined, 30) }, t("fitView")),
+    layout,
+    el("button", { type: "button", class: "secondary", title: t("relayoutHint"), onclick: () => {
+      delete positions[viewKey()];
+      savePositions(positions);
+      draw();
+    } }, t("relayout")),
+    el("span", { class: "muted" }, t("canvasHint")));
   fill(mid, el("div", { class: "row graph-tools" }, crumbs, el("span", { class: "grow" }), depth, ticket,
-    el("div", { class: "search" }, search, results)), error, box,
-    el("p", { class: "muted small" }, t("graphLegend")));
-  const cy = cytoscape({ container: box, style: STYLE, wheelSensitivity: 0.3, maxZoom: 1.3, minZoom: 0.1 });
-  cy.on("tap", "node", (e) => select(e.target.data()));
+    el("div", { class: "search" }, search, results)),
+  el("details", { class: "graph-help card" }, el("summary", {}, t("graphHelpTitle")),
+    t("graphHelp").split("\n").map((line) => el("p", { class: "small" }, line))),
+  canvasTools, error, box,
+  el("p", { class: "muted small" }, t("graphLegend")));
+  const cy = cytoscape({ container: box, style: STYLE, wheelSensitivity: 0.25, maxZoom: 4, minZoom: 0.05, boxSelectionEnabled: true });
+  cy.on("tap", "node", (e) => {
+    focusOn(e.target);
+    select(e.target.data());
+  });
+  cy.on("tap", (e) => {
+    if (e.target === cy) {
+      cy.elements().removeClass("faded");
+    }
+  });
   cy.on("dbltap", "node", (e) => drill(e.target.data()));
+  cy.on("dragfree", "node", () => {
+    positions[viewKey()] = Object.fromEntries(cy.nodes().map((n) => [n.id(), n.position()]));
+    savePositions(positions);
+  });
+
+  /** Click a node: keep it and its direct neighbours in front, fade the rest. */
+  function focusOn(node) {
+    cy.elements().addClass("faded");
+    node.closedNeighborhood().removeClass("faded");
+  }
 
   async function doSearch(q) {
     if (q.trim().length < 2) {
@@ -109,8 +178,10 @@ export function renderGraph(mid, right, project, tasks) {
         data: { id: `${e.from}|${e.to}|${e.type}`, source: e.from, target: e.to, type: e.type, confidence: e.confidence },
         classes: `${e.confidence} ${e.type} ${e.source === "manual" ? "manual" : ""}`
       })));
-      cy.layout({ name: state.level === "node" || state.level === "radius" ? "breadthfirst" : "cose", animate: false, directed: true, padding: 20,
-        roots: state.level === "node" || state.level === "radius" ? [state.focus] : undefined, nodeRepulsion: 9000, idealEdgeLength: 90 }).run();
+      const saved = positions[viewKey()];
+      cy.layout(saved && cy.nodes().every((n) => saved[n.id()])
+        ? { name: "preset", positions: (n) => saved[n.id()], padding: 30 }
+        : layoutOptions(state.layout, state.level, state.focus)).run();
       showError(error, g.truncated ? new Error(t("truncated")) : null);
     } catch (err) {
       showError(error, err);

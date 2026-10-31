@@ -16,7 +16,7 @@ public interface AgentProvider {
   record Call(String systemPrompt, String prompt, Path workDir, String mcpUrl, String sessionToken) {
   }
 
-  /** kind: text (agent message), tool (agent called a tool), error. */
+  /** kind: text (agent message), tool (agent called a tool), error, quota (JSON of the account's rate limit window). */
   record Event(String kind, String text) {
   }
 

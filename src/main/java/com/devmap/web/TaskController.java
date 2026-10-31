@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.agent.AgentService;
 import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskService;
 import com.devmap.ticket.TaskService.Actor;
@@ -21,7 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class TaskController {
 
-  public record CreateTaskRequest(String type, String code, String title, String request) {
+  /** analyze: send SA to analyse the new ticket right away (the form ticks it by default; scripts opt in). */
+  public record CreateTaskRequest(String type, String code, String title, String request, Boolean analyze) {
   }
 
   public record TransitionRequest(String to) {
@@ -34,9 +36,11 @@ public class TaskController {
   }
 
   private final TaskService tasks;
+  private final AgentService agents;
 
-  public TaskController(TaskService tasks) {
+  public TaskController(TaskService tasks, AgentService agents) {
     this.tasks = tasks;
+    this.agents = agents;
   }
 
   @GetMapping("/overview")
@@ -52,7 +56,11 @@ public class TaskController {
   @PostMapping("/projects/{project}/tasks")
   @ResponseStatus(HttpStatus.CREATED)
   public TaskService.Created create(@PathVariable String project, @RequestBody CreateTaskRequest req) {
-    return tasks.create(project, req.type(), req.code(), req.title(), req.request());
+    TaskService.Created created = tasks.create(project, req.type(), req.code(), req.title(), req.request());
+    if (Boolean.TRUE.equals(req.analyze())) {
+      agents.analyzeNew(project, created.task().id());
+    }
+    return created;
   }
 
   @GetMapping("/projects/{project}/tasks/{id}")

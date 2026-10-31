@@ -54,7 +54,13 @@ public class AgentController {
     return agents.activity(project);
   }
 
-  /** AC-04: Dev works the queue of Ready tickets in the PMO's order. */
+  /** FR-40: tokens of the project and the account quota Claude Code reports. */
+  @GetMapping("/usage")
+  public AgentService.UsageView usage(@PathVariable String project) {
+    return agents.usage(project);
+  }
+
+    /** AC-04: Dev works the queue of Ready tickets in the PMO's order. */
   @PostMapping("/queue/run")
   public AgentService.Activity runQueue(@PathVariable String project, @RequestBody QueueRun req) {
     return agents.runQueue(project, req.on());

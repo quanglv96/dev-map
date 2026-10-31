@@ -311,3 +311,8 @@ Chỉ khi PMO chọn xong (không phải khi gõ tay hay bấm Huỷ) form liệ
 Form "Thêm dự án" có ô **Folder dự án** = folder cha chứa các repo service. Chỉ sau khi PMO chọn folder trong hộp thoại hệ điều hành, DevMap gọi `GET /api/repos/scan`:
 folder là repo git thì lấy chính nó, không thì lấy các folder con trực tiếp là repo git; nhánh nền mặc định là nhánh đang checkout (detached thì `main`), service tự phát hiện. Quét không ghi gì.
 Nút **Bỏ khỏi DevMap** (ở form và ở Cấu hình dự án) chỉ bỏ repo khỏi config.yml/danh sách, không bao giờ xoá file trên máy.
+
+## D-49 Graph như canvas, tạo ticket là gửi SA, ô token & quota
+- **Graph**: thanh công cụ zoom +/−, Vừa khung, chọn bố cục (tự chọn/lực đẩy/cây theo tầng/đồng tâm/vòng tròn/lưới), Sắp xếp lại; zoom tới 4×; Shift+kéo chọn nhiều; nhấp node làm mờ phần không nối trực tiếp; nhãn tự ẩn khi thu nhỏ. Vị trí node PMO kéo được nhớ theo từng góc nhìn trong `localStorage` của trình duyệt (chỉ là tiện ích, mất cũng không sao). Hộp "Bước này làm gì?" giải thích quét → nối → xem → dùng.
+- **Tạo ticket**: form có ô "Gửi agent SA phân tích…" tích sẵn; tạo xong DevMap mở ngay một phiên SA (như PMO hỏi, chuyển Mới → SA phân tích). API `POST /tasks` chỉ làm vậy khi gửi `analyze: true`, để script/CLI không vô tình tốn token.
+- **Token & quota** (FR-40 mở rộng): ô trên thanh đầu trang dự án hiện token hôm nay, cộng dồn dự án, chi phí ước tính và quota tài khoản. Quota lấy từ sự kiện `rate_limit_event` mà Claude Code stream (`status`, `rateLimitType`, `resetsAt`, `utilization`); DevMap giữ bản mới nhất theo từng loại trong bộ nhớ, khởi động lại thì hiện lại sau phiên agent kế tiếp. Dùng API key thì Claude Code không gửi quota.

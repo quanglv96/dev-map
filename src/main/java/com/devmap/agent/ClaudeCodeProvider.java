@@ -114,8 +114,10 @@ public class ClaudeCodeProvider implements AgentProvider {
         boolean error = n.path("is_error").asBoolean() || !n.path("subtype").asText("success").equals("success");
         return new Result(!error, n.path("result").asText(error ? n.path("subtype").asText() : ""), usage);
       }
+      // subscription quota (status, rateLimitType, resetsAt, utilization), passed on as JSON for the token/quota box
+      case "rate_limit_event" -> sink.accept(new Event("quota", n.path("rate_limit_info").toString()));
       default -> {
-        // system/init, user (tool results, logged by DevMap itself), rate limit events
+        // system/init, user (tool results, logged by DevMap itself)
       }
     }
     return null;

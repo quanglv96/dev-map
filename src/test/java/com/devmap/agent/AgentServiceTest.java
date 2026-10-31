@@ -79,6 +79,8 @@ class AgentServiceTest {
     public Result run(Call call, java.util.function.Consumer<Event> sink) {
       calls.add(call);
       sink.accept(new Event("tool", "scripted"));
+      sink.accept(new Event("quota", "{\"status\":\"allowed_warning\",\"resetsAt\":1761900000,\"rateLimitType\":\"five_hour\","
+          + "\"utilization\":0.82}"));
       return new Result(true, scripts.isEmpty() ? "ok" : scripts.poll().apply(call), new Usage(100, 20, 300, 50, 0.01));
     }
   }
@@ -142,6 +144,30 @@ class AgentServiceTest {
   }
 
   /** AC-07, AC-12, FR-37/38/40, AIR-11: three questions = three fresh sessions; no chat resent; summary.md carries the context. */
+  /** New ticket with "analyse now": SA starts by itself; the quota line feeds the token/quota box, not the chat steps. */
+  @Test
+  void newTicketGoesToSaAndReportsTokensAndQuota() {
+    String id = ticket("NYX-9", "Thêm hoàn tiền cho order-service");
+    assertThat(agents.usage("shop").quota()).isEmpty();
+    agents.analyzeNew("shop", id);
+    assertThat(fake.calls).hasSize(1);
+    assertThat(fake.calls.get(0).prompt()).contains(AgentService.AUTO_ANALYZE);
+    assertThat(tasks.detail("shop", id).task().status()).isNotEqualTo(TaskStatus.NEW);
+    assertThat(agents.chat("shop", id).messages()).last().satisfies(m -> {
+      assertThat(m.from()).isEqualTo("SA");
+      assertThat(m.steps()).noneMatch(st -> st.kind().equals("quota"));
+    });
+    AgentService.UsageView u = agents.usage("shop");
+    assertThat(u.project().total()).isEqualTo(470);
+    assertThat(u.today().total()).isEqualTo(470);
+    assertThat(u.quota()).singleElement().satisfies(q -> {
+      assertThat(q.type()).isEqualTo("five_hour");
+      assertThat(q.status()).isEqualTo("allowed_warning");
+      assertThat(q.resetsAt()).isEqualTo(1761900000L);
+      assertThat(q.utilization()).isEqualTo(0.82);
+    });
+  }
+
   @Test
   void threeQuestionsAreThreeFreshSessions() throws Exception {
     String id = ticket("NYX-1", REQUEST);

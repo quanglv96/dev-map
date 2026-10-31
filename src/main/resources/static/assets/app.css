@@ -123,6 +123,17 @@ pre.diff span.del { background: #fee2e2; }
 /* Phase 3: graph */
 .cy { height: calc(100vh - 190px); min-height: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
 .graph-tools { flex-wrap: wrap; margin-bottom: 8px; }
+.graph-canvas-tools { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.graph-help { padding: 8px 12px; margin-bottom: 8px; }
+.graph-help p { margin: 6px 0; }
+.usage-box { position: relative; }
+.usage-box > summary { list-style: none; font-size: 12px; color: var(--muted); padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.usage-box > div { position: absolute; right: 0; top: 30px; z-index: 10; width: 320px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12px; box-shadow: 0 4px 12px rgb(0 0 0 / 8%); }
+.usage-box .meter { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 2px 0 8px; }
+.usage-box .meter > span { display: block; height: 100%; background: var(--accent); }
+.usage-box .meter > span.warn { background: #f59e0b; }
+.usage-box .meter > span.full { background: var(--danger); }
 .crumbs { display: flex; align-items: center; gap: 2px; }
 .search { position: relative; }
 .search-results { position: absolute; right: 0; top: 34px; z-index: 5; background: var(--panel); border: 1px solid var(--line);

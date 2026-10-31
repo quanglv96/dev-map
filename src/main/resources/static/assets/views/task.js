@@ -27,6 +27,7 @@ export function renderNewTask(mid, project, onCreated) {
       el("input", { name: "code", disabled: auto, placeholder: auto ? t("codeAuto") : t("codeHint") })),
     el("label", {}, el("span", {}, t("title")), el("input", { name: "title" })),
     el("label", {}, el("span", {}, t("request")), el("textarea", { name: "request", rows: 8, required: true })),
+    el("label", { class: "check small" }, el("input", { type: "checkbox", name: "analyze", checked: true }), " ", t("autoAnalyze")),
     status,
     el("button", { type: "submit", class: "primary" }, t("createTicket")));
   form.addEventListener("submit", async (event) => {
@@ -35,7 +36,8 @@ export function renderNewTask(mid, project, onCreated) {
     try {
       const created = await api(`/api/projects/${encodeURIComponent(project.name)}/tasks`, {
         method: "POST",
-        body: { type: data.get("type"), code: data.get("code") ?? "", title: data.get("title"), request: data.get("request") }
+        body: { type: data.get("type"), code: data.get("code") ?? "", title: data.get("title"), request: data.get("request"),
+          analyze: data.get("analyze") === "on" }
       });
       onCreated(created.task.id, created.maskedCount);
     } catch (err) {

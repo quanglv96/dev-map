@@ -19,6 +19,7 @@ import com.devmap.ticket.TaskStatus;
 import com.devmap.ticket.TicketGitService;
 import com.devmap.ticket.TicketGitService.RepoView;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,11 +60,25 @@ public class AgentService {
   public record AgentProgress(String project, String taskId, int messageId, String state) {
   }
 
+  /**
+   * Token/quota box of the project page: tokens of the project (all time and today), sessions running on this machine, and the
+   * latest rate-limit window per type Claude Code reported (five_hour, seven_day…; empty with an API key).
+   */
+  public record UsageView(Usage project, Usage today, int running, List<Quota> quota) {
+  }
+
+  /** resetsAt in epoch seconds, utilization as reported (fraction of the window) or null when Claude Code leaves it out. */
+  public record Quota(String type, String status, Long resetsAt, Double utilization, String seenAt) {
+  }
+
   /** Tab title and icon (SRS "Hiển thị tiến trình"): tickets with an agent running, tickets whose last session failed. */
   public record Activity(List<String> running, List<String> failed, String queueTicket, boolean queueRunning) {
   }
 
   private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+  private static final ObjectMapper JSON = new ObjectMapper();
+  /** Question of the SA session DevMap starts by itself when the PMO creates a ticket with "analyse now". */
+  static final String AUTO_ANALYZE = "Ticket mới: phân tích yêu cầu, đánh giá ảnh hưởng và đề xuất hướng xử lý cho PMO duyệt.";
 
   private final TaskService tasks;
   private final TicketGitService dev;
@@ -83,6 +98,8 @@ public class AgentService {
   private final Set<String> busy = ConcurrentHashMap.newKeySet();
   // ponytail: queue runs live in memory; a restart stops them and the PMO presses "Chạy hàng đợi" again
   private final Map<String, String> queueRuns = new ConcurrentHashMap<>();
+  // ponytail: the account quota lives in memory, refreshed by every session; after a restart it shows again after the next one
+  private final Map<String, Quota> quota = new ConcurrentHashMap<>();
 
   @Autowired
   public AgentService(TaskService tasks, TicketGitService dev, GraphService graphs, GitService git, ProjectService projects,
@@ -129,6 +146,11 @@ public class AgentService {
     Role r = role(role, t.status());
     String q = masker.mask(question.strip(), projects.get(project).config().secrets()).text();
     return submit(project, id, r, t.status() == TaskStatus.SA_VERIFY && r == Role.SA ? Mode.VERIFY : Mode.ASK, q, fullScan);
+  }
+
+  /** A new ticket goes to SA right away (PMO ticked "analyse now" on the form); SA moves it New → SA analysis as usual. */
+  public ChatMessage analyzeNew(String project, String id) {
+    return submit(project, id, Role.SA, Mode.ASK, AUTO_ANALYZE, false);
   }
 
   private ChatMessage submit(String project, String id, Role role, Mode mode, String question, boolean fullScan) {
@@ -187,7 +209,13 @@ public class AgentService {
     try {
       Files.createDirectories(s.workDir);
       result = provider.run(new AgentProvider.Call(ctx.system(), ctx.prompt(), s.workDir, mcpUrl(), s.token),
-          e -> step(project, id, no, new Step(e.kind(), masker.mask(e.text()).text())));
+          e -> {
+            if (e.kind().equals("quota")) {
+              quota(e.text());
+            } else {
+              step(project, id, no, new Step(e.kind(), masker.mask(e.text()).text()));
+            }
+          });
     } catch (java.io.IOException e) {
       result = new AgentProvider.Result(false, "Không tạo được thư mục phiên: " + e.getMessage(), Usage.ZERO);
     } finally {
@@ -390,11 +418,29 @@ public class AgentService {
 
   public ChatView chat(String project, String id) {
     List<ChatMessage> messages = chats.read(tasks.folder(project, id));
-    Usage total = Usage.ZERO;
-    for (Task t : tasks.list(project)) {
-      total = total.plus(sum(chats.read(tasks.folder(project, t.id()))));
+    return new ChatView(messages, sum(messages), sum(projectMessages(project)), busy.contains(project + "/" + id));
+  }
+
+  public UsageView usage(String project) {
+    List<ChatMessage> all = projectMessages(project);
+    String today = now().substring(0, 10);
+    return new UsageView(sum(all), sum(all.stream().filter(m -> m.at().startsWith(today)).toList()), busy.size(),
+        quota.values().stream().sorted(java.util.Comparator.comparing(Quota::type)).toList());
+  }
+
+  private List<ChatMessage> projectMessages(String project) {
+    return tasks.list(project).stream().flatMap(t -> chats.read(tasks.folder(project, t.id())).stream()).toList();
+  }
+
+  private void quota(String json) {
+    try {
+      JsonNode n = JSON.readTree(json);
+      String type = n.path("rateLimitType").asText("unknown");
+      quota.put(type, new Quota(type, n.path("status").asText(), n.hasNonNull("resetsAt") ? n.get("resetsAt").asLong() : null,
+          n.hasNonNull("utilization") ? n.get("utilization").asDouble() : null, now()));
+    } catch (java.io.IOException e) {
+      // a malformed quota line only means the box keeps its previous value
     }
-    return new ChatView(messages, sum(messages), total, busy.contains(project + "/" + id));
   }
 
   /** The input log of one session (AC-10, AC-12: proof of what the LLM received). Gone once the ticket is Done (FR-45). */

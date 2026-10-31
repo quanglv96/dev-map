@@ -3,7 +3,7 @@
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
 import { WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError } from "./lib.js";
 import { renderConfig } from "./views/config.js";
-import { onAgentEvent } from "./views/chat.js";
+import { onAgentEvent, tokens } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
 import { renderLog } from "./views/log.js";
 import { renderRules } from "./views/rules.js";
@@ -88,7 +88,35 @@ async function refreshActivity(before) {
   }
   activity = after;
   setTabState();
+  renderUsage().catch(() => { /* the box just keeps its last numbers */ });
   renderQueueRun();
+}
+
+const usageBox = document.getElementById("usage");
+
+const clock = (epochSeconds) => new Date(epochSeconds * 1000).toLocaleString();
+/** Translated name of a quota value, or the raw value for kinds this build does not know yet. */
+const quotaLabel = (group, value) => (t(`${group}.${value}`) === `${group}.${value}` ? value : t(`${group}.${value}`));
+
+/** FR-40 header box: project tokens and the account quota windows Claude Code reported in the latest session. */
+async function renderUsage() {
+  const u = await api(`${api$}/usage`);
+  fill(usageBox, el("summary", {}, `${t("tokenUsage")}: ${tokens(u.today).toLocaleString()}`),
+    el("div", {},
+      el("strong", {}, t("tokens")),
+      el("p", {}, t("tokensToday", { n: tokens(u.today).toLocaleString() }), el("br"),
+        t("tokensProject", { n: tokens(u.project).toLocaleString() }), el("br"),
+        t("tokensCost", { cost: u.project.costUsd.toFixed(4) })),
+      u.quota.length === 0 ? el("p", { class: "muted" }, t("quotaNone")) : u.quota.map((q) => {
+        // utilization is a fraction of the window; older Claude Code builds leave it out
+        const pct = q.utilization === null || q.utilization === undefined ? null : Math.round(q.utilization <= 1 ? q.utilization * 100 : q.utilization);
+        return [el("div", {}, el("strong", {}, quotaLabel("quota", q.type)), " · ", quotaLabel("quotaStatus", q.status),
+          pct === null ? "" : ` · ${t("quotaUsed", { pct })}`),
+        pct === null ? null : el("div", { class: "meter" },
+          el("span", { class: pct >= 90 ? "full" : pct >= 70 ? "warn" : "", style: `width:${Math.min(pct, 100)}%` })),
+        el("div", { class: "muted" }, [q.resetsAt ? t("quotaReset", { at: clock(q.resetsAt) }) : null,
+          t("quotaSeen", { at: q.seenAt })].filter(Boolean).join(" · "))];
+      })));
 }
 
 function mountNotifyButton() {
