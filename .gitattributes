@@ -1,0 +1,2 @@
+bin/devmap text eol=lf
+bin/devmap.cmd text eol=crlf
