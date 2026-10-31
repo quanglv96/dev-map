@@ -1,5 +1,6 @@
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
 import { api, el, fill, setFavicon, showError } from "./lib.js";
+import { mountSync, onSync, onSyncEvent, renderSyncSettings } from "./sync.js";
 
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
@@ -147,8 +148,39 @@ async function loadOverview() {
   }
 }
 
-new EventSource("/api/events").addEventListener("task", loadOverview);
+const events = new EventSource("/api/events");
+events.addEventListener("task", loadOverview);
+events.addEventListener("sync", (e) => onSyncEvent(JSON.parse(e.data)));
 loadOverview();
+
+// FR-46 / FR-57: sync settings and project import on the home page; new projects from another machine show up after a pull
+const syncSettings = document.getElementById("sync-settings");
+onSync((s, pulled) => {
+  renderSyncSettings(syncSettings).catch((err) => showError(syncSettings, err));
+  if (pulled) {
+    loadProjects();
+    loadOverview();
+  }
+});
+await mountSync();
+document.getElementById("import-zip").addEventListener("click", async () => {
+  const out = document.getElementById("import-result");
+  const file = document.getElementById("import-file").files[0];
+  if (!file) {
+    return;
+  }
+  try {
+    const res = await fetch("/api/projects/import", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || res.statusText);
+    }
+    fill(out, el("p", { class: "ok" }, t("sync.imported", { name: data.name })));
+    loadProjects();
+  } catch (err) {
+    showError(out, err);
+  }
+});
 
 document.getElementById("add-repo").addEventListener("click", () => addRepoRow());
 addRepoRow();

@@ -186,3 +186,18 @@ details summary { cursor: pointer; }
 .progress .now { overflow-wrap: anywhere; }
 @keyframes progress-slide { from { left: -30%; } to { left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .progress .bar::after { animation: none; width: 100%; opacity: 0.4; } }
+
+/* Data sync (FR-56): state chip in the top bar, lock banner, conflict versions side by side */
+.sync-box > summary.sync-state { font-weight: 600; }
+.sync-state.ok { color: var(--ok); }
+.sync-state.busy { color: var(--accent); }
+.sync-state.warn { color: #b45309; background: #fef3c7; }
+.sync-state.bad { color: #fff; background: var(--danger); border-color: var(--danger); }
+.sync-box > div { width: 380px; }
+.sync-box dd { margin-left: 0; overflow-wrap: anywhere; }
+.sync-banner { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #fef3c7; color: #92400e; padding: 8px 16px;
+  border-bottom: 1px solid #f59e0b; }
+.sync-settings label.check { display: flex; align-items: center; gap: 6px; }
+pre.conflict { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font-size: 12px; background: var(--bg);
+  padding: 6px; border-radius: 6px; border: 1px solid var(--line); }
+.missing-repos { border: 1px solid #f59e0b; }

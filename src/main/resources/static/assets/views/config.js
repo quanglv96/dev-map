@@ -1,6 +1,7 @@
 // "Cấu hình dự án": repos, base branches, services, ticket code rules, branch patterns, secret masking (FR-02 → FR-04).
 import { t } from "../i18n.js";
 import { api, el, showError } from "../lib.js";
+import { renderSyncSettings } from "../sync.js";
 
 function serviceRow(s = { name: "", path: "", kind: "" }) {
   const row = el("tr", { class: "service" },
@@ -14,7 +15,7 @@ function serviceRow(s = { name: "", path: "", kind: "" }) {
 function repoCard(r = { path: "", baseBranch: "main", services: [] }) {
   const body = el("tbody", {}, r.services.map((s) => serviceRow(s)));
   const error = el("div");
-  const pathInput = el("input", { name: "rPath", value: r.path, placeholder: t("repoPath"), required: true });
+  const pathInput = el("input", { name: "rPath", value: r.path ?? "", placeholder: t("repoPath"), required: true });
   const detect = async () => {
     try {
       const services = await api(`/api/services/detect?path=${encodeURIComponent(pathInput.value.trim())}`);
@@ -24,7 +25,8 @@ function repoCard(r = { path: "", baseBranch: "main", services: [] }) {
       showError(error, err);
     }
   };
-  const card = el("fieldset", { class: "repo" },
+  // remote/name travel with the card: config.yml keeps them, the path is this machine's own (FR-51)
+  const card = el("fieldset", { class: "repo", "data-remote": r.remote ?? "", "data-name": r.name ?? "" },
     el("div", { class: "row" }, pathInput,
       el("input", { name: "rBranch", value: r.baseBranch, placeholder: t("baseBranch"), required: true, class: "short" }),
       el("button", { type: "button", class: "link danger", title: t("removeFromDevmapHint"), onclick: () => card.remove() },
@@ -42,7 +44,8 @@ function repoCard(r = { path: "", baseBranch: "main", services: [] }) {
 function readRepo(card) {
   const path = card.querySelector("[name=rPath]").value.trim();
   return {
-    name: path.replace(/[\\/]+$/, "").split(/[\\/]/).pop(),
+    name: card.dataset.name || path.replace(/[\\/]+$/, "").split(/[\\/]/).pop(),
+    remote: card.dataset.remote || null,
     path,
     baseBranch: card.querySelector("[name=rBranch]").value.trim(),
     services: [...card.querySelectorAll("tr.service")].map((tr) => ({
@@ -103,5 +106,9 @@ export function renderConfig(target, project, onSaved) {
       showError(status, err);
     }
   });
-  target.replaceChildren(el("h2", {}, t("projectConfig")), form);
+  const sync = el("div");
+  target.replaceChildren(el("h2", {}, t("projectConfig")), form, sync,
+    el("p", {}, el("a", { href: `/api/projects/${encodeURIComponent(project.name)}/export`, download: `devmap-${project.name}.zip` },
+      t("sync.export")), " ", el("small", { class: "muted" }, t("sync.exportHint"))));
+  renderSyncSettings(sync).catch((err) => showError(sync, err));
 }

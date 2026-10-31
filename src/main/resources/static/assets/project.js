@@ -5,6 +5,7 @@ import { WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError, workState 
 import { renderConfig } from "./views/config.js";
 import { onAgentEvent, tokens } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
+import { mountSync, onSync, onSyncEvent, syncStatus } from "./sync.js";
 import { renderLog } from "./views/log.js";
 import { renderRules } from "./views/rules.js";
 import { renderNewTask, renderTask } from "./views/task.js";
@@ -142,6 +143,12 @@ function mountNotifyButton() {
   });
 }
 
+/** FR-54: the ticket has a file kept twice after a sync conflict. */
+function conflictPill(x) {
+  return syncStatus()?.conflicts.some((c) => c.project === name && c.ticket === x.id)
+    ? el("small", { class: "work error" }, t("sync.conflictPill")) : null;
+}
+
 function workPill(x) {
   const w = workState(x, activity);
   return w ? el("small", { class: `work ${w.cls}` }, t(w.key, { n: w.n })) : null;
@@ -163,7 +170,7 @@ function renderList() {
     && (!filterType.value || x.type === filterType.value));
   list.replaceChildren(...shown.map((x) => el("li", { class: r.id === x.id ? "active" : "" },
     el("a", { href: `#task=${encodeURIComponent(x.id)}` },
-      el("div", { class: "row" }, el("strong", { class: "grow" }, x.id), workPill(x)),
+      el("div", { class: "row" }, el("strong", { class: "grow" }, x.id), conflictPill(x), workPill(x)),
       el("div", {}, x.title),
       el("small", { class: `badge ${x.status}` }, `${x.type} · ${t(`status.${x.status}`)}`)))));
   if (shown.length === 0) {
@@ -222,12 +229,41 @@ function renderProjectInfo() {
       el("dd", {}, el("ul", {}, c.repos.map((r) => el("li", {}, r.name, el("span", { class: "muted" }, ` @${r.baseBranch}`)))))));
 }
 
+/** FR-51: repos of the project with no folder on this machine yet: pick an existing folder or clone into one. */
+function missingRepos() {
+  const missing = project.config.repos.filter((r) => !r.path);
+  if (missing.length === 0) {
+    return null;
+  }
+  const error = el("div");
+  const act = (r, kind) => async () => {
+    try {
+      const path = (await api("/api/folders/pick", { method: "POST" })).path;
+      if (!path) {
+        return;
+      }
+      project = await api(`${api$}/repos/${encodeURIComponent(r.name)}/${kind}`, { method: "POST", body: { path } });
+      renderOverview();
+      renderProjectInfo();
+    } catch (err) {
+      showError(error, err);
+    }
+  };
+  return el("section", { class: "card missing-repos" },
+    el("h3", {}, t("repoMissingTitle", { n: missing.length })),
+    el("p", { class: "muted small" }, t("repoMissingHint")),
+    el("ul", {}, missing.map((r) => el("li", {}, el("strong", {}, r.name), " ", el("span", { class: "muted path" }, r.remote ?? t("noRemote")), " ",
+      el("button", { type: "button", class: "secondary small", onclick: act(r, "locate") }, t("repoPick")), " ",
+      r.remote ? el("button", { type: "button", class: "secondary small", onclick: act(r, "clone") }, t("repoClone")) : null))),
+    error);
+}
+
 function renderOverview() {
   const repos = project.config.repos;
-  fill(mid, el("h2", {}, t("services")),
+  fill(mid, missingRepos(), el("h2", {}, t("services")),
     repos.length === 0 ? el("p", { class: "muted" }, t("noServices")) : repos.map((r) => el("section", { class: "card" },
       el("h3", {}, r.name, el("span", { class: "muted" }, ` @${r.baseBranch}`)),
-      el("small", { class: "muted path" }, r.path),
+      el("small", { class: "muted path" }, r.path ?? t("repoNoPath")),
       r.services.length === 0
         ? el("p", { class: "muted" }, t("noServices"))
         : el("table", {},
@@ -280,16 +316,26 @@ async function refreshTasks() {
   await renderQueue();
 }
 
+const EDITING = "textarea.editor, .reopen textarea, .confirm-card, .card input:not(:placeholder-shown), .chat-input:not(:placeholder-shown)";
+
 /** Another tab, the CLI or (later) an agent changed a ticket: refresh, but never under an open editor. */
 function listen() {
   const events = new EventSource(`/api/events?project=${encodeURIComponent(name)}`);
+  events.addEventListener("sync", (e) => onSyncEvent(JSON.parse(e.data)));
+  onSync(async (s, pulled) => {
+    renderList();
+    if (pulled && !document.querySelector(EDITING)) {
+      project = await api(api$);
+      await render(); // another machine pushed: show its tickets and documents
+    }
+  });
   events.addEventListener("task", async (e) => {
     const before = new Map(tasks.map((x) => [x.id, x.status]));
     await refreshTasks();
     await refreshActivity(before);
     const r = route();
     const change = JSON.parse(e.data);
-    if (r.view === "task" && r.id === change.taskId && !document.querySelector("textarea.editor, .reopen textarea, .confirm-card, .card input:not(:placeholder-shown), .chat-input:not(:placeholder-shown)")) {
+    if (r.view === "task" && r.id === change.taskId && !document.querySelector(EDITING)) {
       await renderTask(mid, right, name, r.id, state);
     }
     renderList();
@@ -307,6 +353,8 @@ function listen() {
 window.addEventListener("hashchange", render);
 
 try {
+  await api("/api/sync/pull", { method: "POST" }).catch(() => { /* offline or sync off: open what is here */ });
+  await mountSync();
   project = await api(api$);
   if (project.error) {
     throw new Error(project.error);

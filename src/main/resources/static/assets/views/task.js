@@ -2,6 +2,7 @@
 import { t } from "../i18n.js";
 import { api, diffView, el, fill, markdown, showError, workState } from "../lib.js";
 import { askAgent, renderChat, renderProgress } from "./chat.js";
+import { renderConflicts, syncStatus } from "../sync.js";
 
 const EDITABLE = ["analysis.md", "plan.md", "summary.md"];
 const selectedDoc = new Map();
@@ -213,6 +214,59 @@ async function pushReview(box, project, detail, dev, error) {
   box.scrollIntoView({ behavior: "smooth" });
 }
 
+/** FR-55: what moves to the other machine; confirming is the PMO's push confirmation. */
+async function handoffReview(box, project, task, error) {
+  let plan;
+  try {
+    plan = await api(`${base(project, task.id)}/dev/handoff`);
+  } catch (err) {
+    showError(error, err);
+    return;
+  }
+  fill(box, el("section", { class: "card confirm-card" },
+    el("h3", {}, t("handoffTitle")),
+    el("p", { class: "muted small" }, t("handoffHint")),
+    el("ul", {}, plan.map((r) => el("li", {}, el("strong", {}, r.repo), ` → origin/${r.branch}`,
+      r.uncommitted.length ? [" · ", t("handoffWip", { n: r.uncommitted.length }), el("div", { class: "muted small path" }, r.uncommitted.join(", "))]
+        : ` · ${r.head.slice(0, 8)}`))),
+    el("div", { class: "row" },
+      el("button", { type: "button", class: "primary", onclick: async () => {
+        try {
+          await api(`${base(project, task.id)}/dev/handoff`, { method: "POST" });
+          rerender();
+        } catch (err) {
+          showError(error, err);
+        }
+      } }, t("handoffConfirm")),
+      el("button", { type: "button", class: "link", onclick: () => box.replaceChildren() }, t("cancel")))));
+  box.scrollIntoView({ behavior: "smooth" });
+}
+
+/** FR-55: the ticket was handed over; on the other machine offer to continue on the pushed commits. */
+function renderHandoff(project, task) {
+  const h = task.handoff;
+  if (!h) {
+    return null;
+  }
+  const here = syncStatus()?.machine;
+  const repos = h.repos.map((r) => `${r.repo}: ${r.branch} @${r.commit.slice(0, 8)}`).join(" · ");
+  if (h.machine === here) {
+    return el("p", { class: "warn" }, t("handoffSent", { at: h.at }), " ", el("span", { class: "path" }, repos));
+  }
+  const error = el("div");
+  return el("section", { class: "card confirm-card" },
+    el("p", {}, t("handoffFrom", { machine: h.machine, at: h.at })), el("p", { class: "muted small path" }, repos),
+    el("button", { type: "button", class: "primary", onclick: async () => {
+      try {
+        await api(`${base(project, task.id)}/dev/resume`, { method: "POST" });
+        rerender();
+      } catch (err) {
+        showError(error, err);
+      }
+    } }, t("handoffResume")),
+    error);
+}
+
 /** Numbered or bulleted items under the "Câu hỏi chờ PMO" heading of summary.md (sa.md asks SA to keep that section). */
 export function pendingQuestions(md) {
   const lines = (md ?? "").split("\n");
@@ -380,7 +434,9 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     from === "in_dev" ? [el("h3", { class: "section" }, t("devSteps")), el("div", { class: "actions" },
       running ? null : el("button", { type: "button", class: "primary", onclick: () => call("/implement") }, t("implement")),
       el("button", { type: "button", class: "secondary", onclick: () => call("/dev/start") }, t("pullBase")),
-      dev.repos.length ? el("button", { type: "button", class: "secondary", onclick: () => call("/dev/gate") }, t("runGate")) : null),
+      dev.repos.length ? el("button", { type: "button", class: "secondary", onclick: () => call("/dev/gate") }, t("runGate")) : null,
+      dev.repos.length && !dev.direct && !running ? el("button", { type: "button", class: "secondary",
+        onclick: () => handoffReview(reviewBox, project, task, error) }, t("handoff")) : null),
     el("p", { class: "muted small" }, t("gateHint"))] : null,
     manual.length ? [el("h3", { class: "section" }, t("manualMoves")), el("p", { class: "muted small" }, t("manualHint")),
       el("div", { class: "actions" }, manual.map((a) => el("button", {
@@ -429,7 +485,10 @@ export async function renderTask(mid, right, project, id, state) {
     type: "button", class: `tab${name === "questions" ? " tab-questions" : ""}`, "data-tab": name, onclick: () => show(name)
   }, name === "questions" ? [t("questions"), " ", el("span", { class: "count" }, String(questions.length))] : t(name))));
   const progress = el("div");
-  mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), progress, review, code, tabs, body);
+  const conflicts = el("div");
+  fill(mid, el("h2", {}, `${detail.task.id} · ${detail.task.title}`), renderHandoff(project, detail.task), conflicts, progress,
+    review, code, tabs, body);
+  renderConflicts(conflicts, project, id, rerender);
   renderProgress(progress, project, id).catch(() => { /* the chat tab still shows the steps */ });
   renderCode(code, project, detail, dev);
   renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review, totals, activity);

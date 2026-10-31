@@ -11,8 +11,10 @@
   <header class="topbar">
     <strong>DevMap</strong>
     <span class="spacer"></span>
+    <details class="usage-box sync-box" id="sync"></details>
     <label><span class="sr-only" data-i18n="language"></span><select id="lang"></select></label>
   </header>
+  <div id="sync-banner"></div>
   <main class="home">
     <div class="grid2">
       <section class="card">
@@ -27,6 +29,17 @@
     <section class="card">
       <h2 data-i18n="projects"></h2>
       <div id="projects"></div>
+    </section>
+    <section class="card">
+      <h2 data-i18n="sync.title"></h2>
+      <div id="sync-settings"></div>
+      <h3 class="section" data-i18n="sync.importTitle"></h3>
+      <div class="row">
+        <input type="file" id="import-file" accept=".zip">
+        <button type="button" id="import-zip" data-i18n="sync.import"></button>
+      </div>
+      <small class="muted" data-i18n="sync.importHint"></small>
+      <div id="import-result"></div>
     </section>
     <section class="card">
       <h2 data-i18n="addProject"></h2>
