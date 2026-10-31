@@ -65,12 +65,6 @@ public class ProjectController {
     return new Picked(picker.pick(start));
   }
 
-  @DeleteMapping("/folders")
-  @ResponseStatus(HttpStatus.NO_CONTENT)
-  public void deleteFolder(@RequestParam String path) {
-    service.deleteFolder(path);
-  }
-
   @GetMapping("/projects/{name}")
   public Project get(@PathVariable String name) {
     return service.get(name);

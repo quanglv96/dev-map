@@ -27,7 +27,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | `ProjectServiceTest.rejectsMissingBaseBranchAndBadNames` | nhánh nền không tồn tại, tên sai, tên dành riêng, thư mục không phải git → lỗi, không tạo folder |
 | `ProjectServiceTest.removeKeepsDataAndCopiedFolderCanBeRegisteredAgain` | bỏ đăng ký giữ dữ liệu; đăng ký lại folder đã có |
 | `ProjectServiceTest.updateValidatesAndKeepsPmoTextInProjectMd` | sửa cấu hình (FR-04), kiểm hợp lệ, giữ phần chữ của PMO |
-| `ProjectServiceTest.scanMarksUsedFoldersAndDeletesOnlyFreeOnes` | quét folder dữ liệu, chỉ xoá folder không dự án nào dùng |
+| `ProjectServiceTest.scanMarksUsedFolders` | quét folder dữ liệu, đánh dấu folder dự án nào đang dùng; không xoá gì |
 | `ProjectServiceTest.scanReposFindsRepoChildrenOrTheFolderItself` | folder dự án: tìm repo con (bỏ folder không phải git) hoặc chính folder; nhánh nền = nhánh đang checkout; không ghi gì |
 | `ServiceDetectorTest` | FR-03: repo một service, monorepo/parent pom, bỏ `node_modules`, `src`, thư mục ẩn |
 | `WebTest.rejectsRequestsWithoutToken` | NFR-08: thiếu/sai token → 401, kể cả trang HTML |

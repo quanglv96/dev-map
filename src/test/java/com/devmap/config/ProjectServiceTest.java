@@ -116,7 +116,7 @@ class ProjectServiceTest {
   }
 
   @Test
-  void scanMarksUsedFoldersAndDeletesOnlyFreeOnes() throws Exception {
+  void scanMarksUsedFolders() throws Exception {
     service.create("shop", dataRoot, "#ff8800", shopRepos());
     Files.createDirectories(dataRoot.resolve("old/graph"));
     Files.writeString(dataRoot.resolve("old/graph/x.json"), "{}");
@@ -126,12 +126,7 @@ class ProjectServiceTest {
         .containsExactly(org.assertj.core.groups.Tuple.tuple("old", null), org.assertj.core.groups.Tuple.tuple("shop", "shop"));
     assertThat(service.folders(tmp.toString()).dirs()).filteredOn(f -> f.name().equals("repos"))
         .singleElement().satisfies(f -> assertThat(f.usedBy()).as("repos inside").isEqualTo("shop"));
-
-    assertThatThrownBy(() -> service.deleteFolder(dataRoot.resolve("shop").toString())).hasMessageContaining("shop");
-    assertThatThrownBy(() -> service.deleteFolder(tmp.toString())).hasMessageContaining("shop");
-    service.deleteFolder(dataRoot.resolve("old").toString());
-    assertThat(dataRoot.resolve("old")).doesNotExist();
-    assertThat(dataRoot.resolve("shop/config.yml")).exists();
+    assertThat(dataRoot.resolve("old/graph/x.json")).as("scan never deletes").exists();
   }
 
   /** Project folder = parent of the service repos: each repo found with its checked-out branch and services. */

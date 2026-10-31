@@ -72,7 +72,7 @@ async function pickFolder(start, button) {
   }
 }
 
-/** Folders already under the data root; free ones (no registered project uses them) can be deleted. */
+/** Folders already under the data root, read-only: DevMap never deletes anything on disk here. */
 const dataInput = form.elements.dataRoot;
 const dataFolders = document.getElementById("data-folders");
 
@@ -87,21 +87,7 @@ async function scanDataRoot() {
     fill(dataFolders, f.dirs.length === 0 ? null : [el("small", { class: "muted" }, t("dataFolders")),
       el("ul", { class: "plain" }, f.dirs.map((d) => el("li", {},
         el("span", { class: "path" }, d.name), " ",
-        d.usedBy
-          ? el("small", { class: "muted" }, t("usedBy", { name: d.usedBy }))
-          : el("button", { type: "button", class: "link danger", onclick: () => deleteFolder(d.path) }, t("remove")))))]);
-  } catch (err) {
-    showError(dataFolders, err);
-  }
-}
-
-async function deleteFolder(path) {
-  if (!confirm(t("confirmDeleteFolder", { path }))) {
-    return;
-  }
-  try {
-    await api(`/api/folders?path=${encodeURIComponent(path)}`, { method: "DELETE" });
-    scanDataRoot();
+        d.usedBy ? el("small", { class: "muted" }, t("usedBy", { name: d.usedBy })) : null)))]);
   } catch (err) {
     showError(dataFolders, err);
   }

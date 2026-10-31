@@ -6,7 +6,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -124,26 +123,6 @@ public class ProjectService {
       List<Folder> dirs = children.filter(Files::isDirectory).filter(p -> !p.getFileName().toString().startsWith("."))
           .sorted().map(p -> new Folder(p.getFileName().toString(), slash(p), usedBy(p, used))).toList();
       return new Folders(slash(path), path.getParent() == null ? "" : slash(path.getParent()), dirs);
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
-  }
-
-  /** Deletes a folder no project uses (its data folder or a repo is not inside it); never a drive root. */
-  public synchronized void deleteFolder(String dir) {
-    Path path = Path.of(dir).toAbsolutePath().normalize();
-    if (!Files.isDirectory(path) || path.getParent() == null) {
-      throw new IllegalArgumentException("Không xoá được thư mục: " + dir);
-    }
-    String user = usedBy(path, usedPaths());
-    if (user != null) {
-      throw new IllegalArgumentException("Thư mục đang được dự án " + user + " dùng: " + dir);
-    }
-    try (Stream<Path> all = Files.walk(path)) {
-      for (Path p : all.sorted(Comparator.reverseOrder()).toList()) {
-        p.toFile().setWritable(true); // git pack files are read-only on Windows
-        Files.delete(p);
-      }
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }

@@ -305,8 +305,7 @@ Gate của ticket giờ chỉ chặn vi phạm trong file ticket đã đổi so 
 PMO yêu cầu bỏ tuỳ chọn khởi tạo folder dữ liệu thành git repo (khác CLAUDE.md §5.4): mỗi service đã có git riêng.
 Trình duyệt không trả đường dẫn tuyệt đối nên nút **Chọn…** gọi `POST /api/folders/pick`: server (cùng máy, chỉ nghe 127.0.0.1) mở hộp thoại chọn folder của hệ điều hành —
 Windows: hộp thoại kiểu Explorer (`IFileOpenDialog`, qua PowerShell `-EncodedCommand`, `src/main/resources/pick-folder.ps1`); macOS: `osascript choose folder`; Linux: `zenity`.
-Chỉ khi PMO chọn xong (không phải khi gõ tay hay bấm Huỷ) form liệt kê folder con của folder dữ liệu; folder không chứa folder dữ liệu hay repo của dự án đã đăng ký nào thì xoá được
-(`DELETE /api/folders`, có xác nhận). Server từ chối xoá folder đang dùng và gốc ổ đĩa.
+Chỉ khi PMO chọn xong (không phải khi gõ tay hay bấm Huỷ) form liệt kê (chỉ xem) folder con của folder dữ liệu và dự án nào đang dùng. PMO yêu cầu bỏ nút xoá folder: DevMap không xoá gì trên đĩa ở đây.
 
 ## D-48 Folder dự án và quét service
 Form "Thêm dự án" có ô **Folder dự án** = folder cha chứa các repo service. Chỉ sau khi PMO chọn folder trong hộp thoại hệ điều hành, DevMap gọi `GET /api/repos/scan`:
