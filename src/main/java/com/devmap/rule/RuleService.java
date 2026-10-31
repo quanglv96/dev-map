@@ -150,13 +150,23 @@ public class RuleService {
     return runGate(project, repoName, root, null);
   }
 
-  /** changed: repo-relative files of a ticket (layering only blocks on those, see QualityGate); null = whole repo. */
-  public List<QualityGate.Result> runGate(String project, String repoName, Path root, List<String> changed) {
+  /** changed: repo-relative files of a ticket → lines it changed (gate only blocks on those, see QualityGate); null = whole repo. */
+  public List<QualityGate.Result> runGate(String project, String repoName, Path root, Map<String, Set<Integer>> changed) {
     return units(project).stream().filter(u -> u.repo().equals(repoName))
         .map(u -> gate.run(u.service(), u.path().isEmpty() ? root : root.resolve(u.path()), effective(project, u.service()).quality(),
-            changed == null ? null : changed.stream().filter(f -> u.path().isEmpty() || f.startsWith(u.path() + "/"))
-                .map(f -> u.path().isEmpty() ? f : f.substring(u.path().length() + 1)).toList()))
+            changed == null ? null : under(changed, u.path())))
         .toList();
+  }
+
+  /** The entries of changed under a service folder, keyed relative to it. */
+  private static Map<String, Set<Integer>> under(Map<String, Set<Integer>> changed, String path) {
+    Map<String, Set<Integer>> out = new LinkedHashMap<>();
+    changed.forEach((f, lines) -> {
+      if (path.isEmpty() || f.startsWith(path + "/")) {
+        out.put(path.isEmpty() ? f : f.substring(path.length() + 1), lines);
+      }
+    });
+    return out;
   }
 
   /** Changed files of a repo sorted by what they need (FR-32): forbidden, PMO approval (schema, dependency), or fine. */

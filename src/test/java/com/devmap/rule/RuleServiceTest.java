@@ -14,6 +14,8 @@ import com.devmap.secret.SecretMasker;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -133,14 +135,19 @@ class RuleServiceTest {
     QualityGate.Step failed = new QualityGate.Step("static", "mvn checkstyle:check", false, 1, 5, "tail");
     List<String> log = List.of("[ERROR] D:\\w\\svc\\src\\main\\java\\Old.java:3:1: Line is longer than 80 characters. [LineLength]",
         "[ERROR] Failed to execute goal ... You have 1 Checkstyle violation.");
-    QualityGate.Step old = QualityGate.scoped(failed, log, List.of("src/main/java/New.java"));
+    QualityGate.Step old = QualityGate.scoped(failed, log, Map.of("src/main/java/New.java", Set.of()));
     assertThat(old.passed()).isTrue();
-    assertThat(old.output()).contains("không sửa: 1 dòng");
-    QualityGate.Step own = QualityGate.scoped(failed, log, List.of("src/main/java/Old.java"));
+    assertThat(old.output()).contains("không sửa): 1 dòng");
+    QualityGate.Step own = QualityGate.scoped(failed, log, Map.of("src/main/java/Old.java", Set.of(3)));
     assertThat(own.passed()).isFalse();
     assertThat(own.output()).contains("Old.java:3:1");
+    // a legacy file the ticket edits elsewhere: its old violations do not block
+    assertThat(QualityGate.scoped(failed, log, Map.of("src/main/java/Old.java", Set.of(40, 41))).passed()).isTrue();
+    assertThat(QualityGate.scoped(failed, List.of("[WARN] Old.java:[41,5] (x) Y"), Map.of("Old.java", Set.of(41))).passed()).isFalse();
+    // untracked file (empty set): the whole file is the ticket's
+    assertThat(QualityGate.scoped(failed, log, Map.of("src/main/java/Old.java", Set.of())).passed()).isFalse();
     // nothing names a file (plugin/config error): the failure stands
-    assertThat(QualityGate.scoped(failed, List.of("[ERROR] Failed to execute goal"), List.of("a.java")).passed()).isFalse();
+    assertThat(QualityGate.scoped(failed, List.of("[ERROR] Failed to execute goal"), Map.of("a.java", Set.of())).passed()).isFalse();
   }
 
   @Test

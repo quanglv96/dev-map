@@ -6,10 +6,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.DiffEntry;
@@ -29,6 +35,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class GitService {
+
+  private static final Pattern HUNK = Pattern.compile("^@@ -\\S+ \\+(\\d+)(?:,(\\d+))? @@");
 
   /** One changed path between two commits; oldPath is set for deletes/renames. */
   public record Change(String path, String oldPath, boolean deleted) {
@@ -222,6 +230,34 @@ public class GitService {
   public List<String> changedFiles(Path dir, String from, String to) {
     String out = must(dir, "-c", "core.quotepath=off", "diff", "--name-only", from + "..." + to);
     return out.isEmpty() ? List.of() : List.of(out.split("\n"));
+  }
+
+  /**
+   * Lines a branch changed since it left from (merge base), committed or not, by repo-relative path. An empty set = the whole
+   * file (untracked). A pure deletion marks the lines around it, so a file the ticket touched never maps to "nothing changed".
+   */
+  public Map<String, Set<Integer>> changedLines(Path dir, String from) {
+    String base = must(dir, "merge-base", from, "HEAD").strip();
+    Map<String, Set<Integer>> out = new LinkedHashMap<>();
+    Set<Integer> current = null;
+    for (String l : must(dir, "-c", "core.quotepath=off", "diff", "-U0", "--no-color", "-M", base).split("\n")) {
+      if (l.startsWith("+++ ")) {
+        current = l.equals("+++ /dev/null") ? null : out.computeIfAbsent(l.substring(6), k -> new TreeSet<>());
+      } else if (l.startsWith("@@") && current != null) {
+        Matcher m = HUNK.matcher(l);
+        if (m.find()) {
+          int start = Integer.parseInt(m.group(1));
+          int count = m.group(2) == null ? 1 : Integer.parseInt(m.group(2));
+          // +start,0 = lines removed after line start
+          int last = count == 0 ? start + 1 : start + count - 1;
+          for (int i = Math.max(1, start); i <= last; i++) {
+            current.add(i);
+          }
+        }
+      }
+    }
+    uncommitted(dir).forEach(p -> out.putIfAbsent(p, new TreeSet<>()));
+    return out;
   }
 
   /** Committed changes from...to plus, when to is what is checked out, what is not committed yet. */

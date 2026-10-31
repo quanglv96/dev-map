@@ -6,10 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
@@ -36,6 +38,7 @@ public class QualityGate {
   /** A line naming a source file: a lint violation or compiler error of that file. */
   private static final Pattern FILE_REF = Pattern.compile("[\\w.-]+\\.(java|kt|kts|groovy|ts|tsx|js|jsx|mjs|cjs|vue|py|go)\\b");
   // ponytail: known linters by name; a build/compile step is never scoped, an error it reports in an untouched file may be ours
+  private static final Pattern LINE_NO = Pattern.compile("\\W{1,3}(?:line )?(\\d+)");
   private static final Pattern LINTER = Pattern.compile("checkstyle|pmd|spotbugs|lint|ruff|flake8|sonar", Pattern.CASE_INSENSITIVE);
 
   private static String lines(List<LayerChecker.Violation> v) {
@@ -48,15 +51,16 @@ public class QualityGate {
   }
 
   /**
-   * changed: files (relative to dir) a ticket touched; layering then fails only on those, so a violation already on the base
-   * branch does not block every ticket of the repo (it is still listed). null = the whole tree (`devmap rules check`).
+   * changed: files (relative to dir) a ticket touched -> lines it changed; layering then fails only on those files and a linter
+   * only on those lines, so a violation already on the base branch does not block every ticket of the repo (it is still listed).
+   * null = the whole tree (`devmap rules check`).
    */
-  public Result run(String service, Path dir, Rules.Quality q, Collection<String> changed) {
+  public Result run(String service, Path dir, Rules.Quality q, Map<String, Set<Integer>> changed) {
     List<Step> steps = new ArrayList<>();
     if (q.layering()) {
       long t0 = System.currentTimeMillis();
       List<LayerChecker.Violation> all = LayerChecker.check(dir);
-      List<LayerChecker.Violation> v = changed == null ? all : all.stream().filter(x -> changed.contains(x.file())).toList();
+      List<LayerChecker.Violation> v = changed == null ? all : all.stream().filter(x -> changed.containsKey(x.file())).toList();
       List<LayerChecker.Violation> old = all.stream().filter(x -> !v.contains(x)).toList();
       String out = (v.isEmpty() ? "" : "Controller gọi thẳng Repository:\n" + lines(v))
           + (old.isEmpty() ? "" : (v.isEmpty() ? "" : "\n\n")
@@ -103,9 +107,10 @@ public class QualityGate {
 
   /**
    * Runs one configured command through the OS shell, output to a temp file (no pipe to drain, no deadlock). changed non-null: a
-   * failing linter fails only on lines naming a file the ticket touched; violations already in other files are counted, not blocking.
+   * failing linter fails only on violations at a line the ticket changed; old ones (other files, or untouched lines of a legacy
+   * file the ticket edits) are counted, not blocking.
    */
-  static Step command(String name, String configured, Path dir, int timeoutMinutes, Collection<String> changed) {
+  static Step command(String name, String configured, Path dir, int timeoutMinutes, Map<String, Set<Integer>> changed) {
     String command = withWrapper(configured, dir);
     long t0 = System.currentTimeMillis();
     Path log = null;
@@ -143,16 +148,32 @@ public class QualityGate {
   }
 
   /** No file named in the log (plugin/config error): the failure stands as it is. */
-  static Step scoped(Step st, List<String> log, Collection<String> changed) {
+  static Step scoped(Step st, List<String> log, Map<String, Set<Integer>> changed) {
     List<String> refs = log.stream().filter(l -> FILE_REF.matcher(l).find()).toList();
     if (refs.isEmpty()) {
       return st;
     }
-    List<String> own = refs.stream().filter(l -> changed.stream().anyMatch(f -> l.replace('\\', '/').contains(f))).toList();
-    String out = (own.isEmpty() ? "" : "Lỗi ở file ticket sửa (" + own.size() + "):\n"
+    List<String> own = refs.stream().filter(l -> own(l.replace('\\', '/'), changed)).toList();
+    String out = (own.isEmpty() ? "" : "Lỗi ở dòng ticket sửa (" + own.size() + "):\n"
         + String.join("\n", own.subList(0, Math.min(own.size(), MAX_OWN_LINES))) + "\n\n")
-        + "Lỗi có sẵn ở file ticket không sửa: " + (refs.size() - own.size()) + " dòng (không chặn, không sửa trong ticket này)";
+        + "Lỗi có sẵn (file hoặc dòng ticket không sửa): " + (refs.size() - own.size())
+        + " dòng (không chặn, không sửa trong ticket này)";
     return new Step(st.name(), st.command(), own.isEmpty(), st.exitCode(), st.millis(), out);
+  }
+
+  /**
+   * A log line is the ticket's when it names a changed file and either gives no line number (eslint stylish header) or one the
+   * ticket changed. Line forms: "Foo.java:12:5", "Foo.java:[12,5]", "Foo.java(12,5)", "Foo.java line 12".
+   */
+  private static boolean own(String line, Map<String, Set<Integer>> changed) {
+    for (Map.Entry<String, Set<Integer>> e : changed.entrySet()) {
+      int at = line.indexOf(e.getKey());
+      if (at >= 0) {
+        Matcher m = LINE_NO.matcher(line.substring(at + e.getKey().length()));
+        return e.getValue().isEmpty() || !m.lookingAt() || e.getValue().contains(Integer.parseInt(m.group(1)));
+      }
+    }
+    return false;
   }
 
   private static List<String> read(Path log) {

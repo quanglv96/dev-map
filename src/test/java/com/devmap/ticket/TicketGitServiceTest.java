@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -221,5 +222,22 @@ class TicketGitServiceTest {
     assertThat(Files.readString(main.resolve("README.md"))).contains("edited in the old worktree");
     assertThat(git.run(main, "stash", "list").output()).isEmpty();
     dev.commit("shop", id, "payment-service", "moved", Actor.DEV);
+  }
+
+  /** The gate scopes lint to the lines a ticket changed: committed edits, uncommitted edits, deletions, untracked files. */
+  @Test
+  void changedLinesSinceBase() throws Exception {
+    Path r = repos.resolve("payment-service");
+    String base = git.head(r);
+    Files.writeString(r.resolve("legacy.txt"), "a\nb\nc\nd\ne\n");
+    git.commitAll(r, "base");
+    base = git.head(r);
+    Files.writeString(r.resolve("legacy.txt"), "a\nB\nc\ne\n"); // line 2 edited, line 4 (d) deleted
+    git.commitAll(r, "edit");
+    Files.writeString(r.resolve("legacy.txt"), "a\nB\nc\ne\nf\n"); // uncommitted: line 5 added
+    Files.writeString(r.resolve("new.txt"), "x\n");
+    Map<String, Set<Integer>> lines = git.changedLines(r, base);
+    assertThat(lines.get("legacy.txt")).contains(2, 3, 4, 5).doesNotContain(1);
+    assertThat(lines.get("new.txt")).isEmpty();
   }
 }

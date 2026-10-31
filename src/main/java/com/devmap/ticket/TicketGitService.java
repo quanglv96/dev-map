@@ -237,9 +237,7 @@ public class TicketGitService {
     for (RepoWork w : dev.repos()) {
       requireCheckedOut(w);
       Path wt = Path.of(w.worktree());
-      Set<String> touched = new LinkedHashSet<>(git.changedFiles(wt, w.baseCommit(), "HEAD"));
-      touched.addAll(git.uncommitted(wt));
-      List<QualityGate.Result> results = rules.runGate(project, w.repo(), wt, List.copyOf(touched));
+      List<QualityGate.Result> results = rules.runGate(project, w.repo(), wt, git.changedLines(wt, w.baseCommit()));
       List<String> dirty = git.uncommitted(wt);
       boolean passed = results.stream().allMatch(QualityGate.Result::passed) && dirty.isEmpty();
       dev = dev.with(w.withGate(passed ? git.head(wt) : null));
