@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.config.WorkspaceRepository;
 import com.devmap.rule.QualityGate;
 import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskService;
@@ -32,10 +33,12 @@ public class DevController {
 
   private final TicketGitService dev;
   private final TaskService tasks;
+  private final WorkspaceRepository workspaces;
 
-  public DevController(TicketGitService dev, TaskService tasks) {
+  public DevController(TicketGitService dev, TaskService tasks, WorkspaceRepository workspaces) {
     this.dev = dev;
     this.tasks = tasks;
+    this.workspaces = workspaces;
   }
 
   @PutMapping("/repos")
@@ -86,5 +89,23 @@ public class DevController {
   @PostMapping("/dev/push")
   public TicketGitService.View push(@PathVariable String project, @PathVariable String id) {
     return dev.confirmPush(project, id, Actor.PMO);
+  }
+
+  /** FR-55: what the handoff will commit and push, for the confirmation card. */
+  @GetMapping("/dev/handoff")
+  public List<TicketGitService.HandoffRepo> handoffPlan(@PathVariable String project, @PathVariable String id) {
+    return dev.handoffPlan(project, id);
+  }
+
+  /** FR-55: the PMO confirmed the push; WIP commit, push the ticket branches, record the handoff. */
+  @PostMapping("/dev/handoff")
+  public List<Task.Handoff.Repo> handoff(@PathVariable String project, @PathVariable String id) {
+    return dev.handoff(project, id, workspaces.machine(), Actor.PMO);
+  }
+
+  /** FR-55 on the other machine: continue from the handed-over commits. */
+  @PostMapping("/dev/resume")
+  public TicketGitService.View resume(@PathVariable String project, @PathVariable String id) {
+    return dev.resume(project, id, workspaces.machine(), Actor.PMO);
   }
 }

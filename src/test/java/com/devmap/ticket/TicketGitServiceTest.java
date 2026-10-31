@@ -240,4 +240,49 @@ class TicketGitServiceTest {
     assertThat(lines.get("legacy.txt")).contains(2, 3, 4, 5).doesNotContain(1);
     assertThat(lines.get("new.txt")).isEmpty();
   }
+
+  /** AC-18 / FR-55: unfinished work on A is WIP-committed and pushed only after the PMO confirms; B continues on that commit. */
+  @Test
+  void handoffPushesWipAndOtherMachineContinuesOnTheSameCommit() throws Exception {
+    String id = readyTicket();
+    dev.start("shop", id, Actor.DEV);
+    Path order = repos.resolve("order-service");
+    Path bare = tmp.resolve("origin/order-service.git");
+    Files.writeString(order.resolve("WIP.md"), "dở dang\n");
+    assertThat(dev.handoffPlan("shop", id)).filteredOn(r -> r.repo().equals("order-service"))
+        .singleElement().satisfies(r -> assertThat(r.uncommitted()).containsExactly("WIP.md"));
+
+    assertThatThrownBy(() -> dev.handoff("shop", id, "may-a", Actor.DEV)).isInstanceOf(PmoOnlyException.class);
+    assertThat(git.run(bare, "branch", "--list", "feature/NYX-7-hoan-tien").output()).as("nothing pushed without the PMO").isEmpty();
+
+    List<Task.Handoff.Repo> pushed = dev.handoff("shop", id, "may-a", Actor.PMO);
+    Task.Handoff.Repo o = pushed.stream().filter(r -> r.repo().equals("order-service")).findFirst().orElseThrow();
+    assertThat(git.run(order, "log", "-1", "--format=%s").output()).isEqualTo("NYX-7: WIP: chuyển sang máy khác");
+    assertThat(git.run(bare, "rev-parse", "feature/NYX-7-hoan-tien").output()).isEqualTo(o.commit());
+    assertThat(tasks.detail("shop", id).task().handoff().machine()).isEqualTo("may-a");
+
+    // machine B: its own clones of the service repos and its own ~/.devmap, the same (synced) data folder
+    ProjectService projectsB = new ProjectService(new WorkspaceRepository(tmp.resolve("homeB")), new ProjectRepository(),
+        new ServiceDetector(), git);
+    projectsB.create("shop", tmp.resolve("data"), null, List.of());
+    for (String svc : List.of("order-service", "payment-service")) {
+      Path clone = tmp.resolve("machineB").resolve(svc);
+      assertThat(git.run(tmp, "clone", "-q", tmp.resolve("origin").resolve(svc + ".git").toString(), clone.toString()).ok()).isTrue();
+      git.run(clone, "config", "user.name", "devmap-test");
+      git.run(clone, "config", "user.email", "devmap@example.invalid");
+      projectsB.locateRepo("shop", svc, clone.toString());
+    }
+    TaskService tasksB = new TaskService(projectsB, new TaskRepository(), new SecretMasker(), new RequestCleaner(), e -> { }, git);
+    TicketGitService devB = new TicketGitService(tasksB, new TaskRepository(), git,
+        new RuleService(projectsB, new RuleRepository(), new QualityGate()), e -> { });
+
+    TicketGitService.View v = devB.resume("shop", id, "may-b", Actor.PMO);
+    Path orderB = tmp.resolve("machineB/order-service");
+    assertThat(git.run(orderB, "branch", "--show-current").output()).isEqualTo("feature/NYX-7-hoan-tien");
+    assertThat(git.head(orderB).strip()).isEqualTo(o.commit());
+    assertThat(orderB.resolve("WIP.md")).hasContent("dở dang");
+    assertThat(v.repos()).filteredOn(r -> r.repo().equals("order-service")).singleElement()
+        .satisfies(r -> assertThat(Path.of(r.worktree())).isEqualTo(orderB));
+    assertThat(tasksB.detail("shop", id).task().handoff()).isNull();
+  }
 }

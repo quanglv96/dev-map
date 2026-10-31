@@ -303,6 +303,111 @@ public class TicketGitService {
     return view(project, id);
   }
 
+  /** What "Chuyển sang máy khác" will do per repo, shown before the PMO confirms: branch, head, files the WIP commit takes. */
+  public record HandoffRepo(String repo, String branch, String head, List<String> uncommitted) {
+  }
+
+  /** FR-55 step 1, nothing changes: the repos, branches and uncommitted files of a ticket being developed. */
+  public List<HandoffRepo> handoffPlan(String project, String id) {
+    Stored s = tasks.stored(project, id);
+    DevState dev = requireHandoffable(s);
+    List<HandoffRepo> out = new ArrayList<>();
+    for (RepoWork w : dev.repos()) {
+      requireCheckedOut(w);
+      Path wt = Path.of(w.worktree());
+      out.add(new HandoffRepo(w.repo(), w.branch(), git.tip(wt, w.branch()), git.uncommitted(wt)));
+    }
+    return out;
+  }
+
+  /**
+   * FR-55 step 2 = the PMO's push confirmation: unfinished code becomes a WIP commit carrying the ticket code (same scope and
+   * secret checks as any commit), the ticket branch of every repo is pushed (never forced, never protected), and task.md records
+   * the handoff so the other machine can continue from exactly these commits.
+   */
+  public synchronized List<Task.Handoff.Repo> handoff(String project, String id, String machine, Actor actor) {
+    if (actor != Actor.PMO) {
+      throw new PmoOnlyException("Chỉ PMO được xác nhận push để chuyển ticket sang máy khác");
+    }
+    Stored s = tasks.stored(project, id);
+    DevState dev = requireHandoffable(s);
+    for (RepoWork w : dev.repos()) {
+      requireCheckedOut(w);
+      if (!git.uncommitted(Path.of(w.worktree())).isEmpty()) {
+        commit(project, id, w.repo(), "WIP: chuyển sang máy khác", actor);
+      }
+    }
+    List<Task.Handoff.Repo> pushed = new ArrayList<>();
+    for (RepoWork w : dev.repos()) {
+      Path wt = Path.of(w.worktree());
+      if (rules.isProtected(project, w.branch())) {
+        throw new IllegalArgumentException(w.repo() + ": không push vào branch được bảo vệ " + w.branch());
+      }
+      if (!git.hasOrigin(wt)) {
+        throw new IllegalStateException(w.repo() + ": repo không có remote origin");
+      }
+      String head = git.tip(wt, w.branch());
+      git.push(wt, head, w.branch());
+      pushed.add(new Task.Handoff.Repo(w.repo(), w.branch(), head));
+      tasks.history(s, actor, w.repo(), "PMO xác nhận push (chuyển máy)",
+          w.repo() + ": push " + head.substring(0, 8) + " → origin/" + w.branch() + " để làm tiếp ở máy khác");
+    }
+    Stored now = tasks.stored(project, id);
+    repo.writeTask(now.folder(), now.task().withHandoff(new Task.Handoff(machine, now(), pushed), now()), repo.readTaskBody(now.folder()));
+    tasks.history(now, actor, null, null, "Chuyển ticket từ máy " + machine + " (FR-55)");
+    writeChanges(project, id);
+    tasks.changed(project, id);
+    return pushed;
+  }
+
+  /** FR-55 on the other machine: fetch, check out the ticket branch at the handed-over commit in each service repo, go on. */
+  public synchronized View resume(String project, String id, String machine, Actor actor) {
+    Stored s = tasks.stored(project, id);
+    Task.Handoff h = s.task().handoff();
+    if (h == null) {
+      throw new IllegalArgumentException("Ticket không có handoff để làm tiếp");
+    }
+    Project p = tasks.project(project);
+    DevState dev = repo.readDevState(s.folder());
+    for (Task.Handoff.Repo hr : h.repos()) {
+      RepoConfig rc = repoConfig(p, hr.repo());
+      Path main = rc.dir();
+      String fetchError = git.fetch(main);
+      if (!git.run(main, "cat-file", "-e", hr.commit() + "^{commit}").ok()) {
+        throw new IllegalStateException(hr.repo() + ": chưa có commit " + hr.commit().substring(0, 8) + " của máy " + h.machine()
+            + (fetchError == null ? "" : " (fetch lỗi: " + fetchError + ")"));
+      }
+      checkoutInRepo(project, id, hr.repo(), main, hr.branch(), hr.commit());
+      git.merge(main, hr.commit()); // a branch this machine had already: fast-forward to the handed-over commit
+      RepoWork w = dev.repo(hr.repo());
+      String path = main.toString().replace('\\', '/');
+      dev = dev.with(w == null ? new RepoWork(hr.repo(), path, hr.branch(), rc.baseBranch(), null, null, null, null)
+          : new RepoWork(w.repo(), path, hr.branch(), w.baseBranch(), w.baseCommit(), w.gateHead(), w.pushedHead(), w.pulledAt()));
+      repo.writeDevState(s.folder(), dev);
+      tasks.history(s, actor, hr.repo(), null, hr.repo() + ": làm tiếp trên máy " + machine + " từ " + hr.branch() + " @"
+          + hr.commit().substring(0, 8));
+    }
+    Stored now = tasks.stored(project, id);
+    repo.writeTask(now.folder(), now.task().withHandoff(null, now()), repo.readTaskBody(now.folder()));
+    writeChanges(project, id);
+    tasks.changed(project, id);
+    return view(project, id);
+  }
+
+  private DevState requireHandoffable(Stored s) {
+    if (s.task().status() != TaskStatus.IN_DEV) {
+      throw new IllegalArgumentException("Chỉ chuyển máy được khi ticket đang Dev triển khai");
+    }
+    DevState dev = repo.readDevState(s.folder());
+    if (dev.repos().isEmpty()) {
+      throw new IllegalArgumentException("Ticket chưa có repo nào được checkout; chưa có gì để chuyển");
+    }
+    if (dev.direct()) {
+      throw new IllegalArgumentException("Ticket code thẳng trên nhánh nền: không push WIP vào nhánh nền được, commit xong rồi chuyển");
+    }
+    return dev;
+  }
+
   /** FR-26: changes.md = branch, commits and files per repo, regenerated from git after every step. */
   public void writeChanges(String project, String id) {
     StringBuilder md = new StringBuilder("# Thay đổi – " + id + "\n");

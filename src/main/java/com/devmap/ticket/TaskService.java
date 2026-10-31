@@ -106,7 +106,7 @@ public class TaskService {
     List<String> modules = cleaner.mentioned(name + "\n" + req.text(), moduleNames(cfg));
     String now = now();
     Task task = new Task(id, type, name, TaskStatus.NEW, reposOf(cfg, modules),
-        cfg.branchPatterns().get(type).replace("{code}", id).replace("{slug}", slug), 0, 0, now, now);
+        cfg.branchPatterns().get(type).replace("{code}", id).replace("{slug}", slug), 0, 0, now, now, null);
 
     Path folder = dir.resolve("tasks").resolve(id + "-" + slug);
     repo.writeTask(folder, task, "# " + name + "\n\n## Yêu cầu gốc của PMO\n\n" + req.text() + "\n");
@@ -244,7 +244,7 @@ public class TaskService {
       throw new IllegalArgumentException("Repo phải thuộc dự án: " + known);
     }
     Task t = s.task();
-    Task updated = new Task(t.id(), t.type(), t.title(), t.status(), wanted, t.branch(), t.version(), t.reopened(), t.created(), now());
+    Task updated = t.withRepos(wanted, now());
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
     history(s, actor, "Repo của ticket: " + wanted);
     changed(project, id);
