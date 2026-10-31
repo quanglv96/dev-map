@@ -86,6 +86,10 @@ Kiểm bằng dòng lệnh: `devmap rules check nyxhub --repo order-service`.
 | `rules show/check` | xem rule, chạy gate |
 | `prompt <dự án> <ticket> [--role sa\|dev] [--question …]` | xem trước đúng nội dung một phiên agent sẽ nhận, không gọi LLM |
 | `doctor` | kiểm môi trường và cấu hình |
+| `sync` | commit, pull, push repo dữ liệu ngay |
+| `data init-sync <remote> [--dir]` / `data clone <remote> [path]` | bật đồng bộ ở máy đầu / lấy dữ liệu về máy mới |
+| `data export <dự án> [--out file.zip]` / `data import <file.zip> [--data]` | chuyển dữ liệu không qua git |
+| `ticket handoff <mã> [--project] [--yes]` / `ticket resume <mã>` | chuyển ticket đang làm sang máy khác / làm tiếp ở máy này (`ticket` = `task`) |
 
 ## 8. Cấu hình máy
 
@@ -98,3 +102,44 @@ Truyền bằng `-D` trước `-jar`, ví dụ `java -Ddevmap.agent.max-concurre
 | `devmap.agent.command` | `claude` (`claude.cmd` trên Windows) | lệnh Claude Code |
 | `devmap.agent.model` | (mặc định của Claude Code) | model cho agent |
 | `devmap.agent.timeout-minutes` | 30 | thời gian tối đa một phiên |
+
+## 9. Dùng trên nhiều máy
+
+Cùng một PMO, máy A (văn phòng) và máy B (ở nhà), cùng tài khoản Git. Folder dữ liệu gốc (chứa `nyxhub/`, `lendbiz/`…) là **một repo git private riêng**, ví dụ `devmap-data`. DevMap tự commit, pull, push repo này.
+
+**Máy đầu tiên**
+
+1. Tạo repo **private** rỗng `devmap-data` trên GitHub/GitLab (không README).
+2. `devmap data init-sync git@github.com:acme/devmap-data.git` (thêm `--dir D:/devmap-data` nếu các dự án không chung một folder cha), hoặc trang chủ → **Dùng trên nhiều máy** → nhập remote → **Bật đồng bộ cho folder này**.
+3. Token Git: không nhập vào URL. Lần push đầu git credential manager của máy hỏi đăng nhập và giữ token trong kho khoá của hệ điều hành. Remote public thì DevMap cảnh báo.
+
+**Máy mới**
+
+1. `devmap data clone git@github.com:acme/devmap-data.git D:/devmap-data` (folder trống), hoặc trang chủ → **Clone dữ liệu về máy này**. Mọi dự án trong repo tự được đăng ký.
+2. Mở từng dự án: thẻ "n repo chưa có trên máy này" → **Chọn folder đã có…** (DevMap kiểm remote khớp) hoặc **Clone vào folder…**. `config.yml` chỉ ghi tên và remote của repo; đường dẫn của từng máy nằm ở `~/.devmap/workspaces.yml`.
+
+**Hằng ngày**
+
+- Thanh trên cùng luôn hiện trạng thái: Đã đồng bộ / Đang đồng bộ / Có thay đổi chưa đẩy / Lỗi đồng bộ / Có xung đột / Đang mở ở máy khác. Bấm vào để xem lần đồng bộ gần nhất, số commit chưa đẩy và nút **Đồng bộ ngay**.
+- DevMap tự commit vài giây sau khi ticket, tài liệu, cấu hình, rule, convention thay đổi (`data(nyxhub/NYX-231): cập nhật analysis.md`), tự pull khi `devmap serve` chạy và trước khi mở dự án, tự push sau mỗi commit. Mất mạng vẫn làm bình thường; commit nằm ở máy, tự đẩy khi có mạng lại.
+- Không đồng bộ: graph/chỉ mục, cache, log, phiên agent, file tạm. Graph mỗi máy tự cập nhật theo git diff.
+- Trước mỗi commit DevMap che lại bí mật một lần nữa. Có chuỗi giống token/mật khẩu chưa che (ví dụ sửa tay file bằng trình soạn thảo): không commit, báo file và dòng (không in giá trị). Sửa file, DevMap tự thử lại; giá trị giả cần giữ thì thêm vào `secrets.allow` của dự án.
+- `~/.devmap/workspaces.yml`: `sync.auto_push: false` để mỗi lần đẩy dữ liệu cần bấm **Đẩy lên remote** (mặc định `true` vì repo chỉ chứa tài liệu đã che). `machine: ten-may` đặt tên máy hiện trong khoá và tên file xung đột (mặc định tên máy tính). Push **code** của service luôn cần PMO xác nhận, không đổi.
+
+**Mở cùng lúc hai máy**
+
+Máy đang chạy `devmap serve` giữ khoá `.devmap-lock.json` (heartbeat mỗi phút). Máy kia mở lên thấy "Đang mở ở máy A": **Chỉ xem** (xem được, không sửa được gì) hoặc **Chiếm quyền** (máy A chuyển sang chỉ xem ở lần đồng bộ kế tiếp, trong vòng một phút). Khoá quá 10 phút không heartbeat (máy A tắt, mất mạng) coi như hết hạn.
+
+**Xung đột**
+
+Hai máy cùng sửa một file khi chưa đồng bộ: bản đã lên remote giữ ở file chính, bản của máy kia lưu thành `analysis.conflict-<máy>.md` cạnh đó. Không bản nào mất. Ticket có nhãn "Có xung đột"; mở ticket → thẻ "Xung đột đồng bộ" hiện hai bản cạnh nhau: **Giữ bản đang dùng**, **Giữ bản máy …**, hoặc sửa ô **Ghép** rồi **Lưu bản ghép**.
+
+**Chuyển ticket đang làm dở**
+
+1. Máy A, ticket đang Dev triển khai: **Chuyển sang máy khác** → thẻ liệt kê từng repo, branch, file chưa commit → **Xác nhận push và chuyển** (đây là PMO xác nhận push). DevMap commit file dở thành `NYX-231: WIP: chuyển sang máy khác`, push branch ticket ở mọi repo (không force, không push branch bảo vệ), ghi `handoff` vào task.md. Dòng lệnh: `devmap ticket handoff NYX-231`.
+2. Máy B: mở ticket → "Ticket được chuyển từ máy A…" → **Tiếp tục trên máy này**: fetch, checkout branch ticket đúng commit đó trong repo service, làm tiếp. Dòng lệnh: `devmap ticket resume NYX-231`.
+3. Ticket chọn "push thẳng vào nhánh nền" không chuyển được bằng WIP: commit xong rồi chuyển.
+
+**Không dùng git**
+
+Cấu hình dự án → **Xuất dữ liệu dự án (zip)** (hoặc `devmap data export nyxhub`), sang máy kia: trang chủ → **Nhập** (hoặc `devmap data import devmap-nyxhub.zip --data D:/devmap-data`). Zip không có graph/cache/log; nhập không ghi đè dự án đã có.

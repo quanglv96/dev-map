@@ -18,6 +18,14 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | AC-10 Ngữ cảnh gọn và chất lượng | 3, 4, 5, 6 | Đạt (phần tự động): nhật ký đầu vào chỉ có chữ ký và đoạn ≤ 80 dòng, không có nguyên file; system prompt giống hệt giữa các phiên (cache); thay đổi thêm Controller→Repository bị chặn ở gate (vi phạm có sẵn ở nhánh nền chỉ liệt kê, D-44); Dev không sang SA khi gate chưa đạt | `AgentServiceTest.*`, `RuleServiceTest.layerCheckFindsControllerCallingRepository`, `TicketGitServiceTest.ticketFromWorktreeToConfirmedPush` |
 | AC-11 Kiểm chứng phạm vi | 5, 6 | Đạt (agent giả và Claude Code thật, K-06 bước 6): file ngoài yêu cầu và chữ ký bị đổi có nơi gọi đều nêu trong verify.md, trả về Dev, không có `awaiting_push`; SA không sửa được plan.md đã chốt | `AgentServiceTest.saVerificationCatchesScopeCreepAndChangedSignature`, K-06 |
 | AC-12 Tối ưu token | 2, 5 | Đạt (phần tự động): prompt không có câu xã giao, nguyên văn hay token; nhật ký đầu vào bị xoá khi Done; mở lại trả lời từ tài liệu | `TaskServiceTest.createsTicketWithMaskedSpec`, `RequestCleanerTest`, `AgentServiceTest.threeQuestionsAreThreeFreshSessions`, `AgentServiceTest.doneDropsSessionContextAndReopenRebuildsFromDocs`, K-02, K-05 |
+| AC-13 Đồng bộ cơ bản | SYNC | Đạt (tự động) | `SyncServiceTest.ticketAndDocumentsTravelBothWays`, `SyncServiceTest.commitMessageNamesProjectTicketAndAction`, K-10 |
+| AC-14 Đường dẫn khác máy | SYNC | Đạt (tự động) | `ProjectServiceTest.otherMachinePicksOrClonesMissingRepos`, `SyncServiceTest.ticketAndDocumentsTravelBothWays`, K-10 |
+| AC-15 Migrate | SYNC | Đạt (tự động) | `ProjectServiceTest.legacyConfigWithAbsolutePathsIsMigratedOnce` |
+| AC-16 Khoá mềm | SYNC | Đạt (tự động) | `SyncServiceTest.softLockWarnsTakesOverAndExpires`, `WebTest.viewOnlyRefusesWrites`, K-10 |
+| AC-17 Xung đột | SYNC | Đạt (tự động) | `SyncServiceTest.offlineEditsOfTheSameFileKeepBothVersions`, K-10 |
+| AC-18 Chuyển ticket | SYNC | Đạt (tự động) | `TicketGitServiceTest.handoffPushesWipAndOtherMachineContinuesOnTheSameCommit`, K-10 |
+| AC-19 Không đồng bộ thứ không cần | SYNC | Đạt (tự động) | `SyncServiceTest.rebuildableAndMachineFilesAreNotSynced` |
+| AC-20 Bí mật | SYNC | Đạt (tự động) | `SyncServiceTest.secretInAChangedFileBlocksTheCommit`, `SyncServiceTest.remoteUrlNeverCarriesAToken` |
 
 ## Test tự động Phase 1
 
@@ -232,3 +240,31 @@ Môi trường: bản sao `samples/shop` (`init-repos.sh <thư mục>`, mỗi re
 4. PMO chốt → Sẵn sàng: bấm "Triển khai": repo của service chuyển sang branch ticket (`git branch --show-current` trong folder service), thanh tiến trình tím "Dev đang triển khai · n bước · <bước mới nhất>" chạy trên đầu ticket; tiêu đề tab đổi theo. Dev xong → tự sang "SA đang kiểm chứng" (xanh ngọc) → "Cần PMO xác nhận push".
 5. Có commit mới trên nhánh nền sau khi SA phân tích: phiên Dev có bước "Nhánh nền có commit mới ở …", summary.md có `## Rà soát nhánh nền`.
 6. Repo service còn file chưa commit của PMO: "Triển khai" báo "repo đang ở nhánh … với n file chưa commit…", không đổi gì.
+
+
+## Đồng bộ nhiều máy (SYNC, `docs/CHANGE-SYNC.md`)
+
+Hai "máy" giả lập trong thư mục tạm của test: `machineA/`, `machineB/` (mỗi máy `home/` = `~/.devmap` riêng, `data/` = folder dữ liệu riêng, `machine` riêng trong `workspaces.yml`) và một bare repo cục bộ `remote/devmap-data.git` làm remote. Không cần mạng.
+
+| Test | Kiểm |
+| --- | --- |
+| `SyncServiceTest.ticketAndDocumentsTravelBothWays` | AC-13: A tạo ticket, sửa analysis.md, đồng bộ → B clone thấy dự án (tự đăng ký), ticket, đúng nội dung; B sửa → A thấy sau khi đồng bộ, có sự kiện `pulled`. AC-14: `config.yml` trên B có `remote`, không có đường dẫn tuyệt đối; repo của B chưa có đường dẫn |
+| `SyncServiceTest.commitMessageNamesProjectTicketAndAction` | FR-47: `data(shop/NYX-231): cập nhật analysis.md`, `data(shop): …`, `data(lock): heartbeat …`; thay đổi phải đứng yên một nhịp mới commit |
+| `SyncServiceTest.softLockWarnsTakesOverAndExpires` | AC-16: A giữ khoá (có trên remote) → B mở: "Đang mở ở máy machineA", chỉ xem, chờ chọn; B chiếm quyền → A chuyển chỉ xem ở heartbeat sau; máy C với đồng hồ +11 phút thấy khoá hết hạn, tự lấy khoá |
+| `SyncServiceTest.offlineEditsOfTheSameFileKeepBothVersions` | AC-17: A và B cùng sửa analysis.md khi chưa đồng bộ → file chính = bản A (đã lên remote), `analysis.conflict-machineB.md` = bản B, trạng thái Có xung đột, ticket NYX-231; máy A cũng thấy; PMO ghép → hết xung đột, đồng bộ lại |
+| `SyncServiceTest.rebuildableAndMachineFilesAreNotSynced` | AC-19: graph/, logs/, cache/, sessions/, `.bak`, `.tmp`, `.lock` không có trong repo dữ liệu; zip xuất không có graph; nhập không ghi đè |
+| `SyncServiceTest.secretInAChangedFileBlocksTheCommit` | AC-20: token `ghp_…` ghi thẳng vào history.md → không commit, báo `history.md:<dòng> (TOKEN)`, log không chứa giá trị, remote không có; sửa xong thì commit được |
+| `SyncServiceTest.remoteUrlNeverCarriesAToken` | URL remote dạng `https://user:token@…` bị từ chối |
+| `ProjectServiceTest.legacyConfigWithAbsolutePathsIsMigratedOnce` | AC-15: `path` tuyệt đối → `remote` trong config.yml, đường dẫn sang `workspaces.yml` (khoá remote chuẩn hoá hoặc `shop/<repo>`), `config.yml.bak` đúng bản cũ, chỉ chạy một lần |
+| `ProjectServiceTest.otherMachinePicksOrClonesMissingRepos` | AC-14: máy B không có đường dẫn → `problems` báo, `dir()` báo rõ; clone giúp vào folder chọn; chọn folder có remote không khớp bị từ chối; đường dẫn của A không đổi |
+| `TicketGitServiceTest.handoffPushesWipAndOtherMachineContinuesOnTheSameCommit` | AC-18: Dev không chuyển được (chỉ PMO xác nhận push), chưa xác nhận thì origin chưa có branch; xác nhận → commit `NYX-7: WIP: …`, origin có đúng commit, task.md có `handoff`; máy B (clone riêng, `~/.devmap` riêng) tiếp tục: đúng branch, đúng commit, có file WIP, `handoff` được xoá |
+| `WebTest.viewOnlyRefusesWrites` | FR-53: chế độ chỉ xem → ghi trả 423, đọc và `/api/sync` vẫn chạy |
+
+**K-10 (giao diện, kiểm bằng tay trên hai máy thật; AC-13, AC-14, AC-16, AC-17, AC-18)** — chưa chạy
+
+1. Máy A: tạo repo private rỗng `devmap-data`; trang chủ → Dùng trên nhiều máy → nhập remote → Bật đồng bộ. Thanh trên cùng: "Đã đồng bộ".
+2. Máy B: trang chủ → Clone dữ liệu về máy này (folder trống). Dự án hiện ở danh sách; mở dự án: thẻ "n repo chưa có trên máy này" → Chọn folder đã có / Clone vào folder…; thẻ biến mất.
+3. Máy A đang mở; máy B chạy `devmap`: dải vàng "Đang mở ở máy A" với Chỉ xem / Chiếm quyền. Chỉ xem: sửa gì cũng báo "chỉ xem". Chiếm quyền: trong vòng một phút máy A hiện dải vàng "Máy B đã chiếm quyền…".
+4. Rút mạng cả hai máy, cùng sửa analysis.md của một ticket (Cấu hình → sửa tay hoặc qua agent): thanh trên "Có thay đổi chưa đẩy". Cắm mạng, Đồng bộ ngay ở cả hai: ticket có nhãn đỏ "Có xung đột"; mở ticket thấy hai bản cạnh nhau; Lưu bản ghép → nhãn mất ở cả hai máy sau lần đồng bộ sau.
+5. Ticket đang Dev triển khai trên A: Chuyển sang máy khác → thẻ liệt kê repo/branch/file → Xác nhận push và chuyển. Máy B: mở ticket → Tiếp tục trên máy này → `git log -1` trong repo service của B là commit WIP.
+6. `~/.devmap/workspaces.yml` máy A: `sync: {auto_push: false}`, khởi động lại; sửa một tài liệu → thanh trên có thẻ "… commit dữ liệu chờ đẩy" và nút Đẩy lên remote.
