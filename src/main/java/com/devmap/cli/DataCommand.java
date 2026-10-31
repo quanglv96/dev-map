@@ -26,18 +26,19 @@ class DataCommand implements Runnable {
   }
 
   @Command(name = "init-sync", mixinStandardHelpOptions = true,
-      description = "Turn the data folder into a git repo, set its remote and push. Use a PRIVATE repo.")
-  int initSync(@Parameters(paramLabel = "remote-url") String remote,
-      @Option(names = "--dir", description = "Data root (parent of the project folders); default: the common parent.") Path dir) {
-    print(Core.get(SyncService.class).initSync(remote, dir));
+      description = "Turn a project's data folder into a git repo, set its remote and push. Use a PRIVATE repo.")
+  int initSync(@Parameters(index = "0", paramLabel = "project") String project,
+      @Parameters(index = "1", paramLabel = "remote-url") String remote) {
+    print(Core.get(SyncService.class).initSync(project, remote));
     return 0;
   }
 
-  @Command(name = "clone", mixinStandardHelpOptions = true, description = "New machine: clone the data repo and register its projects.")
-  int cloneData(@Parameters(index = "0", paramLabel = "remote-url") String remote,
-      @Parameters(index = "1", arity = "0..1", paramLabel = "path", description = "Default: ~/devmap-data.") Path path) {
+  @Command(name = "clone", mixinStandardHelpOptions = true,
+      description = "New machine: clone a project's data repo into <data-root>/<project> and register it.")
+  int cloneProject(@Parameters(index = "0", paramLabel = "remote-url") String remote,
+      @Parameters(index = "1", arity = "0..1", paramLabel = "data-root", description = "Default: ~/devmap-data.") Path path) {
     Path target = path != null ? path : Path.of(System.getProperty("user.home"), "devmap-data");
-    print(Core.get(SyncService.class).cloneData(remote, target));
+    print(Core.get(SyncService.class).cloneProject(remote, target));
     return 0;
   }
 
@@ -54,7 +55,7 @@ class DataCommand implements Runnable {
 
   @Command(name = "import", mixinStandardHelpOptions = true, description = "Import a project zip made by `devmap data export`.")
   int importZip(@Parameters(paramLabel = "file.zip") Path file,
-      @Option(names = "--data", description = "Data root to import into; default: the synced data root.") Path dataRoot)
+      @Option(names = "--data", description = "Data root to import into; default: that of the existing projects.") Path dataRoot)
       throws IOException {
     try (InputStream in = Files.newInputStream(file)) {
       Project p = Core.get(SyncService.class).importZip(in, dataRoot);
@@ -66,8 +67,5 @@ class DataCommand implements Runnable {
 
   private static void print(Setup s) {
     SyncCommand.print(s.status());
-    if (!s.projects().isEmpty()) {
-      System.out.println("Đã đăng ký dự án: " + String.join(", ", s.projects()));
-    }
   }
 }

@@ -4,19 +4,24 @@ import com.devmap.sync.SyncService;
 import com.devmap.sync.SyncService.Status;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Parameters;
 
-@Command(name = "sync", mixinStandardHelpOptions = true, description = "Commit, pull and push the DevMap data repo now (FR-48).")
+@Command(name = "sync", mixinStandardHelpOptions = true, description = "Commit, pull and push a project's data repo now (FR-48).")
 class SyncCommand implements Callable<Integer> {
+
+  @Parameters(paramLabel = "project")
+  String project;
 
   @Override
   public Integer call() {
-    Status s = Core.get(SyncService.class).syncNow();
+    Status s = Core.get(SyncService.class).syncNow(project);
     print(s);
     return s.state() == SyncService.State.ERROR ? 1 : 0;
   }
 
   static void print(Status s) {
-    System.out.println("Đồng bộ: " + s.state() + " (máy " + s.machine() + ", " + s.dataDir() + " ↔ " + s.remote() + ")");
+    System.out.println("Đồng bộ " + s.project() + ": " + s.state() + " (máy " + s.machine() + ", " + s.dataDir() + " ↔ " + s.remote()
+        + ")");
     if (s.message() != null) {
       System.out.println("  " + s.message());
     }

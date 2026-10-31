@@ -47,10 +47,10 @@ public class EventController {
     send(progress.project(), "agent", progress);
   }
 
-  /** FR-56: the data repo is shared by every project, so every tab gets it. */
+  /** FR-56: the project's tabs and the home page. */
   @EventListener
   public void onSync(SyncChanged change) {
-    send(null, "sync", change);
+    send(change.status().project(), "sync", change);
   }
 
   private void send(String changed, String name, Object data) {

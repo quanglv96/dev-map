@@ -110,5 +110,5 @@ export function renderConfig(target, project, onSaved) {
   target.replaceChildren(el("h2", {}, t("projectConfig")), form, sync,
     el("p", {}, el("a", { href: `/api/projects/${encodeURIComponent(project.name)}/export`, download: `devmap-${project.name}.zip` },
       t("sync.export")), " ", el("small", { class: "muted" }, t("sync.exportHint"))));
-  renderSyncSettings(sync).catch((err) => showError(sync, err));
+  renderSyncSettings(sync, project.name).catch((err) => showError(sync, err));
 }

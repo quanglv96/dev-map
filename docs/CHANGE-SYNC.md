@@ -4,7 +4,7 @@ Tóm tắt phần bổ sung theo `docs/PROMPT_SYNC.md`, để PMO cập nhật v
 
 ## 1. Thay đổi so với SRS hiện tại
 
-- **Mục "Lưu trữ dữ liệu"**: folder dữ liệu gốc (cha của các folder dự án) có thể là một repo git private riêng do DevMap tự commit/pull/push. Thay cho D-47 "không khởi tạo git cho folder dữ liệu" khi PMO bật đồng bộ; không bật thì như cũ.
+- **Mục "Lưu trữ dữ liệu"**: folder dữ liệu **của từng dự án** có thể là một repo git private riêng (remote, khoá, auto push riêng, D-53) do DevMap tự commit/pull/push. Thay cho D-47 "không khởi tạo git cho folder dữ liệu" khi PMO bật đồng bộ cho dự án; không bật thì như cũ.
 - **`config.yml` của dự án**: repo không còn `path`. Ví dụ mới:
 
   ```yaml
@@ -18,25 +18,26 @@ Tóm tắt phần bổ sung theo `docs/PROMPT_SYNC.md`, để PMO cập nhật v
 - **"Dữ liệu trên máy, ngoài folder dữ liệu"**: `~/.devmap/workspaces.yml` thêm:
 
   ```yaml
-  data_dir: D:/devmap-data          # folder dữ liệu gốc đang đồng bộ
+  data_dir: D:/devmap-data          # folder gốc mặc định khi clone / nhập zip
   machine: may-van-phong            # tuỳ chọn, mặc định tên máy tính
   sync:
-    auto_push: true                 # FR-49
+    auto_push: true                 # FR-49, mặc định cho dự án chưa chỉnh
   repos:                            # remote (chuẩn hoá) hoặc <dự án>/<repo> → đường dẫn trên máy này
     github.com/acme/order-service: D:/code/order-service
   projects:
     - name: nyxhub
-      data_dir: D:/devmap-data/nyxhub
+      data_dir: D:/devmap-data/nyxhub   # repo dữ liệu của dự án (nếu bật đồng bộ)
+      auto_push: false                  # tuỳ chọn, riêng dự án này
   ```
 
-- **File mới trong folder dữ liệu gốc**: `.gitignore` (DevMap sinh), `.devmap-lock.json` (khoá mềm), `<tên>.conflict-<máy>.<đuôi>` (bản thứ hai khi xung đột, xoá khi PMO giải quyết).
+- **File mới trong folder dữ liệu của dự án**: `.gitignore` (DevMap sinh), `.devmap-lock.json` (khoá mềm), `<tên>.conflict-<máy>.<đuôi>` (bản thứ hai khi xung đột, xoá khi PMO giải quyết).
 - **task.md**: thêm `handoff` (máy, lúc, danh sách repo/branch/commit) khi ticket đang chờ máy khác làm tiếp.
 
 ## 2. Yêu cầu chức năng FR-46 → FR-57
 
 | Mã | Yêu cầu | Đã làm |
 | --- | --- | --- |
-| FR-46 | Khởi tạo đồng bộ / clone trên máy mới | `devmap data init-sync <remote> [--dir]`, `devmap data clone <remote> [path]`; giao diện ở trang chủ và Cấu hình dự án ("Dùng trên nhiều máy"). Clone xong tự đăng ký mọi dự án. |
+| FR-46 | Khởi tạo đồng bộ / clone trên máy mới | Theo từng dự án: `devmap data init-sync <dự án> <remote>` hoặc Cấu hình dự án → "Dùng trên nhiều máy"; máy mới: `devmap data clone <remote> [folder gốc]` hoặc trang chủ → "Clone dự án từ repo dữ liệu", clone xong tự đăng ký dự án. |
 | FR-47 | Tự commit, gom vài giây, message `data(<dự án>/<mã>): <hành động>` | Luồng nền quét mỗi 3 giây, commit khi thay đổi đứng yên một nhịp. Message suy từ đường dẫn file. |
 | FR-48 | Tự pull khi `serve` chạy và trước khi mở dự án; tự push sau commit; "Đồng bộ ngay", `devmap sync` | Có. Pull = fetch + rebase. Mở trang dự án gọi pull (bỏ qua nếu vừa pull trong 15 giây). |
 | FR-49 | `sync.auto_push`, mặc định `true`; `false` thì thẻ xác nhận | Có. Khi `false` không push gì tự động (kể cả heartbeat khoá). Push code service không đổi. |

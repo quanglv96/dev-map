@@ -86,8 +86,8 @@ Kiểm bằng dòng lệnh: `devmap rules check nyxhub --repo order-service`.
 | `rules show/check` | xem rule, chạy gate |
 | `prompt <dự án> <ticket> [--role sa\|dev] [--question …]` | xem trước đúng nội dung một phiên agent sẽ nhận, không gọi LLM |
 | `doctor` | kiểm môi trường và cấu hình |
-| `sync` | commit, pull, push repo dữ liệu ngay |
-| `data init-sync <remote> [--dir]` / `data clone <remote> [path]` | bật đồng bộ ở máy đầu / lấy dữ liệu về máy mới |
+| `sync <dự án>` | commit, pull, push repo dữ liệu của dự án ngay |
+| `data init-sync <dự án> <remote>` / `data clone <remote> [folder gốc]` | bật đồng bộ cho một dự án ở máy đầu / lấy một dự án về máy mới |
 | `data export <dự án> [--out file.zip]` / `data import <file.zip> [--data]` | chuyển dữ liệu không qua git |
 | `ticket handoff <mã> [--project] [--yes]` / `ticket resume <mã>` | chuyển ticket đang làm sang máy khác / làm tiếp ở máy này (`ticket` = `task`) |
 
@@ -105,30 +105,30 @@ Truyền bằng `-D` trước `-jar`, ví dụ `java -Ddevmap.agent.max-concurre
 
 ## 9. Dùng trên nhiều máy
 
-Cùng một PMO, máy A (văn phòng) và máy B (ở nhà), cùng tài khoản Git. Folder dữ liệu gốc (chứa `nyxhub/`, `lendbiz/`…) là **một repo git private riêng**, ví dụ `devmap-data`. DevMap tự commit, pull, push repo này.
+Cùng một PMO, máy A (văn phòng) và máy B (ở nhà), cùng tài khoản Git. Đồng bộ **bật riêng cho từng dự án**: folder dữ liệu của dự án (ví dụ `D:/devmap-data/nyxhub/`) là **một repo git private riêng**, ví dụ `devmap-nyxhub`. Dự án không bật thì chỉ nằm trên máy này. DevMap tự commit, pull, push repo của từng dự án đã bật.
 
 **Máy đầu tiên**
 
-1. Tạo repo **private** rỗng `devmap-data` trên GitHub/GitLab (không README).
-2. `devmap data init-sync git@github.com:acme/devmap-data.git` (thêm `--dir D:/devmap-data` nếu các dự án không chung một folder cha), hoặc trang chủ → **Dùng trên nhiều máy** → nhập remote → **Bật đồng bộ cho folder này**.
+1. Tạo repo **private** rỗng cho dự án, ví dụ `devmap-nyxhub`, trên GitHub/GitLab (không README).
+2. Mở dự án → **Cấu hình dự án** → **Dùng trên nhiều máy** → nhập remote → **Bật đồng bộ cho dự án này**, hoặc `devmap data init-sync nyxhub git@github.com:acme/devmap-nyxhub.git`. Làm lại cho từng dự án muốn đồng bộ.
 3. Token Git: không nhập vào URL. Lần push đầu git credential manager của máy hỏi đăng nhập và giữ token trong kho khoá của hệ điều hành. Remote public thì DevMap cảnh báo.
 
 **Máy mới**
 
-1. `devmap data clone git@github.com:acme/devmap-data.git D:/devmap-data` (folder trống), hoặc trang chủ → **Clone dữ liệu về máy này**. Mọi dự án trong repo tự được đăng ký.
+1. Trang chủ → **Clone dự án từ repo dữ liệu** → nhập remote của dự án và folder gốc (ví dụ `D:/devmap-data`) → **Clone dự án về máy này**, hoặc `devmap data clone git@github.com:acme/devmap-nyxhub.git D:/devmap-data`. DevMap clone vào `D:/devmap-data/nyxhub` và đăng ký dự án. Mỗi dự án clone một lần.
 2. Mở từng dự án: thẻ "n repo chưa có trên máy này" → **Chọn folder đã có…** (DevMap kiểm remote khớp) hoặc **Clone vào folder…**. `config.yml` chỉ ghi tên và remote của repo; đường dẫn của từng máy nằm ở `~/.devmap/workspaces.yml`.
 
 **Hằng ngày**
 
-- Thanh trên cùng luôn hiện trạng thái: Đã đồng bộ / Đang đồng bộ / Có thay đổi chưa đẩy / Lỗi đồng bộ / Có xung đột / Đang mở ở máy khác. Bấm vào để xem lần đồng bộ gần nhất, số commit chưa đẩy và nút **Đồng bộ ngay**.
+- Thanh trên cùng của trang dự án hiện trạng thái của dự án đó (trang chủ hiện nhãn cạnh từng dự án): Chưa đồng bộ / Đã đồng bộ / Đang đồng bộ / Có thay đổi chưa đẩy / Lỗi đồng bộ / Có xung đột / Đang mở ở máy khác. Bấm vào để xem lần đồng bộ gần nhất, số commit chưa đẩy và nút **Đồng bộ ngay**.
 - DevMap tự commit vài giây sau khi ticket, tài liệu, cấu hình, rule, convention thay đổi (`data(nyxhub/NYX-231): cập nhật analysis.md`), tự pull khi `devmap serve` chạy và trước khi mở dự án, tự push sau mỗi commit. Mất mạng vẫn làm bình thường; commit nằm ở máy, tự đẩy khi có mạng lại.
 - Không đồng bộ: graph/chỉ mục, cache, log, phiên agent, file tạm. Graph mỗi máy tự cập nhật theo git diff.
 - Trước mỗi commit DevMap che lại bí mật một lần nữa. Có chuỗi giống token/mật khẩu chưa che (ví dụ sửa tay file bằng trình soạn thảo): không commit, báo file và dòng (không in giá trị). Sửa file, DevMap tự thử lại; giá trị giả cần giữ thì thêm vào `secrets.allow` của dự án.
-- `~/.devmap/workspaces.yml`: `sync.auto_push: false` để mỗi lần đẩy dữ liệu cần bấm **Đẩy lên remote** (mặc định `true` vì repo chỉ chứa tài liệu đã che). `machine: ten-may` đặt tên máy hiện trong khoá và tên file xung đột (mặc định tên máy tính). Push **code** của service luôn cần PMO xác nhận, không đổi.
+- Ô **Tự đẩy dữ liệu sau mỗi commit** ở Cấu hình dự án (ghi `auto_push` của dự án trong `~/.devmap/workspaces.yml`): tắt thì mỗi lần đẩy cần bấm **Đẩy lên remote**. Dự án chưa chỉnh dùng `sync.auto_push` của máy (mặc định `true` vì repo chỉ chứa tài liệu đã che). `machine: ten-may` đặt tên máy hiện trong khoá và tên file xung đột (mặc định tên máy tính). Push **code** của service luôn cần PMO xác nhận, không đổi.
 
 **Mở cùng lúc hai máy**
 
-Máy đang chạy `devmap serve` giữ khoá `.devmap-lock.json` (heartbeat mỗi phút). Máy kia mở lên thấy "Đang mở ở máy A": **Chỉ xem** (xem được, không sửa được gì) hoặc **Chiếm quyền** (máy A chuyển sang chỉ xem ở lần đồng bộ kế tiếp, trong vòng một phút). Khoá quá 10 phút không heartbeat (máy A tắt, mất mạng) coi như hết hạn.
+Mỗi dự án có khoá riêng: máy đang chạy `devmap serve` giữ `.devmap-lock.json` trong folder dự án (heartbeat mỗi phút). Máy kia mở dự án lên thấy "Đang mở ở máy A": **Chỉ xem** (xem được, không sửa được gì trong dự án đó; dự án khác vẫn sửa được) hoặc **Chiếm quyền** (máy A chuyển sang chỉ xem ở lần đồng bộ kế tiếp, trong vòng một phút). Khoá quá 10 phút không heartbeat (máy A tắt, mất mạng) coi như hết hạn.
 
 **Xung đột**
 

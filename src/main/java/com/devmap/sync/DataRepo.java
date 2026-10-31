@@ -30,7 +30,7 @@ import org.eclipse.jgit.dircache.DirCacheEntry;
 import org.eclipse.jgit.lib.Repository;
 
 /**
- * The DevMap data root as a git repo (FR-46 → FR-54). Local work (init, status, commit, reading conflict stages) goes through
+ * A project's data folder as a git repo (FR-46 → FR-54, D-53). Local work (init, status, commit, reading conflict stages) goes through
  * JGit; fetch, rebase, push and clone go through the git CLI so the machine's credential manager supplies the token (never a file
  * or the remote URL).
  */
@@ -412,12 +412,14 @@ public class DataRepo {
     }
   }
 
-  private static void deleteTree(Path dir) {
+  /** Best effort; git marks its object files read-only on Windows, so those are made writable first. */
+  static void deleteTree(Path dir) {
     if (dir == null || !Files.exists(dir)) {
       return;
     }
     try (Stream<Path> files = Files.walk(dir)) {
       for (Path f : files.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList()) {
+        f.toFile().setWritable(true);
         Files.deleteIfExists(f);
       }
     } catch (IOException e) {

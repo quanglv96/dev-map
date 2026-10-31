@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 
-/** AC-13, AC-16, AC-17, AC-19, AC-20: two machines (own ~/.devmap and data folder each) sharing a local bare repo. */
+/** AC-13, AC-16, AC-17, AC-19, AC-20: two machines (own ~/.devmap and data root each) sharing project shop's bare data repo. */
 @ExtendWith(OutputCaptureExtension.class)
 class SyncServiceTest {
 
@@ -65,18 +65,19 @@ class SyncServiceTest {
     }
 
     void identity() {
-      git.run(data, "config", "user.name", "devmap-test");
-      git.run(data, "config", "user.email", "devmap@example.invalid");
+      git.run(data.resolve("shop"), "config", "user.name", "devmap-test");
+      git.run(data.resolve("shop"), "config", "user.email", "devmap@example.invalid");
     }
 
+    /** rel: path in the shop data folder. */
     String file(String rel) throws Exception {
-      return Files.readString(data.resolve(rel));
+      return Files.readString(data.resolve("shop").resolve(rel));
     }
   }
 
   @BeforeEach
   void setUp() {
-    Path bare = tmp.resolve("remote/devmap-data.git");
+    Path bare = tmp.resolve("remote/shop-data.git");
     assertThat(git.run(tmp, "init", "-q", "--bare", "-b", "main", bare.toString()).ok()).isTrue();
     remote = bare.toString().replace('\\', '/');
   }
@@ -89,14 +90,14 @@ class SyncServiceTest {
     Machine a = new Machine("machineA");
     Files.createDirectories(a.data);
     a.projects.create("shop", a.data, "#ff8800", List.of(new RepoInput(order.toString(), "test")));
-    a.sync.initSync(remote, a.data);
+    a.sync.initSync("shop", remote);
     a.identity();
     return a;
   }
 
   private Machine machineB() {
     Machine b = new Machine("machineB");
-    b.sync.cloneData(remote, b.data);
+    b.sync.cloneProject(remote, b.data);
     b.identity();
     return b;
   }
@@ -122,21 +123,21 @@ class SyncServiceTest {
     Machine a = machineA();
     String id = ticket(a);
     a.tasks.writeDoc("shop", id, "analysis.md", "# Phân tích của A\n", Actor.SA);
-    Status st = a.sync.syncNow();
+    Status st = a.sync.syncNow("shop");
     assertThat(st.state()).as(st.message() + " " + st.blocked()).isEqualTo(State.SYNCED);
     assertThat(inRemote("log", "--format=%s", "main")).contains("data(shop/NYX-231):");
 
     Machine b = machineB();
     assertThat(b.projects.list()).extracting(Project::name).containsExactly("shop");
     assertThat(b.tasks.readDoc("shop", id, "analysis.md").content()).isEqualTo("# Phân tích của A\n");
-    String config = b.file("shop/config.yml");
+    String config = b.file("config.yml");
     assertThat(config).contains("remote: https://github.com/acme/order-service.git")
         .doesNotContain(tmp.toString().replace('\\', '/')).doesNotContainPattern("(?m)^  path:");
     assertThat(b.projects.get("shop").config().repos().get(0).path()).as("B picks its own folder (FR-51)").isNull();
 
     b.tasks.writeDoc("shop", id, "analysis.md", "# Phân tích sửa trên B\n", Actor.SA);
-    assertThat(b.sync.syncNow().state()).isEqualTo(State.SYNCED);
-    a.sync.syncNow();
+    assertThat(b.sync.syncNow("shop").state()).isEqualTo(State.SYNCED);
+    a.sync.syncNow("shop");
     assertThat(a.tasks.readDoc("shop", id, "analysis.md").content()).isEqualTo("# Phân tích sửa trên B\n");
     assertThat(a.events).anySatisfy(e -> assertThat(((SyncService.SyncChanged) e).pulled()).isTrue());
   }
@@ -146,18 +147,18 @@ class SyncServiceTest {
   void commitMessageNamesProjectTicketAndAction() throws Exception {
     Machine a = machineA();
     String id = ticket(a);
-    a.sync.syncNow();
+    a.sync.syncNow("shop");
     String folder = folder(a).getFileName().toString();
-    assertThat(a.sync.message(a.data, List.of(new Change("shop/tasks/" + folder + "/analysis.md", false, false))))
+    assertThat(a.sync.message("shop", List.of(new Change("tasks/" + folder + "/analysis.md", false, false))))
         .isEqualTo("data(shop/NYX-231): cập nhật analysis.md");
-    assertThat(a.sync.message(a.data, List.of(new Change("shop/config.yml", false, false),
-        new Change("shop/rules/default.devrules.yml", true, false))))
+    assertThat(a.sync.message("shop", List.of(new Change("config.yml", false, false),
+        new Change("rules/default.devrules.yml", true, false))))
         .isEqualTo("data(shop): cập nhật config.yml, thêm rules/default.devrules.yml");
-    assertThat(a.sync.message(a.data, List.of(new Change(DataRepo.LOCK, false, false)))).isEqualTo("data(lock): heartbeat machineA");
+    assertThat(a.sync.message("shop", List.of(new Change(DataRepo.LOCK, false, false)))).isEqualTo("data(shop/lock): heartbeat machineA");
 
     Files.writeString(a.data.resolve("shop/project.md"), "# shop\n\nđổi\n");
-    assertThat(a.sync.commitPending(false)).as("first look: still being written").isFalse();
-    assertThat(a.sync.commitPending(false)).as("same on the next tick: settled").isTrue();
+    assertThat(a.sync.commitPending("shop", false)).as("first look: still being written").isFalse();
+    assertThat(a.sync.commitPending("shop", false)).as("same on the next tick: settled").isTrue();
   }
 
   /** AC-16: A holds the lock → B warned and read-only; B takes over → A read-only; 10 min without heartbeat = expired. */
@@ -165,32 +166,32 @@ class SyncServiceTest {
   void softLockWarnsTakesOverAndExpires() throws Exception {
     Machine a = machineA();
     a.sync.tick();
-    assertThat(a.sync.status().lock()).as(a.sync.status().toString()).isNotNull();
-    assertThat(a.sync.status().lock().machine()).isEqualTo("machineA");
+    assertThat(a.sync.status("shop").lock()).as(a.sync.status("shop").toString()).isNotNull();
+    assertThat(a.sync.status("shop").lock().machine()).isEqualTo("machineA");
     assertThat(inRemote("show", "main:" + DataRepo.LOCK)).contains("machineA");
 
     Machine b = machineB();
     b.sync.tick();
-    Status sb = b.sync.status();
+    Status sb = b.sync.status("shop");
     assertThat(sb.state()).isEqualTo(State.LOCKED);
     assertThat(sb.readOnly()).isTrue();
     assertThat(sb.lockChoice()).isTrue();
     assertThat(sb.message()).contains("Đang mở ở máy machineA");
 
-    b.sync.takeOver();
-    assertThat(b.sync.readOnly()).isFalse();
-    a.sync.heartbeat();
-    assertThat(a.sync.readOnly()).isTrue();
-    assertThat(a.sync.status().message()).contains("machineB đã chiếm quyền");
+    b.sync.takeOver("shop");
+    assertThat(b.sync.readOnly("shop")).isFalse();
+    a.sync.heartbeat("shop");
+    assertThat(a.sync.readOnly("shop")).isTrue();
+    assertThat(a.sync.status("shop").message()).contains("machineB đã chiếm quyền");
 
     Machine c = new Machine("machineC");
-    c.sync.cloneData(remote, tmp.resolve("machineC/data"));
+    c.sync.cloneProject(remote, tmp.resolve("machineC/data"));
     c.identity();
     c.sync.setClock(Clock.offset(Clock.systemUTC(), Duration.ofMinutes(11)));
-    assertThat(c.sync.expired(c.sync.status().lock())).isTrue();
+    assertThat(c.sync.expired(c.sync.status("shop").lock())).isTrue();
     c.sync.tick();
-    assertThat(c.sync.readOnly()).as("expired lock: no warning").isFalse();
-    assertThat(c.sync.status().lock().machine()).isEqualTo("machineC");
+    assertThat(c.sync.readOnly("shop")).as("expired lock: no warning").isFalse();
+    assertThat(c.sync.status("shop").lock().machine()).isEqualTo("machineC");
   }
 
   /** AC-17: both edit the same file offline → nothing lost, both versions kept, the ticket shows a conflict, the PMO merges. */
@@ -198,17 +199,17 @@ class SyncServiceTest {
   void offlineEditsOfTheSameFileKeepBothVersions() throws Exception {
     Machine a = machineA();
     String id = ticket(a);
-    a.sync.syncNow();
+    a.sync.syncNow("shop");
     Machine b = machineB();
 
     a.tasks.writeDoc("shop", id, "analysis.md", "# Bản của A\n", Actor.SA);
     b.tasks.writeDoc("shop", id, "analysis.md", "# Bản của B\n", Actor.SA);
-    assertThat(a.sync.commitPending(true)).isTrue();
-    assertThat(b.sync.commitPending(true)).isTrue();
-    a.sync.syncNow();
-    Status sb = b.sync.syncNow();
+    assertThat(a.sync.commitPending("shop", true)).isTrue();
+    assertThat(b.sync.commitPending("shop", true)).isTrue();
+    a.sync.syncNow("shop");
+    Status sb = b.sync.syncNow("shop");
 
-    String folder = "shop/tasks/" + folder(b).getFileName();
+    String folder = "tasks/" + folder(b).getFileName();
     assertThat(sb.state()).isEqualTo(State.CONFLICT);
     assertThat(b.file(folder + "/analysis.md")).isEqualTo("# Bản của A\n");
     assertThat(b.file(folder + "/analysis.conflict-machineB.md")).isEqualTo("# Bản của B\n");
@@ -220,28 +221,28 @@ class SyncServiceTest {
     });
     assertThat(b.tasks.readDoc("shop", id, "analysis.md").content()).isEqualTo("# Bản của A\n");
 
-    a.sync.syncNow();
+    a.sync.syncNow("shop");
     assertThat(a.sync.conflicts("shop")).as("the other machine sees the conflict too").isNotEmpty();
     for (SyncService.Conflict c : b.sync.conflicts("shop")) {
-      b.sync.resolve(c.conflictFile(), c.file().endsWith("analysis.md") ? "# Ghép A + B\n" : c.current());
+      b.sync.resolve("shop", c.conflictFile(), c.file().endsWith("analysis.md") ? "# Ghép A + B\n" : c.current());
     }
     assertThat(b.sync.conflicts("shop")).isEmpty();
     assertThat(b.file(folder + "/analysis.md")).isEqualTo("# Ghép A + B\n");
-    assertThat(b.sync.syncNow().state()).isEqualTo(State.SYNCED);
+    assertThat(b.sync.syncNow("shop").state()).isEqualTo(State.SYNCED);
   }
 
   /** AC-19 / FR-50: graph, cache, logs, sessions, temp and lock files never reach the data repo; export skips them too. */
   @Test
   void rebuildableAndMachineFilesAreNotSynced() throws Exception {
     Machine a = machineA();
-    for (String f : List.of("shop/graph/order-service.json", "shop/logs/audit.jsonl", "shop/cache/x.bin", "sessions/s.log",
+    for (String f : List.of("shop/graph/order-service.json", "shop/logs/audit.jsonl", "shop/cache/x.bin", "shop/sessions/s.log",
         "shop/config.yml.bak", "shop/tasks/q.tmp", "shop/build.lock")) {
       Files.createDirectories(a.data.resolve(f).getParent());
       Files.writeString(a.data.resolve(f), "x");
     }
-    a.sync.syncNow();
+    a.sync.syncNow("shop");
     String files = inRemote("ls-tree", "-r", "--name-only", "main");
-    assertThat(files).contains("shop/config.yml", ".gitignore")
+    assertThat(files).contains("config.yml", ".gitignore")
         .doesNotContain("graph/", "logs/", "cache/", "sessions/", ".bak", ".tmp", "build.lock");
 
     ByteArrayOutputStream zip = new ByteArrayOutputStream();
@@ -260,24 +261,24 @@ class SyncServiceTest {
   void secretInAChangedFileBlocksTheCommit(CapturedOutput output) throws Exception {
     Machine a = machineA();
     String id = ticket(a);
-    a.sync.syncNow();
+    a.sync.syncNow("shop");
     String token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8";
     Path history = folder(a).resolve("history.md");
     int line = Files.readAllLines(history).size() + 1;
     Files.writeString(history, Files.readString(history) + "token " + token + "\n");
 
-    assertThat(a.sync.commitPending(true)).isFalse();
-    Status st = a.sync.status();
+    assertThat(a.sync.commitPending("shop", true)).isFalse();
+    Status st = a.sync.status("shop");
     assertThat(st.state()).isEqualTo(State.ERROR);
-    String rel = a.data.relativize(history).toString().replace('\\', '/');
+    String rel = a.data.resolve("shop").relativize(history).toString().replace('\\', '/');
     assertThat(st.blocked()).containsExactly(rel + ":" + line + " (TOKEN)");
-    a.sync.syncNow();
+    a.sync.syncNow("shop");
     assertThat(inRemote("log", "-p", "--all")).doesNotContain(token);
     assertThat(output.getAll()).contains("Chặn commit dữ liệu").doesNotContain(token);
 
     Files.writeString(history, Files.readString(history).replace(token, "[MASKED_TOKEN]"));
-    assertThat(a.sync.commitPending(true)).isTrue();
-    assertThat(a.sync.status().blocked()).isEmpty();
+    assertThat(a.sync.commitPending("shop", true)).isTrue();
+    assertThat(a.sync.status("shop").blocked()).isEmpty();
   }
 
   @Test

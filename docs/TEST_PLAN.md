@@ -248,7 +248,7 @@ Hai "máy" giả lập trong thư mục tạm của test: `machineA/`, `machineB
 
 | Test | Kiểm |
 | --- | --- |
-| `SyncServiceTest.ticketAndDocumentsTravelBothWays` | AC-13: A tạo ticket, sửa analysis.md, đồng bộ → B clone thấy dự án (tự đăng ký), ticket, đúng nội dung; B sửa → A thấy sau khi đồng bộ, có sự kiện `pulled`. AC-14: `config.yml` trên B có `remote`, không có đường dẫn tuyệt đối; repo của B chưa có đường dẫn |
+| `SyncServiceTest.ticketAndDocumentsTravelBothWays` | AC-13 (đồng bộ theo dự án, D-53): A bật đồng bộ cho shop, tạo ticket, sửa analysis.md, đồng bộ → B clone repo dữ liệu của shop vào folder gốc, thấy dự án (tự đăng ký), ticket, đúng nội dung; B sửa → A thấy sau khi đồng bộ, có sự kiện `pulled`. AC-14: `config.yml` trên B có `remote`, không có đường dẫn tuyệt đối; repo của B chưa có đường dẫn |
 | `SyncServiceTest.commitMessageNamesProjectTicketAndAction` | FR-47: `data(shop/NYX-231): cập nhật analysis.md`, `data(shop): …`, `data(lock): heartbeat …`; thay đổi phải đứng yên một nhịp mới commit |
 | `SyncServiceTest.softLockWarnsTakesOverAndExpires` | AC-16: A giữ khoá (có trên remote) → B mở: "Đang mở ở máy machineA", chỉ xem, chờ chọn; B chiếm quyền → A chuyển chỉ xem ở heartbeat sau; máy C với đồng hồ +11 phút thấy khoá hết hạn, tự lấy khoá |
 | `SyncServiceTest.offlineEditsOfTheSameFileKeepBothVersions` | AC-17: A và B cùng sửa analysis.md khi chưa đồng bộ → file chính = bản A (đã lên remote), `analysis.conflict-machineB.md` = bản B, trạng thái Có xung đột, ticket NYX-231; máy A cũng thấy; PMO ghép → hết xung đột, đồng bộ lại |

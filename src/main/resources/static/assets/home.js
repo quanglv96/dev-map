@@ -1,6 +1,6 @@
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
 import { api, el, fill, setFavicon, showError } from "./lib.js";
-import { mountSync, onSync, onSyncEvent, renderSyncSettings } from "./sync.js";
+import { renderCloneForm, syncPill } from "./sync.js";
 
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
@@ -15,16 +15,21 @@ function serviceCount(project) {
   return project.config ? project.config.repos.reduce((n, r) => n + r.services.length, 0) : 0;
 }
 
+/** FR-56: one sync state per project, refreshed by the "sync" events. */
+const syncStates = new Map();
+
 async function loadProjects() {
   try {
-    const projects = await api("/api/projects");
+    const [projects, states] = await Promise.all([api("/api/projects"), api("/api/sync").catch(() => [])]);
+    states.forEach((s) => syncStates.set(s.project, s));
     if (projects.length === 0) {
       list.replaceChildren(el("p", { class: "muted" }, t("noProjects")));
       return;
     }
     list.replaceChildren(el("ul", { class: "project-list" }, projects.map((p) => el("li", {},
       el("span", { class: "dot", style: `background:${p.config?.color ?? "#9ca3af"}` }),
-      el("a", { href: `/${p.name}` }, el("strong", {}, p.name)),
+      el("a", { href: `/${p.name}` }, el("strong", {}, p.name)), " ",
+      syncStates.has(p.name) ? syncPill(syncStates.get(p.name)) : null,
       el("span", { class: "muted" }, p.error
         ? ""
         : ` · ${p.config.repos.length} ${t("repos").toLowerCase()} · ${serviceCount(p)} ${t("services").toLowerCase()}`),
@@ -150,19 +155,21 @@ async function loadOverview() {
 
 const events = new EventSource("/api/events");
 events.addEventListener("task", loadOverview);
-events.addEventListener("sync", (e) => onSyncEvent(JSON.parse(e.data)));
-loadOverview();
-
-// FR-46 / FR-57: sync settings and project import on the home page; new projects from another machine show up after a pull
-const syncSettings = document.getElementById("sync-settings");
-onSync((s, pulled) => {
-  renderSyncSettings(syncSettings).catch((err) => showError(syncSettings, err));
+events.addEventListener("sync", (e) => {
+  const { status, pulled } = JSON.parse(e.data);
+  const before = syncStates.get(status.project)?.state;
+  syncStates.set(status.project, status);
   if (pulled) {
-    loadProjects();
     loadOverview();
   }
+  if (pulled || before !== status.state) {
+    loadProjects();
+  }
 });
-await mountSync();
+loadOverview();
+
+// FR-46 / FR-57: a new machine clones a project's data repo, or imports a zip; turning sync on is in each project's settings
+renderCloneForm(document.getElementById("sync-clone"), () => loadProjects());
 document.getElementById("import-zip").addEventListener("click", async () => {
   const out = document.getElementById("import-result");
   const file = document.getElementById("import-file").files[0];

@@ -351,3 +351,19 @@ PMO yêu cầu (khác D-47 "không khởi tạo git cho folder dữ liệu"): **
 - **Dự án mới từ máy khác**: sau mỗi lần pull/clone, folder con có `config.yml` chưa đăng ký được tự đăng ký.
 - **Chuyển ticket** (FR-55): hai bước, PMO xác nhận là bước push. Commit WIP đi qua `commit()` sẵn có (kiểm phạm vi, file bí mật), push không force vào branch ticket; ticket push thẳng nhánh nền (D-50) không chuyển được. `handoff` (máy, lúc, repo/branch/commit) ghi vào đầu task.md. Máy B: "Tiếp tục trên máy này" fetch, checkout branch tại đúng commit trong repo service (D-51: không worktree), xoá `handoff`. Lệnh `devmap ticket handoff <mã>` (`ticket` là tên khác của `task`; `--project` khi trùng mã giữa các dự án).
 - **Cảnh báo remote public**: GitHub/GitLab trả 200 cho API repo khi không đăng nhập = public; chỉ cảnh báo.
+
+## D-53 Đồng bộ theo từng dự án (thay phần "folder dữ liệu gốc là một repo" của D-52)
+PMO yêu cầu: cấu hình đồng bộ riêng cho từng dự án, không chung.
+- **Mỗi folder dữ liệu dự án** (`D:/devmap-data/shop/`) là một repo git private riêng: remote riêng (`.git/config` của folder đó), khoá `.devmap-lock.json` riêng, `.gitignore` riêng. Đường dẫn trong repo tính từ folder dự án (`tasks/<mã>/analysis.md`); message commit vẫn `data(shop/NYX-231): …`, heartbeat là `data(shop/lock): …`.
+- **auto_push theo dự án**: `projects[].auto_push` trong `~/.devmap/workspaces.yml`; không ghi thì dùng `sync.auto_push` của máy (mặc định `true`). `data_dir` ở đầu file chỉ còn là folder gốc mặc định khi clone/nhập zip.
+- **Trạng thái, khoá, chỉ xem theo dự án**: `SyncService` giữ một trạng thái mỗi dự án; nhịp nền 3 giây đi qua mọi dự án đã bật. Dự án A bị máy khác giữ khoá chỉ chặn ghi vào `/api/projects/A/**` (trừ `/api/projects/A/sync/**`); dự án khác và trang chủ vẫn sửa được. Sự kiện SSE `sync` chỉ tới tab của dự án đó và trang chủ.
+- **API**: `GET /api/sync` = trạng thái mọi dự án (trang chủ); `POST /api/sync/clone {remote, path}` clone một dự án vào `<path>/<tên trong config.yml>` rồi đăng ký; còn lại dưới `/api/projects/{tên}/sync/…` (`now`, `pull`, `push`, `lock/take`, `lock/view`, `auto-push`, `init`, `conflicts`, `conflicts/resolve`).
+- **CLI**: `devmap sync <dự án>`, `devmap data init-sync <dự án> <remote>`, `devmap data clone <remote> [folder gốc]`.
+- **Giao diện**: thanh đồng bộ ở trang dự án là của dự án đó; bật đồng bộ và auto push ở **Cấu hình dự án**; trang chủ hiện nhãn trạng thái cạnh từng dự án và form **Clone dự án từ repo dữ liệu** cho máy mới.
+- `ponytail:` repo gốc kiểu D-52 (đã init ở folder cha) không được migrate tự động: nó ngừng đồng bộ; bật lại từng dự án ở Cấu hình dự án (mỗi dự án một remote mới). Xoá `.git` của folder cha nếu không dùng nữa.
+
+## D-54 Không hiện giao diện cũ sau khi cập nhật DevMap
+Máy khác clone + `setup.cmd` vẫn thấy giao diện cũ. Nguyên nhân có thể: trình duyệt dùng lại JS/CSS đã cache cho `localhost:7070`; một `devmap serve` cũ còn chạy và `devmap` mở lại link của nó; `bin\devmap.jar` cũ hoặc thư mục DevMap khác nằm trước trên PATH.
+- Server gửi `Cache-Control: no-cache` cho file tĩnh (`spring.web.resources.cache.cachecontrol.no-cache`): trình duyệt luôn hỏi lại (304 nếu không đổi).
+- `~/.devmap/serve.url` thêm dòng 2 = bản đang chạy (đường dẫn jar + thời điểm build). `devmap` thấy server đang chạy là bản khác → báo, không mở, trả mã 1.
+- Launcher ưu tiên `target/devmap.jar` (bản vừa build) hơn `bin/devmap.jar`; `setup.cmd` luôn `clean package` khi có `pom.xml` và cảnh báo `devmap.cmd` khác trên PATH.

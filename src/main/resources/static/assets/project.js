@@ -353,8 +353,7 @@ function listen() {
 window.addEventListener("hashchange", render);
 
 try {
-  await api("/api/sync/pull", { method: "POST" }).catch(() => { /* offline or sync off: open what is here */ });
-  await mountSync();
+  await mountSync(name);
   project = await api(api$);
   if (project.error) {
     throw new Error(project.error);

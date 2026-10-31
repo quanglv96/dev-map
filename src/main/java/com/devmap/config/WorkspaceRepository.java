@@ -11,13 +11,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
 /**
- * ~/.devmap/workspaces.yml, never synced: which projects exist and where their data folders are, the synced data root, this
- * machine's name, sync settings and where each project repo lives on this machine (FR-51).
+ * ~/.devmap/workspaces.yml, never synced: which projects exist and where their data folders are (with each project's auto push),
+ * the default data root for clone/import, this machine's name, the default sync settings and where each project repo lives on this
+ * machine (FR-51).
  */
 @Repository
 public class WorkspaceRepository {
 
-  /** auto_push: push the data repo without asking (FR-49, default true: it only holds masked documents). */
+  /** auto_push: default for projects without their own (FR-49, default true: a data repo only holds masked documents). */
   public record SyncSettings(Boolean autoPush) {
     public SyncSettings {
       autoPush = autoPush == null ? Boolean.TRUE : autoPush;
@@ -79,13 +80,15 @@ public class WorkspaceRepository {
     Yaml.write(file, new WorkspacesFile(f.dataDir(), name, f.sync(), f.repos(), f.projects()));
   }
 
-  public boolean autoPush() {
-    return read().sync().autoPush();
+  /** The project's own auto_push, else the machine default. */
+  public boolean autoPush(String project) {
+    WorkspacesFile f = read();
+    return f.projects().stream().filter(w -> w.name().equals(project) && w.autoPush() != null).findFirst()
+        .map(Workspace::autoPush).orElse(f.sync().autoPush());
   }
 
-  public synchronized void setAutoPush(boolean on) {
-    WorkspacesFile f = read();
-    Yaml.write(file, new WorkspacesFile(f.dataDir(), f.machine(), new SyncSettings(on), f.repos(), f.projects()));
+  public synchronized void setAutoPush(String project, boolean on) {
+    saveAll(findAll().stream().map(w -> w.name().equals(project) ? new Workspace(w.name(), w.dataDir(), on) : w).toList());
   }
 
   public String repoPath(String key) {

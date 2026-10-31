@@ -177,19 +177,26 @@ class WebTest {
   @Autowired
   com.devmap.sync.SyncService sync;
 
-  /** FR-53: "Chỉ xem" while another machine holds the lock: writes get 423, reads and the sync endpoints still work. */
+  /** FR-53: "Chỉ xem" while another machine holds the project's lock: its writes get 423, reads and its sync endpoints still work. */
   @Test
   void viewOnlyRefusesWrites() throws Exception {
-    sync.viewOnly();
+    mvc.perform(post("/api/projects").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
+        .content("""
+            {"name":"ro","dataRoot":"%s","repos":[{"path":"%s","baseBranch":"test"}]}
+            """.formatted(tmp.resolve("data").toString().replace('\\', '/'),
+            tmp.resolve("repos/order-service").toString().replace('\\', '/'))))
+        .andExpect(status().isCreated());
+    sync.viewOnly("ro");
     try {
-      mvc.perform(post("/api/projects").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
-          .content("{\"name\":\"ro\",\"dataRoot\":\"x\"}")).andExpect(status().is(423))
+      mvc.perform(put("/api/projects/ro/config").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
+          .content("{}")).andExpect(status().is(423))
           .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("chỉ xem")));
-      mvc.perform(get("/api/projects").header(TokenFilter.HEADER, token.value())).andExpect(status().isOk());
-      mvc.perform(get("/api/sync").header(TokenFilter.HEADER, token.value()))
+      mvc.perform(get("/api/projects/ro").header(TokenFilter.HEADER, token.value())).andExpect(status().isOk());
+      mvc.perform(get("/api/projects/ro/sync").header(TokenFilter.HEADER, token.value()))
           .andExpect(status().isOk()).andExpect(jsonPath("$.readOnly").value(true));
+      mvc.perform(post("/api/projects/ro/sync/lock/view").header(TokenFilter.HEADER, token.value())).andExpect(status().isOk());
     } finally {
-      org.springframework.test.util.ReflectionTestUtils.setField(sync, "readOnly", false);
+      mvc.perform(delete("/api/projects/ro").header(TokenFilter.HEADER, token.value()));
     }
   }
 }
