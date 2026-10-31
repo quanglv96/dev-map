@@ -2,6 +2,7 @@ package com.devmap.web;
 
 import com.devmap.agent.AgentService.AgentProgress;
 import com.devmap.graph.GraphService.GraphChanged;
+import com.devmap.sync.SyncService.SyncChanged;
 import com.devmap.ticket.TaskChanged;
 import java.io.IOException;
 import java.util.Map;
@@ -12,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-/** Server-Sent Events: open tabs learn about ticket ("task"), graph ("graph") and agent ("agent") changes, all projects or ?project=. */
+/** Server-Sent Events: open tabs learn about ticket ("task"), graph ("graph") and agent ("agent") changes, all projects or ?project=; data sync ("sync") always. */
 @RestController
 public class EventController {
 
@@ -43,9 +44,15 @@ public class EventController {
     send(progress.project(), "agent", progress);
   }
 
+  /** FR-56: the data repo is shared by every project, so every tab gets it. */
+  @EventListener
+  public void onSync(SyncChanged change) {
+    send(null, "sync", change);
+  }
+
   private void send(String changed, String name, Object data) {
     emitters.forEach((emitter, project) -> {
-      if (!project.isEmpty() && !project.equals(changed)) {
+      if (changed != null && !project.isEmpty() && !project.equals(changed)) {
         return;
       }
       try {

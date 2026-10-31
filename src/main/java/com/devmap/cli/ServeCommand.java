@@ -2,6 +2,7 @@ package com.devmap.cli;
 
 import com.devmap.DevMapApplication;
 import com.devmap.agent.AgentService;
+import com.devmap.sync.SyncService;
 import com.devmap.web.ServerToken;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -20,7 +21,7 @@ import sun.misc.Signal;
 
 /**
  * Starts the localhost UI/API and opens it in the browser; plain `devmap` runs this too.
- * Nothing is scanned or indexed on startup (AIR-05).
+ * Nothing is scanned or indexed on startup (AIR-05); the data repo (if synced) is pulled in the background (FR-48).
  */
 @Command(name = "serve", mixinStandardHelpOptions = true, description = "Start the DevMap web UI on 127.0.0.1.")
 class ServeCommand implements Callable<Integer> {
@@ -49,6 +50,7 @@ class ServeCommand implements Callable<Integer> {
     Files.createDirectories(urlFile.getParent());
     Files.writeString(urlFile, url, StandardCharsets.UTF_8);
     Runtime.getRuntime().addShutdownHook(new Thread(() -> urlFile.toFile().delete()));
+    ctx.getBean(SyncService.class).start(); // FR-48: pull, lock, auto-commit in the background; the UI is already up
     System.out.println();
     System.out.println("DevMap: " + url);
     System.out.println("Ctrl+C to stop.");

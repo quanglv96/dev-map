@@ -173,4 +173,23 @@ class WebTest {
     mvc.perform(delete("/api/projects/webshop").header(TokenFilter.HEADER, token.value())).andExpect(status().isNoContent());
     assertThat(tmp.resolve("data/webshop/config.yml")).exists();
   }
+
+  @Autowired
+  com.devmap.sync.SyncService sync;
+
+  /** FR-53: "Chỉ xem" while another machine holds the lock: writes get 423, reads and the sync endpoints still work. */
+  @Test
+  void viewOnlyRefusesWrites() throws Exception {
+    sync.viewOnly();
+    try {
+      mvc.perform(post("/api/projects").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
+          .content("{\"name\":\"ro\",\"dataRoot\":\"x\"}")).andExpect(status().is(423))
+          .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("chỉ xem")));
+      mvc.perform(get("/api/projects").header(TokenFilter.HEADER, token.value())).andExpect(status().isOk());
+      mvc.perform(get("/api/sync").header(TokenFilter.HEADER, token.value()))
+          .andExpect(status().isOk()).andExpect(jsonPath("$.readOnly").value(true));
+    } finally {
+      org.springframework.test.util.ReflectionTestUtils.setField(sync, "readOnly", false);
+    }
+  }
 }
