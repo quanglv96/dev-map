@@ -1,6 +1,7 @@
 #!/bin/sh
 # DevMap launcher: put this folder on PATH, then `devmap` opens the UI, `devmap <command>` runs the CLI.
 dir=$(dirname "$0")
-jar="$dir/devmap.jar"
-[ -f "$jar" ] || jar="$dir/../target/devmap.jar"
+# in a source checkout the freshly built target/devmap.jar wins over a copied bin/devmap.jar (which may be old)
+jar="$dir/../target/devmap.jar"
+[ -f "$jar" ] || jar="$dir/devmap.jar"
 exec java $DEVMAP_OPTS -jar "$jar" "$@"

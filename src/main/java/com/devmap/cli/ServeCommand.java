@@ -4,12 +4,14 @@ import com.devmap.DevMapApplication;
 import com.devmap.agent.AgentService;
 import com.devmap.sync.SyncService;
 import com.devmap.web.ServerToken;
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Callable;
 import org.springframework.boot.Banner;
@@ -37,18 +39,26 @@ class ServeCommand implements Callable<Integer> {
     Path urlFile = home().resolve("serve.url");
     if (listening(port) && Files.exists(urlFile)) {
       // already running: the run token only lives in that process, so reuse the link it wrote
-      String url = Files.readString(urlFile, StandardCharsets.UTF_8).trim();
+      List<String> lines = Files.readAllLines(urlFile, StandardCharsets.UTF_8);
+      String url = lines.isEmpty() ? "" : lines.get(0).trim();
+      if (lines.size() < 2 || !lines.get(1).trim().equals(build())) {
+        // an older build (or one from another folder) would show its old UI: say so instead of opening it
+        System.out.println("DevMap khác bản này đang chạy ở cổng " + port + ": " + url);
+        System.out.println("Tắt cửa sổ DevMap đó (Ctrl+C) rồi chạy lại `devmap` để dùng bản " + build());
+        return 1;
+      }
       System.out.println("DevMap đang chạy: " + url);
       browse(url);
       return 0;
     }
     ConfigurableApplicationContext ctx = new SpringApplicationBuilder(DevMapApplication.class)
         .bannerMode(Banner.Mode.OFF)
-        .properties("server.address=127.0.0.1", "server.port=" + port)
+        // the browser revalidates every page and module, so a rebuilt devmap.jar never shows the previous UI
+        .properties("server.address=127.0.0.1", "server.port=" + port, "spring.web.resources.cache.cachecontrol.no-cache=true")
         .run();
     String url = "http://localhost:" + port + "/?token=" + ctx.getBean(ServerToken.class).value();
     Files.createDirectories(urlFile.getParent());
-    Files.writeString(urlFile, url, StandardCharsets.UTF_8);
+    Files.writeString(urlFile, url + "\n" + build() + "\n", StandardCharsets.UTF_8);
     Runtime.getRuntime().addShutdownHook(new Thread(() -> urlFile.toFile().delete()));
     ctx.getBean(SyncService.class).start(); // FR-48: pull, lock, auto-commit in the background; the UI is already up
     System.out.println();
@@ -57,6 +67,16 @@ class ServeCommand implements Callable<Integer> {
     browse(url);
     warnBeforeStop(ctx.getBean(AgentService.class));
     return 0;
+  }
+
+  /** This build: the jar (first class path entry) and its modification time. */
+  static String build() {
+    Path jar = Path.of(System.getProperty("java.class.path").split(File.pathSeparator)[0]).toAbsolutePath();
+    try {
+      return jar + "@" + Files.getLastModifiedTime(jar).toInstant();
+    } catch (IOException e) {
+      return jar.toString();
+    }
   }
 
   private static Path home() {

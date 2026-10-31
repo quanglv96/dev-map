@@ -70,10 +70,13 @@ class CliTest {
   @Test
   void serveReusesTheRunningServerLink() throws Exception {
     System.setProperty("devmap.home", tmp.toString());
-    Files.writeString(tmp.resolve("serve.url"), "http://localhost:1/?token=abc");
     try (ServerSocket running = new ServerSocket(0)) {
-      assertThat(run(0, "serve", "--no-open", "--port", String.valueOf(running.getLocalPort())))
-          .contains("DevMap đang chạy: http://localhost:1/?token=abc");
+      String port = String.valueOf(running.getLocalPort());
+      Files.writeString(tmp.resolve("serve.url"), "http://localhost:1/?token=abc\n" + ServeCommand.build() + "\n");
+      assertThat(run(0, "serve", "--no-open", "--port", port)).contains("DevMap đang chạy: http://localhost:1/?token=abc");
+      // written by an older build: never open its stale UI
+      Files.writeString(tmp.resolve("serve.url"), "http://localhost:1/?token=abc");
+      assertThat(run(1, "serve", "--no-open", "--port", port)).contains("DevMap khác bản này đang chạy", "Ctrl+C");
     }
   }
 }
