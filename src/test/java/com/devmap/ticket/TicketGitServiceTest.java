@@ -193,4 +193,33 @@ class TicketGitServiceTest {
     assertThat(git.run(origin, "branch", "--list", "feature/*").output()).isEmpty();
     assertThat(git.run(repos.resolve("payment-service"), "branch", "--show-current").output()).isEqualTo("main");
   }
+
+  /** A ticket begun in an old detached worktree: pulling the base moves its uncommitted code into the service repo, losing none. */
+  @Test
+  void oldWorktreeChangesMoveIntoTheServiceRepo() throws Exception {
+    String id = readyTicket();
+    tasks.setRepos("shop", id, List.of("payment-service"), Actor.PMO);
+    dev.setDirect("shop", id, true, Actor.PMO);
+    Path main = repos.resolve("payment-service");
+    dev.start("shop", id, Actor.PMO);
+    Path old = tmp.resolve("wt/payment-service");
+    assertThat(git.run(main, "worktree", "add", "-q", "--detach", old.toString(), "main").ok()).isTrue();
+    Files.writeString(old.resolve("README.md"), "edited in the old worktree\n");
+    Files.writeString(old.resolve("NEW.md"), "new file\n");
+    TaskRepository taskRepo = new TaskRepository();
+    Path folder = tasks.stored("shop", id).folder();
+    DevState st = taskRepo.readDevState(folder);
+    DevState.RepoWork w = st.repo("payment-service");
+    taskRepo.writeDevState(folder, st.with(new DevState.RepoWork(w.repo(), old.toString().replace('\\', '/'), w.branch(),
+        w.baseBranch(), w.baseCommit(), null, null, w.pulledAt())));
+    assertThatThrownBy(() -> dev.commit("shop", id, "payment-service", "x", Actor.DEV)).hasMessageContaining("nhánh null");
+
+    TicketGitService.RepoView r = dev.start("shop", id, Actor.PMO).repos().get(0);
+    assertThat(Path.of(r.worktree())).isEqualTo(main);
+    assertThat(old).doesNotExist();
+    assertThat(r.uncommitted()).containsExactlyInAnyOrder("README.md", "NEW.md");
+    assertThat(Files.readString(main.resolve("README.md"))).contains("edited in the old worktree");
+    assertThat(git.run(main, "stash", "list").output()).isEmpty();
+    dev.commit("shop", id, "payment-service", "moved", Actor.DEV);
+  }
 }

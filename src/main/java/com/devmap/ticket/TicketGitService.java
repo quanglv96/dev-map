@@ -92,13 +92,19 @@ public class TicketGitService {
       }
       String target = dev.direct() ? rc.baseBranch() : t.branch();
       RepoWork w = dev.repo(name);
-      dropOldWorktree(main, w);
+      String moved = dropOldWorktree(id, name, main, w);
       checkoutInRepo(project, id, name, main, target, base);
       git.merge(main, base); // no-op for a new branch; brings an existing ticket branch up to date
       String path = main.toString().replace('\\', '/');
       w = w == null ? new RepoWork(name, path, target, rc.baseBranch(), null, null, null, null)
           : new RepoWork(name, path, w.branch(), w.baseBranch(), w.baseCommit(), w.gateHead(), w.pushedHead(), w.pulledAt());
       dev = dev.with(w.withBase(base, now()));
+      repo.writeDevState(s.folder(), dev); // per repo: a later repo failing must not leave this one pointing at a removed worktree
+      if (moved != null) {
+        git.applyStash(main, moved);
+        tasks.history(s, actor, name, null, name + ": chuyển thay đổi chưa commit từ worktree cũ " + w.worktree()
+            + " vào repo service (stash " + moved.substring(0, 8) + ")");
+      }
       tasks.history(s, actor, name, "pull nhánh nền trước khi làm (AIR-04)",
           name + ": pull nhánh nền " + rc.baseBranch() + " @" + base.substring(0, 8)
           + (fetchError == null ? "" : " (fetch lỗi, dùng dữ liệu đã có: " + fetchError + ")"));
@@ -357,16 +363,27 @@ public class TicketGitService {
     }
   }
 
-  /** Tickets started before code moved into the service repo: the branch cannot be checked out while its old worktree holds it. */
-  private void dropOldWorktree(Path main, RepoWork w) {
+  /**
+   * Tickets started before code moved into the service repo: the branch cannot be checked out while its old worktree holds it.
+   * Uncommitted work there is stashed (returned) and applied to the service repo after checkout, never dropped.
+   */
+  private String dropOldWorktree(String id, String name, Path main, RepoWork w) {
     if (w == null || Path.of(w.worktree()).toAbsolutePath().normalize().equals(main.toAbsolutePath().normalize())
         || !Files.exists(Path.of(w.worktree()))) {
-      return;
+      return null;
     }
-    if (!git.uncommitted(Path.of(w.worktree())).isEmpty()) {
-      throw new IllegalStateException(w.repo() + ": worktree cũ " + w.worktree() + " còn thay đổi chưa commit; commit trước");
+    Path old = Path.of(w.worktree());
+    String stash = null;
+    if (!git.uncommitted(old).isEmpty()) {
+      List<String> dirty = git.uncommitted(main);
+      if (!dirty.isEmpty()) {
+        throw new IllegalStateException(name + ": worktree cũ " + w.worktree() + " và repo service đều còn thay đổi chưa commit ("
+            + dirty.size() + " file ở repo service); commit hoặc stash repo service trước");
+      }
+      stash = git.stash(old, "devmap " + id + " " + name + ": worktree cũ");
     }
-    git.removeWorktree(main, Path.of(w.worktree()));
+    git.removeWorktree(main, old);
+    return stash;
   }
 
   private RepoWork work(Stored s, String repoName) {

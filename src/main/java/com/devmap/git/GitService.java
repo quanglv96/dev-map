@@ -134,6 +134,27 @@ public class GitService {
     must(repo, "worktree", "remove", worktree.toString());
   }
 
+  /**
+   * Stashes every uncommitted change (untracked too) of a worktree; returns the stash commit. The stash is shared by all worktrees
+   * of the repo, so the main checkout can apply it after the worktree is gone.
+   */
+  public String stash(Path dir, String message) {
+    must(dir, "stash", "push", "-u", "-m", message);
+    return must(dir, "rev-parse", "refs/stash");
+  }
+
+  /** Applies a stash; drops it only once applied cleanly, so a conflict never loses the changes. */
+  public void applyStash(Path repo, String stash) {
+    Out o = run(repo, "stash", "apply", stash);
+    if (!o.ok()) {
+      throw new IllegalStateException("Không áp được thay đổi cũ (stash " + stash.substring(0, 8) + ", vẫn giữ trong git stash list): "
+          + o.output());
+    }
+    if (run(repo, "rev-parse", "stash@{0}").output().strip().equals(stash)) {
+      run(repo, "stash", "drop", "stash@{0}");
+    }
+  }
+
   /** Checked-out branch, or null for a detached HEAD or unreadable repo. */
   public String currentBranch(Path repo) {
     try (Git git = Git.open(repo.toFile())) {
