@@ -6,6 +6,7 @@ import com.devmap.config.Project;
 import com.devmap.config.ProjectConfig;
 import com.devmap.config.ProjectService;
 import com.devmap.config.ProjectService.RepoInput;
+import com.devmap.config.RepoConfig;
 import com.devmap.config.ServiceInfo;
 import java.nio.file.Path;
 import java.util.List;
@@ -92,6 +93,11 @@ public class ProjectController {
       @RequestParam(defaultValue = "500") int limit) {
     return audit.read(Path.of(service.get(name).dataDir()), ticket == null || ticket.isBlank() ? null : ticket,
         Math.max(1, Math.min(limit, 5000)));
+  }
+
+  @GetMapping("/repos/scan")
+  public List<RepoConfig> scanRepos(@RequestParam String path) {
+    return service.scanRepos(path);
   }
 
   @GetMapping("/services/detect")

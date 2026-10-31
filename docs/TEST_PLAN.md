@@ -28,6 +28,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | `ProjectServiceTest.removeKeepsDataAndCopiedFolderCanBeRegisteredAgain` | bỏ đăng ký giữ dữ liệu; đăng ký lại folder đã có |
 | `ProjectServiceTest.updateValidatesAndKeepsPmoTextInProjectMd` | sửa cấu hình (FR-04), kiểm hợp lệ, giữ phần chữ của PMO |
 | `ProjectServiceTest.scanMarksUsedFoldersAndDeletesOnlyFreeOnes` | quét folder dữ liệu, chỉ xoá folder không dự án nào dùng |
+| `ProjectServiceTest.scanReposFindsRepoChildrenOrTheFolderItself` | folder dự án: tìm repo con (bỏ folder không phải git) hoặc chính folder; nhánh nền = nhánh đang checkout; không ghi gì |
 | `ServiceDetectorTest` | FR-03: repo một service, monorepo/parent pom, bỏ `node_modules`, `src`, thư mục ẩn |
 | `WebTest.rejectsRequestsWithoutToken` | NFR-08: thiếu/sai token → 401, kể cả trang HTML |
 | `WebTest.tokenLinkSetsStrictHttpOnlyCookie` | link có token → cookie HttpOnly SameSite=Strict; `/shop` trả trang dự án |
@@ -45,6 +46,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 4. Trang chủ có dự án `shop`, 3 repo, 3 service. Bấm vào → `localhost:7070/shop`: tab trình duyệt có tên và màu dự án, cột giữa liệt kê 3 service theo repo, cột phải có folder dữ liệu và nhánh nền.
 5. "Cấu hình dự án": đổi nhánh nền payment-service thành `nope` → báo lỗi, không lưu; đổi lại `main`, thêm môi trường `staging` → "Đã lưu"; `config.yml` cập nhật.
 6. Trên trang chủ thêm dự án thứ hai qua form → mở được ở URL riêng.
+   Ô **Folder dự án** → **Chọn…** chọn `samples/shop/repos` → danh sách có 3 repo, nhánh nền và service điền sẵn; **Bỏ khỏi DevMap** một repo → chỉ mất khỏi danh sách, folder repo vẫn còn trên máy.
    Nút **Chọn…** mở hộp thoại chọn folder của hệ điều hành (Windows: kiểu File Explorer, nằm trên trình duyệt). Huỷ → ô và danh sách không đổi; gõ tay đường dẫn → không quét; chọn folder → ô điền đường dẫn và danh sách folder bên trong hiện ra.
 7. Kiểm `<folder>/shop/graph/` vẫn trống: không có lần quét nào tự chạy.
 8. Mở `http://localhost:7070/` trong cửa sổ ẩn danh (không cookie) → 401.

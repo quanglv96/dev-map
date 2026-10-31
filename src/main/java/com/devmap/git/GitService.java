@@ -130,6 +130,16 @@ public class GitService {
     }
   }
 
+  /** Checked-out branch, or null for a detached HEAD or unreadable repo. */
+  public String currentBranch(Path repo) {
+    try (Git git = Git.open(repo.toFile())) {
+      String branch = git.getRepository().getBranch();
+      return branch == null || ObjectId.isId(branch) ? null : branch;
+    } catch (IOException e) {
+      return null;
+    }
+  }
+
   public String head(Path dir) {
     return must(dir, "rev-parse", "HEAD");
   }

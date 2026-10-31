@@ -170,6 +170,31 @@ public class ProjectService {
     return p.toString().replace('\\', '/');
   }
 
+  /**
+   * Git repos of a project folder (the parent holding the services): the folder itself when it is a repo, else its
+   * direct sub-folders that are. Base branch defaults to the checked-out one. Nothing is written.
+   */
+  public List<RepoConfig> scanRepos(String dir) {
+    Path root = Path.of(dir).toAbsolutePath().normalize();
+    if (!Files.isDirectory(root)) {
+      throw new IllegalArgumentException("Không tìm thấy thư mục: " + dir);
+    }
+    if (git.isRepository(root)) {
+      return List.of(found(root));
+    }
+    try (Stream<Path> children = Files.list(root)) {
+      return children.filter(git::isRepository).filter(c -> !c.getFileName().toString().startsWith("."))
+          .sorted().map(this::found).toList();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private RepoConfig found(Path repo) {
+    String branch = git.currentBranch(repo);
+    return toRepo(new RepoInput(repo.toString(), branch == null ? "main" : branch));
+  }
+
   public List<ServiceInfo> detectServices(String repoPath) {
     Path repo = Path.of(repoPath);
     if (!Files.isDirectory(repo)) {

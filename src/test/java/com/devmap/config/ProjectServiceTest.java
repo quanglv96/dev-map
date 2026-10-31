@@ -133,4 +133,17 @@ class ProjectServiceTest {
     assertThat(dataRoot.resolve("old")).doesNotExist();
     assertThat(dataRoot.resolve("shop/config.yml")).exists();
   }
+
+  /** Project folder = parent of the service repos: each repo found with its checked-out branch and services. */
+  @Test
+  void scanReposFindsRepoChildrenOrTheFolderItself() throws Exception {
+    Files.createDirectories(repos.resolve("not-a-repo"));
+    assertThat(service.scanRepos(repos.toString())).extracting(RepoConfig::name)
+        .containsExactly("notification-service", "order-service", "payment-service");
+    assertThat(service.scanRepos(repos.resolve("order-service").toString())).singleElement().satisfies(r -> {
+      assertThat(r.baseBranch()).isEqualTo(new GitService().currentBranch(repos.resolve("order-service")));
+      assertThat(r.services()).singleElement().satisfies(sv -> assertThat(sv.name()).isEqualTo("order-service"));
+    });
+    assertThat(dataRoot).doesNotExist();
+  }
 }

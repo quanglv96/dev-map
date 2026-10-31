@@ -307,3 +307,8 @@ Trình duyệt không trả đường dẫn tuyệt đối nên nút **Chọn…
 Windows: hộp thoại kiểu Explorer (`IFileOpenDialog`, qua PowerShell `-EncodedCommand`, `src/main/resources/pick-folder.ps1`); macOS: `osascript choose folder`; Linux: `zenity`.
 Chỉ khi PMO chọn xong (không phải khi gõ tay hay bấm Huỷ) form liệt kê folder con của folder dữ liệu; folder không chứa folder dữ liệu hay repo của dự án đã đăng ký nào thì xoá được
 (`DELETE /api/folders`, có xác nhận). Server từ chối xoá folder đang dùng và gốc ổ đĩa.
+
+## D-48 Folder dự án và quét service
+Form "Thêm dự án" có ô **Folder dự án** = folder cha chứa các repo service. Chỉ sau khi PMO chọn folder trong hộp thoại hệ điều hành, DevMap gọi `GET /api/repos/scan`:
+folder là repo git thì lấy chính nó, không thì lấy các folder con trực tiếp là repo git; nhánh nền mặc định là nhánh đang checkout (detached thì `main`), service tự phát hiện. Quét không ghi gì.
+Nút **Bỏ khỏi DevMap** (ở form và ở Cấu hình dự án) chỉ bỏ repo khỏi config.yml/danh sách, không bao giờ xoá file trên máy.

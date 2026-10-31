@@ -48,11 +48,17 @@ async function unregister(name) {
   }
 }
 
-function addRepoRow() {
-  const row = el("div", { class: "row" },
-    el("input", { name: "repoPath", placeholder: t("repoPath"), required: true }),
-    el("input", { name: "baseBranch", placeholder: t("baseBranch"), value: "main", required: true, class: "short" }),
-    el("button", { type: "button", class: "link danger", onclick: () => row.remove() }, t("remove")));
+/** One repo of the new project; removing it only drops it from the list, nothing on disk is touched. */
+function addRepoRow(repo = { path: "", baseBranch: "main", services: [] }) {
+  const row = el("div", {},
+    el("div", { class: "row" },
+      el("input", { name: "repoPath", placeholder: t("repoPath"), value: repo.path, required: true }),
+      el("input", { name: "baseBranch", placeholder: t("baseBranch"), value: repo.baseBranch, required: true, class: "short" }),
+      el("button", { type: "button", class: "link danger", title: t("removeFromDevmapHint"), onclick: () => row.remove() },
+        t("removeFromDevmap"))),
+    repo.services.length
+      ? el("small", { class: "muted" }, `${t("services")}: ${repo.services.map((s) => s.name).join(", ")}`)
+      : null);
   repoRows.append(row);
 }
 
@@ -114,6 +120,24 @@ document.getElementById("pick-data").addEventListener("click", async (event) => 
   }
 });
 
+/** Project folder = parent of the service repos; scanned only once a folder was chosen. */
+const projectRoot = document.getElementById("project-root");
+document.getElementById("pick-project").addEventListener("click", async (event) => {
+  try {
+    const path = await pickFolder(projectRoot.value, event.currentTarget);
+    if (!path) {
+      return;
+    }
+    projectRoot.value = path;
+    const found = await api(`/api/repos/scan?path=${encodeURIComponent(path)}`);
+    repoRows.replaceChildren();
+    found.forEach((r) => addRepoRow(r));
+    showError(addError, found.length ? null : new Error(t("noReposFound")));
+  } catch (err) {
+    showError(addError, err);
+  }
+});
+
 /** FR-41: decisions waiting for the PMO and running tickets across all projects. */
 async function loadOverview() {
   const pending = document.getElementById("pending");
@@ -140,7 +164,7 @@ async function loadOverview() {
 new EventSource("/api/events").addEventListener("task", loadOverview);
 loadOverview();
 
-document.getElementById("add-repo").addEventListener("click", addRepoRow);
+document.getElementById("add-repo").addEventListener("click", () => addRepoRow());
 addRepoRow();
 
 form.addEventListener("submit", async (event) => {
