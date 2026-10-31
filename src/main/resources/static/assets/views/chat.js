@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import { api, el, fill, markdown, showError } from "../lib.js";
 
 let current = null;
+let progress = null;
 
 const base = (project, id) => `/api/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(id)}`;
 
@@ -17,9 +18,13 @@ function usageLine(u) {
   }));
 }
 
-function stepView(s) {
+function stepLabel(s) {
   const first = s.text.split("\n")[0];
-  const label = s.kind === "tool" ? `🔧 ${first}` : s.kind === "note" ? `· ${first}` : s.kind === "error" ? `⚠ ${first}` : first;
+  return s.kind === "tool" ? `🔧 ${first}` : s.kind === "note" ? `· ${first}` : s.kind === "error" ? `⚠ ${first}` : first;
+}
+
+function stepView(s) {
+  const label = stepLabel(s);
   return s.text.includes("\n") || s.text.length > 140
     ? el("details", { class: "step" }, el("summary", {}, label.slice(0, 140)), el("pre", {}, s.text))
     : el("div", { class: "step" }, label);
@@ -56,8 +61,11 @@ function messageView(project, id, m) {
 }
 
 async function draw() {
+  drawView(await api(`${base(current.project, current.id)}/chat`));
+}
+
+function drawView(view) {
   const { project, id, list, totals } = current;
-  const view = await api(`${base(project, id)}/chat`);
   fill(list, view.messages.length ? view.messages.map((m) => messageView(project, id, m)) : el("p", { class: "muted" }, t("noChat")));
   list.scrollTop = list.scrollHeight;
   current.form.querySelector("button[type=submit]").disabled = view.running;
@@ -67,10 +75,42 @@ async function draw() {
   }
 }
 
-/** SSE "agent" event: redraw only the open chat of that ticket. */
-export function onAgentEvent(change) {
-  if (current && current.project === change.project && current.id === change.taskId && document.body.contains(current.list)) {
-    draw();
+/** Banner above the ticket tabs while an agent works on it: who, how many steps, the latest step, a moving bar. */
+function drawProgress(view) {
+  const m = [...view.messages].reverse().find((x) => x.from !== "PMO" && x.state === "running");
+  if (!m) {
+    progress.box.replaceChildren();
+    return;
+  }
+  const role = m.mode === "verify" ? "VERIFY" : m.from;
+  const last = m.steps.at(-1);
+  fill(progress.box, el("div", { class: `progress ${role.toLowerCase()}` },
+    el("div", { class: "row small" }, el("strong", {}, t(`work.${role}`)),
+      el("span", { class: "muted grow" }, ` · ${t("steps", { n: m.steps.length })} · ${m.at}`)),
+    el("div", { class: "bar" }),
+    last ? el("div", { class: "small muted now" }, stepLabel(last).slice(0, 200)) : null));
+}
+
+export async function renderProgress(box, project, id) {
+  progress = { box, project, id };
+  drawProgress(await api(`${base(project, id)}/chat`));
+}
+
+const showing = (x, change) => x && x.project === change.project && x.id === change.taskId;
+
+/** SSE "agent" event: one fetch redraws the open chat and the progress banner of that ticket. */
+export async function onAgentEvent(change) {
+  const chat = showing(current, change) && document.body.contains(current.list);
+  const bar = showing(progress, change) && document.body.contains(progress.box);
+  if (!chat && !bar) {
+    return;
+  }
+  const view = await api(`${base(change.project, change.taskId)}/chat`);
+  if (chat) {
+    drawView(view);
+  }
+  if (bar) {
+    drawProgress(view);
   }
 }
 

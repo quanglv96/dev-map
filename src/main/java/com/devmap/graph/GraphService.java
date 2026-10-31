@@ -103,11 +103,16 @@ public class GraphService {
 
   /** Fetch every repo, then index: incrementally by git diff, or every file when full. Synchronous. */
   public Report update(String project, boolean full) {
+    return update(project, full, null);
+  }
+
+  /** only: repo names to fetch and index (null or empty = every repo); an SA question needs only its ticket's repos. */
+  public Report update(String project, boolean full, java.util.Collection<String> only) {
     if (!running.add(project)) {
       throw new IllegalArgumentException("Đang cập nhật chỉ mục của " + project);
     }
     try {
-      return doUpdate(project, full);
+      return doUpdate(project, full, only);
     } finally {
       running.remove(project);
     }
@@ -131,14 +136,16 @@ public class GraphService {
     });
   }
 
-  private Report doUpdate(String project, boolean full) {
+  private Report doUpdate(String project, boolean full, java.util.Collection<String> only) {
     long t0 = System.currentTimeMillis();
     Project p = project(project);
     Path dir = Path.of(p.dataDir());
     UnaryOperator<String> mask = s -> s == null ? null : masker.mask(s, p.config().secrets()).text();
     List<RepoReport> reports = new ArrayList<>();
     for (RepoConfig rc : p.config().repos()) {
-      reports.add(updateRepo(dir, rc, full, mask));
+      if (only == null || only.isEmpty() || only.contains(rc.name())) {
+        reports.add(updateRepo(dir, rc, full, mask));
+      }
     }
     cache.remove(project);
     Report report = new Report(full, reports, System.currentTimeMillis() - t0);

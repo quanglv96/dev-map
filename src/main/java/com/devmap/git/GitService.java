@@ -120,19 +120,18 @@ public class GitService {
     return o.output();
   }
 
-  /** NFR-07: a worktree per ticket and repo, on the ticket branch (created from startPoint when it does not exist yet). */
-  public void addWorktree(Path repo, Path worktree, String branch, String startPoint) {
-    boolean exists = run(repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch).ok();
-    if (exists) {
-      must(repo, "worktree", "add", worktree.toString(), branch);
+  /** Switches the repo itself to branch (created from startPoint when it does not exist locally). Never forced. */
+  public void checkout(Path repo, String branch, String startPoint) {
+    if (run(repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch).ok()) {
+      must(repo, "checkout", "-q", branch);
     } else {
-      must(repo, "worktree", "add", "-b", branch, worktree.toString(), startPoint);
+      must(repo, "checkout", "-q", "-b", branch, startPoint);
     }
   }
 
-  /** Direct mode: a worktree on no branch at all, so the base branch checked out in the PMO's own repo stays untouched. */
-  public void addDetachedWorktree(Path repo, Path worktree, String commit) {
-    must(repo, "worktree", "add", "--detach", worktree.toString(), commit);
+  /** Drops a clean worktree left from before code moved into the service repo; the branch and its commits stay. */
+  public void removeWorktree(Path repo, Path worktree) {
+    must(repo, "worktree", "remove", worktree.toString());
   }
 
   /** Checked-out branch, or null for a detached HEAD or unreadable repo. */
@@ -147,6 +146,12 @@ public class GitService {
 
   public String head(Path dir) {
     return must(dir, "rev-parse", "HEAD");
+  }
+
+  /** Newest commit of a local branch whether or not it is checked out (several tickets share one service repo), else HEAD. */
+  public String tip(Path repo, String branch) {
+    Out o = run(repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch);
+    return o.ok() ? o.output().strip() : head(repo);
   }
 
   /** Uncommitted paths (modified, added, deleted, untracked), relative to the worktree root. */
@@ -198,9 +203,9 @@ public class GitService {
     return out.isEmpty() ? List.of() : List.of(out.split("\n"));
   }
 
-  /** Committed changes since the base plus what is not committed yet. */
-  public String diffText(Path dir, String from) {
-    return must(dir, "diff", from + "...HEAD") + "\n" + must(dir, "diff", "HEAD");
+  /** Committed changes from...to plus, when to is what is checked out, what is not committed yet. */
+  public String diffText(Path dir, String from, String to, boolean withWorkingTree) {
+    return must(dir, "diff", from + "..." + to) + "\n" + (withWorkingTree ? must(dir, "diff", "HEAD") : "");
   }
 
   /** Content of path at commit (works in worktrees too), or null when the file does not exist there. */

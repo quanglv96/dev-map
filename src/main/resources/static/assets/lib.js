@@ -58,8 +58,26 @@ export function fill(target, ...children) {
   target.replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
 }
 
-/** Project-colored icon; dot: "running" (green), "pending" (yellow), "error" (red) or none. */
-const DOT = { running: "#16a34a", pending: "#eab308", error: "#dc2626" };
+/** Project-colored icon; dot by work state (same colors as the .work pills) or none. */
+const DOT = { sa: "#2563eb", dev: "#7c3aed", verify: "#0891b2", pmo: "#eab308", error: "#dc2626" };
+
+/**
+ * What a ticket is waiting on, for the tab title, the task list and the ticket page: { key, cls } or null.
+ * activity: GET /agents (working: id → SA | DEV | VERIFY, questions: id → open questions to the PMO).
+ */
+export function workState(task, activity) {
+  const role = activity.working?.[task.id];
+  if (role) {
+    return { key: `work.${role}`, cls: role.toLowerCase() };
+  }
+  if (activity.questions?.[task.id]) {
+    return { key: "work.questions", cls: "pmo", n: activity.questions[task.id] };
+  }
+  if (WAITS_FOR_PMO.includes(task.status)) {
+    return { key: `work.${task.status}`, cls: "pmo" };
+  }
+  return activity.failed?.includes(task.id) ? { key: "work.error", cls: "error" } : null;
+}
 
 export function setFavicon(color, dot) {
   const mark = DOT[dot] ? `<circle cx="12" cy="12" r="4" fill="${DOT[dot]}" stroke="#fff" stroke-width="1.5"/>` : "";
@@ -76,12 +94,16 @@ export function showError(target, err) {
   target.replaceChildren(err ? el("p", { class: "error" }, err.message || String(err)) : "");
 }
 
-/** Browser notification (SRS "Hiển thị tiến trình"); the same tag replaces, so several tabs of one project do not stack. */
-export function notify(title, body, tag, onclick) {
-  if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) {
+/**
+ * OS notification (SRS "Hiển thị tiến trình") whenever the PMO is not looking at this page: another tab, another app, or the
+ * browser behind other windows. The same tag replaces, so several tabs of one project do not stack.
+ * sticky: stays on screen until clicked (the PMO has to decide or answer).
+ */
+export function notify(title, body, tag, onclick, sticky = false) {
+  if (!("Notification" in window) || Notification.permission !== "granted" || document.hasFocus()) {
     return;
   }
-  const n = new Notification(title, { body, tag, icon: document.querySelector("link[rel=icon]")?.href });
+  const n = new Notification(title, { body, tag, requireInteraction: sticky, icon: document.querySelector("link[rel=icon]")?.href });
   n.onclick = () => {
     window.focus();
     onclick?.();

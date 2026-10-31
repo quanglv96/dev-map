@@ -19,14 +19,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /**
- * Dev side of a ticket (FR-24, FR-26, FR-27, FR-30 → FR-32, NFR-07): one git worktree per repo on the ticket branch, base
- * branch pulled first, commits carrying the ticket code within the allowed scope, the quality gate, and the push only the
- * PMO can confirm. Works the same whether the PMO clicks (Phase 4) or the Dev agent calls it (Phase 5).
+ * Dev side of a ticket (FR-24, FR-26, FR-27, FR-30 → FR-32): the ticket branch checked out in each service repo itself (PMO
+ * decision, no worktree copies), base branch pulled first, commits carrying the ticket code within the allowed scope, the
+ * quality gate, and the push only the PMO can confirm. Works the same whether the PMO clicks (Phase 4) or the Dev agent calls it
+ * (Phase 5).
  */
 @Service
 public class TicketGitService {
@@ -54,21 +54,18 @@ public class TicketGitService {
   private final GitService git;
   private final RuleService rules;
   private final ApplicationEventPublisher events;
-  private final Path worktrees;
 
-  public TicketGitService(TaskService tasks, TaskRepository repo, GitService git, RuleService rules, ApplicationEventPublisher events,
-      @Value("${devmap.home:${user.home}/.devmap}") Path home) {
+  public TicketGitService(TaskService tasks, TaskRepository repo, GitService git, RuleService rules, ApplicationEventPublisher events) {
     this.tasks = tasks;
     this.repo = repo;
     this.git = git;
     this.rules = rules;
     this.events = events;
-    this.worktrees = home.resolve("worktrees");
   }
 
   /**
-   * FR-24 / NFR-07: fetch, create the ticket's worktree in every repo (or merge the newest base branch into an existing one),
-   * then Ready → In dev. Refuses a protected ticket branch and a worktree with uncommitted changes.
+   * FR-24: fetch, check out the ticket branch in every service repo and merge the newest base branch into it, then
+   * Ready → In dev. Refuses a protected ticket branch and a repo with uncommitted changes.
    */
   // ponytail: one lock for all git work; per-ticket locks when parallel agents (NFR-12) make it a bottleneck
   public synchronized View start(String project, String id, Actor actor) {
@@ -93,21 +90,14 @@ public class TicketGitService {
       if (base == null) {
         throw new IllegalStateException(name + ": không có nhánh nền " + rc.baseBranch());
       }
-      Path wt = worktrees.resolve(project).resolve(id).resolve(name);
+      String target = dev.direct() ? rc.baseBranch() : t.branch();
       RepoWork w = dev.repo(name);
-      if (!Files.exists(wt) && dev.direct()) {
-        git.addDetachedWorktree(main, wt, base);
-      } else if (!Files.exists(wt)) {
-        git.addWorktree(main, wt, t.branch(), base);
-        git.merge(wt, base); // no-op for a new branch; brings an existing ticket branch up to date
-      } else {
-        if (!git.uncommitted(wt).isEmpty()) {
-          throw new IllegalStateException(name + ": worktree còn thay đổi chưa commit, commit trước khi pull nhánh nền");
-        }
-        git.merge(wt, base);
-      }
-      w = w != null ? w : new RepoWork(name, wt.toString().replace('\\', '/'), dev.direct() ? rc.baseBranch() : t.branch(),
-          rc.baseBranch(), null, null, null, null);
+      dropOldWorktree(main, w);
+      checkoutInRepo(project, id, name, main, target, base);
+      git.merge(main, base); // no-op for a new branch; brings an existing ticket branch up to date
+      String path = main.toString().replace('\\', '/');
+      w = w == null ? new RepoWork(name, path, target, rc.baseBranch(), null, null, null, null)
+          : new RepoWork(name, path, w.branch(), w.baseBranch(), w.baseCommit(), w.gateHead(), w.pushedHead(), w.pulledAt());
       dev = dev.with(w.withBase(base, now()));
       tasks.history(s, actor, name, "pull nhánh nền trước khi làm (AIR-04)",
           name + ": pull nhánh nền " + rc.baseBranch() + " @" + base.substring(0, 8)
@@ -133,9 +123,11 @@ public class TicketGitService {
             w.pushedHead(), w.worktree()));
         continue;
       }
-      String head = git.head(wt);
+      // the ticket's own branch, not HEAD: once it waits for push another ticket may have the repo checked out
+      String head = git.tip(wt, w.branch());
+      List<String> dirty = checkedOut(w) ? git.uncommitted(wt) : List.of();
       out.add(new RepoView(w.repo(), w.branch(), w.baseBranch(), w.baseCommit(), head, git.log(wt, w.baseCommit(), head),
-          git.changedFiles(wt, w.baseCommit(), head), git.uncommitted(wt), head.equals(w.gateHead()), w.pushedHead(), w.worktree()));
+          git.changedFiles(wt, w.baseCommit(), head), dirty, head.equals(w.gateHead()), w.pushedHead(), w.worktree()));
     }
     return new View(out, rules.protectedBranches(project), repo.readDevState(s.folder()).direct());
   }
@@ -163,7 +155,8 @@ public class TicketGitService {
   /** Committed changes since the base plus uncommitted ones, for the PMO to read before commit and push. */
   public String diff(String project, String id, String repoName) {
     RepoWork w = work(tasks.stored(project, id), repoName);
-    return git.diffText(Path.of(w.worktree()), w.baseCommit());
+    Path wt = Path.of(w.worktree());
+    return git.diffText(wt, w.baseCommit(), git.tip(wt, w.branch()), checkedOut(w));
   }
 
   public ScopeCheck checkScope(String project, String id, String repoName) {
@@ -214,6 +207,7 @@ public class TicketGitService {
       throw new PmoOnlyException("Cần PMO duyệt trước khi commit: " + check.needApproval());
     }
     RepoWork w = work(s, repoName);
+    requireCheckedOut(w);
     String text = rules.commitMessage(project, s.task().id(), message);
     git.commitAll(Path.of(w.worktree()), text);
     DevState dev = repo.readDevState(s.folder());
@@ -235,6 +229,7 @@ public class TicketGitService {
     List<QualityGate.Result> all = new ArrayList<>();
     StringBuilder md = new StringBuilder("# Test và quality gate – " + id + "\n\n_Chạy lúc " + now() + "_\n");
     for (RepoWork w : dev.repos()) {
+      requireCheckedOut(w);
       Path wt = Path.of(w.worktree());
       Set<String> touched = new LinkedHashSet<>(git.changedFiles(wt, w.baseCommit(), "HEAD"));
       touched.addAll(git.uncommitted(wt));
@@ -280,7 +275,7 @@ public class TicketGitService {
     DevState dev = repo.readDevState(s.folder());
     for (RepoWork w : dev.repos()) {
       Path wt = Path.of(w.worktree());
-      String head = git.head(wt);
+      String head = git.tip(wt, w.branch());
       if (head.equals(w.baseCommit()) || head.equals(w.pushedHead())) {
         continue; // nothing to push, or already pushed
       }
@@ -320,6 +315,58 @@ public class TicketGitService {
       }
     }
     tasks.writeDoc(project, id, "changes.md", md.toString(), Actor.DEVMAP);
+  }
+
+  /**
+   * PMO: code is edited in the service repo itself, not a copy. Switches the repo to the ticket branch only when nothing would be
+   * lost: refuses uncommitted changes and a branch another ticket is still developing.
+   */
+  // ponytail: one ticket per repo at a time (one checkout); back to worktrees if parallel tickets on one repo matter (NFR-07)
+  private void checkoutInRepo(String project, String id, String name, Path main, String target, String base) {
+    String current = git.currentBranch(main);
+    List<String> dirty = git.uncommitted(main);
+    if (target.equals(current)) {
+      if (!dirty.isEmpty()) {
+        throw new IllegalStateException(name + ": còn thay đổi chưa commit, commit trước khi pull nhánh nền");
+      }
+      return;
+    }
+    if (!dirty.isEmpty()) {
+      throw new IllegalStateException(name + ": repo đang ở nhánh " + current + " với " + dirty.size()
+          + " file chưa commit; commit hoặc stash trước khi DevMap chuyển sang " + target);
+    }
+    tasks.list(project).stream()
+        // waiting for push needs only its branch ref, not the checkout
+        .filter(x -> !x.id().equals(id) && x.repos().contains(name) && x.branch().equals(current)
+            && (x.status() == TaskStatus.IN_DEV || x.status() == TaskStatus.SA_VERIFY))
+        .findFirst().ifPresent(x -> {
+          throw new IllegalStateException(name + ": repo đang dùng cho " + x.id() + " (nhánh " + current + "); xong ticket đó trước");
+        });
+    git.checkout(main, target, base);
+  }
+
+  private boolean checkedOut(RepoWork w) {
+    return w.branch().equals(git.currentBranch(Path.of(w.worktree())));
+  }
+
+  /** Commit and gate work on the files on disk: they must be this ticket's branch, never another ticket's checkout. */
+  private void requireCheckedOut(RepoWork w) {
+    if (!checkedOut(w)) {
+      throw new IllegalStateException(w.repo() + ": repo đang ở nhánh " + git.currentBranch(Path.of(w.worktree())) + ", không phải "
+          + w.branch() + "; bấm \"Pull nhánh nền\" để chuyển về ticket này");
+    }
+  }
+
+  /** Tickets started before code moved into the service repo: the branch cannot be checked out while its old worktree holds it. */
+  private void dropOldWorktree(Path main, RepoWork w) {
+    if (w == null || Path.of(w.worktree()).toAbsolutePath().normalize().equals(main.toAbsolutePath().normalize())
+        || !Files.exists(Path.of(w.worktree()))) {
+      return;
+    }
+    if (!git.uncommitted(Path.of(w.worktree())).isEmpty()) {
+      throw new IllegalStateException(w.repo() + ": worktree cũ " + w.worktree() + " còn thay đổi chưa commit; commit trước");
+    }
+    git.removeWorktree(main, Path.of(w.worktree()));
   }
 
   private RepoWork work(Stored s, String repoName) {

@@ -59,6 +59,7 @@ class ContextBuilder {
   String system(String project, Role role) {
     StringBuilder sb = new StringBuilder();
     sb.append(resource("execution.md")).append("\n\n").append(resource("workflow.md")).append("\n\n")
+        .append(resource("ponytail.md")).append("\n\n")
         .append(resource(role == Role.SA ? "sa.md" : "dev.md")).append("\n\n# Quy tắc kiến trúc của dự án ").append(project).append("\n\n")
         .append("- Tách lớp bắt buộc: Controller → Service → Repository; Controller không import/gọi Repository (quality gate chặn).\n")
         .append("- Mẫu commit: `").append(rules.projectDefault(project).git().commitTemplate()).append("`; mọi commit mang mã ticket.\n")
@@ -122,7 +123,10 @@ class ContextBuilder {
           + "summary.md và set_status awaiting_approval.";
       default -> "Trả lời câu hỏi của PMO; cập nhật tài liệu nếu PMO đổi yêu cầu.";
     };
-    return what + " Luôn ghi summary.md cuối phiên.";
+    // a follow-up question must not rebuild the impact table: that is the graph sweep that costs tokens on every answer
+    String known = t.repos().isEmpty() ? "" : " Service ảnh hưởng đã xác định " + t.repos()
+        + " (bảng trong plan.md/summary.md): không quét lại graph, chỉ tra điểm mới PMO nêu; set_repos chỉ khi phạm vi đổi.";
+    return what + known + " Luôn ghi summary.md cuối phiên.";
   }
 
   /** Token layer 2: services of the ticket, their service-level dependencies 2 hops out, and their API signatures. */

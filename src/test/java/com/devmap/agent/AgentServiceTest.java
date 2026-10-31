@@ -116,7 +116,7 @@ class AgentServiceTest {
     // cheap commands; layering is covered by RuleServiceTest (order-service has a known violation)
     rules.saveDefault("shop", new Rules("maven", def.git(), new Rules.Quality(false, true, List.of("git status"), true, "java -version",
         false, "", 2), def.scope()));
-    dev = new TicketGitService(tasks, taskRepo, git, rules, publish, home);
+    dev = new TicketGitService(tasks, taskRepo, git, rules, publish);
     SourceIndexer indexer = new SourceIndexer();
     graphs = new GraphService(projects, git, new GraphRepository(), indexer, masker, tasks, e -> { });
     AgentTools tools = new AgentTools(tasks, dev, graphs, git, projects, rules, masker, new VerifyFacts(dev, graphs, git, indexer));
@@ -244,7 +244,9 @@ class AgentServiceTest {
 
     List<ChatMessage> chat = agents.chat("shop", id).messages();
     assertThat(chat.get(1).steps()).anyMatch(s -> s.text().contains("quét toàn bộ"));
-    assertThat(chat.get(3).steps()).noneMatch(s -> s.text().contains("quét toàn bộ")).anyMatch(s -> s.text().contains("git diff"));
+    // the follow-up only checks the ticket's own repo against the base branch, and says so in one line
+    assertThat(chat.get(3).steps()).noneMatch(s -> s.text().contains("quét toàn bộ"))
+        .anyMatch(s -> s.text().equals("Chỉ mục 1 repo của ticket đã mới nhất theo nhánh nền"));
     assertThat(fake.calls.get(1).prompt()).contains("svc:order-service", "svc:payment-service"); // 2-hop graph context
 
     String log = inputLog(id, 2) + inputLog(id, 4);
@@ -370,6 +372,9 @@ class AgentServiceTest {
 
     assertThat(started).containsExactly(ids.get(1), ids.get(0));
     assertThat(ids).allSatisfy(id -> assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH));
+    // both wait for push from the one service repo: each keeps its own verified branch commit, whatever is checked out
+    assertThat(ids).allSatisfy(id -> assertThat(dev.view("shop", id).repos().get(0).gatePassed()).isTrue());
+    assertThat(dev.view("shop", ids.get(0)).repos().get(0).head()).isNotEqualTo(dev.view("shop", ids.get(1)).repos().get(0).head());
     AgentService.Activity a = agents.activity("shop");
     assertThat(a.queueRunning()).isFalse();
     assertThat(a.running()).isEmpty();
@@ -379,6 +384,52 @@ class AgentServiceTest {
     String log = Files.readString(tmp.resolve("data/shop/logs/audit.jsonl"));
     assertThat(log).contains("Chạy hàng đợi", "\"actor\":\"DEV\"", "Công cụ write_file", "\"service\":\"order-service\"",
         "scope + chặn file bí mật", "git.commit_template", "cổng duyệt PMO", "\"actor\":\"SA\"").doesNotContain("class Maint");
+  }
+
+  /**
+   * PMO approved: one action and Dev implements from the documents in the service repo itself, after being told which base
+   * commits landed since SA analysed; the tab shows who works; SA verifies by itself; open questions reach the PMO.
+   */
+  @Test
+  void approvedTicketImplementsItselfAfterReviewingNewBaseCommits() throws Exception {
+    graphs.update("shop", true); // the index SA analysed against
+    String id = ticket("NYX-5", "Dọn log ở order-service");
+    tasks.setRepos("shop", id, List.of("order-service"), Actor.PMO);
+    tasks.writeDoc("shop", id, "summary.md", "# Tóm tắt\n\n## Câu hỏi chờ PMO\n\n1. Giữ log lỗi?\n   (cả log cảnh báo)\n"
+        + "2. Bao nhiêu ngày?\n\n## Việc tiếp theo\n- chờ PMO\n", Actor.SA);
+    assertThat(agents.activity("shop").questions()).containsEntry(id, 2);
+    assertThatThrownBy(() -> agents.implement("shop", id)).hasMessageContaining("PMO đã chốt");
+    tasks.transition("shop", id, "sa_analysis", Actor.SA);
+    tasks.writeDoc("shop", id, "summary.md", "# Tóm tắt\n\n## Câu hỏi chờ PMO\r\n- (không còn)\r\n", Actor.SA);
+    tasks.writeDoc("shop", id, "plan.md", "- order-service: Cleanup.java\n", Actor.SA);
+    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "ready", Actor.PMO);
+    assertThat(agents.activity("shop").questions()).doesNotContainKey(id);
+    SampleRepos.commit(repos.resolve("order-service"), "test", Map.of("NEWS.md", "new on test\n")); // after SA's analysis
+
+    fake.scripts.add(c -> { // Dev
+      assertThat(c.prompt()).contains(AgentService.IMPLEMENT, "Pull nhánh nền mới nhất vào repo",
+          "Nhánh nền có commit mới ở order-service", "NEWS.md", "Rà soát nhánh nền");
+      assertThat(agents.activity("shop").working()).containsEntry(id, "DEV");
+      assertThat(git.currentBranch(repos.resolve("order-service"))).isEqualTo(tasks.detail("shop", id).task().branch());
+      tool(c, "write_file", Map.of("repo", "order-service", "path", "src/main/java/com/shop/order/Cleanup.java",
+          "content", "package com.shop.order;\n\nclass Cleanup {\n}\n"));
+      tool(c, "commit", Map.of("repo", "order-service", "message", "cleanup"));
+      tool(c, "run_quality_gate", Map.of());
+      assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).contains("sa_verify");
+      return "ok";
+    });
+    fake.scripts.add(c -> { // SA verification, started by DevMap
+      assertThat(agents.activity("shop").working()).containsEntry(id, "VERIFY");
+      tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "Cleanup.java theo plan. Kết luận: ĐẠT"));
+      tool(c, "set_status", Map.of("to", "awaiting_push"));
+      return "ok";
+    });
+    agents.implement("shop", id);
+
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH);
+    assertThat(repos.resolve("order-service/src/main/java/com/shop/order/Cleanup.java")).exists(); // in the service, not a copy
+    assertThat(agents.activity("shop").working()).isEmpty();
   }
 
   /** FR-45, AC-12, FR-11, AC-03: Done drops the session context; a reopened ticket is answered from documents and must fix analysis. */

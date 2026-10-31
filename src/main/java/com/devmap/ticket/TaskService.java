@@ -262,7 +262,7 @@ public class TaskService {
         continue;
       }
       Path wt = Path.of(w.worktree());
-      if (w.gateHead() == null || !w.gateHead().equals(git.head(wt))) {
+      if (w.gateHead() == null || !w.gateHead().equals(git.tip(wt, w.branch()))) {
         problems.add(name + ": quality gate chưa đạt trên commit hiện tại");
       } else if (!git.uncommitted(wt).isEmpty()) {
         problems.add(name + ": còn thay đổi chưa commit");
@@ -276,7 +276,7 @@ public class TaskService {
   /** FR-27: Done only after the verified commit of every changed repo was pushed through "Xác nhận push". */
   private void requirePushed(Stored s) {
     List<String> missing = repo.readDevState(s.folder()).repos().stream()
-        .filter(w -> !git.head(Path.of(w.worktree())).equals(w.baseCommit()))
+        .filter(w -> !git.tip(Path.of(w.worktree()), w.branch()).equals(w.baseCommit()))
         .filter(w -> w.pushedHead() == null || !w.pushedHead().equals(w.gateHead()))
         .map(DevState.RepoWork::repo).toList();
     if (!missing.isEmpty()) {

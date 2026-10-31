@@ -1,7 +1,7 @@
 // A ticket: create form, Documents tab (versions + diff), right column with status and PMO decisions.
 import { t } from "../i18n.js";
-import { api, diffView, el, fill, markdown, showError } from "../lib.js";
-import { askAgent, renderChat } from "./chat.js";
+import { api, diffView, el, fill, markdown, showError, workState } from "../lib.js";
+import { askAgent, renderChat, renderProgress } from "./chat.js";
 
 const EDITABLE = ["analysis.md", "plan.md", "summary.md"];
 const selectedDoc = new Map();
@@ -285,9 +285,15 @@ function renderRepoPicker(project, detail, repoNames, error) {
   if (task.status === "done") {
     return null;
   }
-  const boxes = repoNames.map((n) => el("label", { class: "check" },
-    el("input", { type: "checkbox", value: n, checked: task.repos.includes(n) }), " ", n));
-  return el("div", { class: "repo-picker" }, boxes,
+  const box = (n) => el("label", { class: "check" },
+    el("input", { type: "checkbox", value: n, checked: task.repos.includes(n) }), " ", n);
+  // SA picks the impacted services (set_repos); the rest of the project stays one click away for the PMO
+  const impacted = repoNames.filter((n) => task.repos.includes(n)).map(box);
+  const others = repoNames.filter((n) => !task.repos.includes(n)).map(box);
+  const boxes = [...impacted, ...others];
+  return el("div", { class: "repo-picker" },
+    impacted.length ? impacted : el("p", { class: "muted small" }, t("reposNone")),
+    others.length ? el("details", {}, el("summary", { class: "small muted" }, t("reposOther", { n: others.length })), others) : null,
     el("button", { type: "button", class: "link", onclick: async () => {
       try {
         const repos = boxes.map((b) => b.querySelector("input")).filter((i) => i.checked).map((i) => i.value);
@@ -299,8 +305,10 @@ function renderRepoPicker(project, detail, repoNames, error) {
     } }, t("saveRepos")));
 }
 
-function renderRight(right, project, detail, dev, repoNames, reviewBox, totals) {
+function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, activity) {
   const task = detail.task;
+  const work = workState(task, activity);
+  const running = Boolean(activity.working?.[task.id]);
   const from = task.status;
   const error = el("div");
   const call = async (path) => {
@@ -317,7 +325,7 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals) 
       return;
     }
     if (from === "ready" && to === "in_dev") {
-      await call("/dev/start");
+      await call("/implement"); // Dev pulls the base branch and implements plan.md on its own; SA verifies after
       return;
     }
     if (gate && !confirm(t("confirmGate", { action: actionLabel(from, to), id: task.id }))) {
@@ -330,7 +338,8 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals) 
       showError(error, err);
     }
   };
-  const gates = detail.actions.filter((a) => a.pmoGate || (from === "awaiting_approval" && a.to === "sa_analysis"));
+  const implementNow = (a) => from === "ready" && a.to === "in_dev";
+  const gates = detail.actions.filter((a) => a.pmoGate || implementNow(a) || (from === "awaiting_approval" && a.to === "sa_analysis"));
   const manual = detail.actions.filter((a) => !gates.includes(a));
 
   const reopenBox = el("div", { class: "reopen" });
@@ -350,7 +359,8 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals) 
   fill(right,
     el("h3", {}, task.id),
     el("dl", {},
-      el("dt", {}, t("status")), el("dd", {}, el("span", { class: `badge ${task.status}` }, t(`status.${task.status}`))),
+      el("dt", {}, t("status")), el("dd", {}, el("span", { class: `badge ${task.status}` }, t(`status.${task.status}`)),
+        work ? [" ", el("span", { class: `work ${work.cls}` }, t(work.key, { n: work.n }))] : null),
       el("dt", {}, t("type")), el("dd", {}, task.type),
       el("dt", {}, t("branch")), el("dd", {}, renderBranch(project, task, dev, error)),
       el("dt", {}, t("repos")), el("dd", {}, renderRepoPicker(project, detail, repoNames, error)
@@ -361,13 +371,14 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals) 
       el("dt", {}, t("tokens")), el("dd", {}, totals)),
     gates.length || from === "done" ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
     el("div", { class: "actions" }, gates.map((a) => el("button", {
-      type: "button", class: a.pmoGate ? "primary" : "secondary", onclick: () => move(a.to, a.pmoGate)
+      type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", onclick: () => move(a.to, a.pmoGate)
     }, actionLabel(from, a.to)))),
     from === "done" ? el("div", { class: "actions" },
       el("button", { type: "button", class: "secondary", onclick: () => reopen("bug") }, t("reportBug")),
       el("button", { type: "button", class: "secondary", onclick: () => reopen("logic") }, t("addLogic"))) : null,
     reopenBox,
     from === "in_dev" ? [el("h3", { class: "section" }, t("devSteps")), el("div", { class: "actions" },
+      running ? null : el("button", { type: "button", class: "primary", onclick: () => call("/implement") }, t("implement")),
       el("button", { type: "button", class: "secondary", onclick: () => call("/dev/start") }, t("pullBase")),
       dev.repos.length ? el("button", { type: "button", class: "secondary", onclick: () => call("/dev/gate") }, t("runGate")) : null),
     el("p", { class: "muted small" }, t("gateHint"))] : null,
@@ -387,9 +398,10 @@ export async function renderTask(mid, right, project, id, state) {
     showError(mid, err);
     return;
   }
-  const [dev, info] = await Promise.all([
+  const [dev, info, activity] = await Promise.all([
     api(`${base(project, id)}/dev`).catch(() => ({ repos: [] })),
-    api(`/api/projects/${encodeURIComponent(project)}`)]);
+    api(`/api/projects/${encodeURIComponent(project)}`),
+    api(`/api/projects/${encodeURIComponent(project)}/agents`).catch(() => ({ working: {}, questions: {}, failed: [] }))]);
   const notice = state.masked ? el("p", { class: "warn" }, t("masked", { n: state.masked })) : null;
   state.masked = 0;
   const body = el("div");
@@ -416,8 +428,10 @@ export async function renderTask(mid, right, project, id, state) {
   const tabs = el("div", { class: "tabs" }, names.map((name) => el("button", {
     type: "button", class: `tab${name === "questions" ? " tab-questions" : ""}`, "data-tab": name, onclick: () => show(name)
   }, name === "questions" ? [t("questions"), " ", el("span", { class: "count" }, String(questions.length))] : t(name))));
-  mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), review, code, tabs, body);
+  const progress = el("div");
+  mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), progress, review, code, tabs, body);
+  renderProgress(progress, project, id).catch(() => { /* the chat tab still shows the steps */ });
   renderCode(code, project, detail, dev);
-  renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review, totals);
+  renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review, totals, activity);
   show(tab);
 }

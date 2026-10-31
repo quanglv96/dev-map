@@ -38,6 +38,12 @@ public class AgentController {
     return agents.ask(project, id, req.role(), req.question(), req.fullScan());
   }
 
+  /** PMO approved the plan: Dev implements it from the documents; SA verifies by itself afterwards. */
+  @PostMapping("/tasks/{id}/implement")
+  public ChatMessage implement(@PathVariable String project, @PathVariable String id) {
+    return agents.implement(project, id);
+  }
+
   @GetMapping("/tasks/{id}/chat/input")
   public Map<String, String> input(@PathVariable String project, @PathVariable String id, @RequestParam int no) {
     return Map.of("content", agents.inputLog(project, id, no));

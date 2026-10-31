@@ -61,7 +61,7 @@ class TicketGitServiceTest {
     // cheap commands instead of mvn: the gate mechanics are what is under test here
     rules.saveDefault("shop", new Rules("maven", def.git(), new Rules.Quality(true, true, List.of("git status"), true, "java -version",
         false, "", 2), def.scope()));
-    dev = new TicketGitService(tasks, taskRepo, git, rules, events::add, tmp.resolve("home"));
+    dev = new TicketGitService(tasks, taskRepo, git, rules, events::add);
   }
 
   private String readyTicket() {
@@ -88,10 +88,9 @@ class TicketGitServiceTest {
     assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.IN_DEV);
     assertThat(v.repos()).extracting(TicketGitService.RepoView::repo).containsExactlyInAnyOrder("order-service", "payment-service");
     Path order = Path.of(v.repos().stream().filter(r -> r.repo().equals("order-service")).findFirst().orElseThrow().worktree());
-    assertThat(order).startsWith(tmp.resolve("home/worktrees/shop/NYX-7"));
+    assertThat(order).isEqualTo(repos.resolve("order-service")); // edited in the service repo itself, no worktree copy
     assertThat(order.resolve("NEWS.md")).exists();
     assertThat(git.run(order, "branch", "--show-current").output()).isEqualTo("feature/NYX-7-hoan-tien");
-    assertThat(git.run(repos.resolve("order-service"), "branch", "--show-current").output()).isEqualTo("main"); // PMO's checkout untouched
     assertThat(events).contains(new TicketGitService.BasePulled("shop"));
 
     // FR-32: a dependency file needs the PMO; FR-34: a secret file is never committed
@@ -180,7 +179,8 @@ class TicketGitServiceTest {
     TicketGitService.RepoView r = dev.start("shop", id, Actor.PMO).repos().get(0);
     assertThat(r.branch()).isEqualTo("main");
     Path wt = Path.of(r.worktree());
-    assertThat(git.run(wt, "branch", "--show-current").output()).isEmpty(); // detached, the PMO's main stays where it is
+    assertThat(wt).isEqualTo(repos.resolve("payment-service"));
+    assertThat(git.run(wt, "branch", "--show-current").output()).isEqualTo("main"); // edited right on the base branch
     assertThatThrownBy(() -> dev.setDirect("shop", id, false, Actor.PMO)).hasMessageContaining("worktree");
     Files.writeString(wt.resolve("CHANGELOG.md"), "refund\n");
     dev.commit("shop", id, "payment-service", "changelog", Actor.PMO);

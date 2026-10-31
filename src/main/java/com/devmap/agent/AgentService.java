@@ -36,6 +36,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -71,14 +73,22 @@ public class AgentService {
   public record Quota(String type, String status, Long resetsAt, Double utilization, String seenAt) {
   }
 
-  /** Tab title and icon (SRS "Hiển thị tiến trình"): tickets with an agent running, tickets whose last session failed. */
-  public record Activity(List<String> running, List<String> failed, String queueTicket, boolean queueRunning) {
+  /**
+   * Tab title and icon (SRS "Hiển thị tiến trình"): tickets with an agent running and what it does (SA, DEV or VERIFY), tickets
+   * whose last session failed, and open questions to the PMO per ticket (summary.md "Câu hỏi chờ PMO").
+   */
+  public record Activity(List<String> running, Map<String, String> working, List<String> failed, Map<String, Integer> questions,
+      String queueTicket, boolean queueRunning) {
   }
 
   private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
   private static final ObjectMapper JSON = new ObjectMapper();
   /** Question of the SA session DevMap starts by itself when the PMO creates a ticket with "analyse now". */
   static final String AUTO_ANALYZE = "Ticket mới: phân tích yêu cầu, đánh giá ảnh hưởng và đề xuất hướng xử lý cho PMO duyệt.";
+  static final String IMPLEMENT = "Triển khai theo plan.md đã chốt";
+  private static final Pattern QUESTIONS = Pattern.compile("(?imu)^#{1,6}\\s*(câu hỏi chờ pmo|questions for (the )?pmo).*$");
+  private static final Pattern ITEM = Pattern.compile("^\\s*(?:\\d+[.)]|[-*])\\s+(.+)");
+  private static final Pattern NONE = Pattern.compile("(?iu)^\\(?(không có|không còn|none|chưa có).*");
 
   private final TaskService tasks;
   private final TicketGitService dev;
@@ -96,6 +106,8 @@ public class AgentService {
   private final Executor runner;
   private final Map<String, AgentSession> live = new ConcurrentHashMap<>();
   private final Set<String> busy = ConcurrentHashMap.newKeySet();
+  /** project/ticket → SA, DEV or VERIFY while a session runs or waits for a slot (tab title and progress bar). */
+  private final Map<String, String> working = new ConcurrentHashMap<>();
   // ponytail: queue runs live in memory; a restart stops them and the PMO presses "Chạy hàng đợi" again
   private final Map<String, String> queueRuns = new ConcurrentHashMap<>();
   // ponytail: the account quota lives in memory, refreshed by every session; after a restart it shows again after the next one
@@ -148,6 +160,18 @@ public class AgentService {
     return submit(project, id, r, t.status() == TaskStatus.SA_VERIFY && r == Role.SA ? Mode.VERIFY : Mode.ASK, q, fullScan);
   }
 
+  /** PMO approved the plan (Ready / In dev): Dev implements it on its own; SA verifies by itself when Dev hands over (AIR-03). */
+  public ChatMessage implement(String project, String id) {
+    Task t = tasks.detail(project, id).task();
+    if (t.status() != TaskStatus.READY && t.status() != TaskStatus.IN_DEV) {
+      throw new IllegalArgumentException("Chỉ triển khai được khi PMO đã chốt giải pháp (Sẵn sàng / Đang triển khai)");
+    }
+    if (t.repos().isEmpty()) {
+      throw new IllegalArgumentException("Ticket chưa có repo nào; SA hoặc PMO chọn repo ở cột phải");
+    }
+    return submit(project, id, Role.DEV, Mode.ASK, IMPLEMENT, false);
+  }
+
   /** A new ticket goes to SA right away (PMO ticked "analyse now" on the form); SA moves it New → SA analysis as usual. */
   public ChatMessage analyzeNew(String project, String id) {
     return submit(project, id, Role.SA, Mode.ASK, AUTO_ANALYZE, false);
@@ -158,6 +182,7 @@ public class AgentService {
     if (!busy.add(key)) {
       throw new IllegalArgumentException("Agent đang chạy cho " + id + "; chờ phiên này xong");
     }
+    working.put(key, mode == Mode.VERIFY ? "VERIFY" : role.name());
     ChatMessage msg;
     try {
       Path folder = tasks.folder(project, id);
@@ -176,6 +201,7 @@ public class AgentService {
       }
     } catch (RuntimeException e) {
       busy.remove(key);
+      working.remove(key);
       throw e;
     }
     int no = msg.id();
@@ -187,6 +213,7 @@ public class AgentService {
         finish(project, id, no, "Lỗi: " + masker.mask(String.valueOf(e.getMessage())).text(), Usage.ZERO, "error", null);
       } finally {
         busy.remove(key);
+        working.remove(key);
       }
       afterSession(project, id, role, mode);
     });
@@ -248,24 +275,65 @@ public class AgentService {
           + " file, chỉ cập nhật chỉ mục chữ ký trên máy; tự tắt sau câu này");
     } else if (role == Role.SA) {
       try {
-        GraphService.Report r = graphs.update(project, false);
-        notes.add("Fetch nhánh nền và cập nhật chỉ mục theo git diff: " + r.repos().stream()
-            .map(x -> x.repo() + " " + (x.parsed() > 0 ? "đọc " + x.parsed() + " file" : x.note())).toList());
+        // only the ticket's repos (every repo while SA has picked none): a follow-up question must not refetch the whole project
+        GraphService.Report r = graphs.update(project, false, t.repos());
+        List<String> moved = r.repos().stream().filter(x -> x.parsed() > 0 || x.removed() > 0 || !x.note().endsWith("đã mới nhất"))
+            .map(x -> x.repo() + " " + (x.parsed() > 0 ? "đọc " + x.parsed() + " file" : x.note())).toList();
+        notes.add(moved.isEmpty() ? "Chỉ mục " + r.repos().size() + " repo của ticket đã mới nhất theo nhánh nền"
+            : "Cập nhật chỉ mục theo git diff: " + moved);
       } catch (IllegalArgumentException e) {
         notes.add(e.getMessage());
       }
     }
     if (role == Role.DEV) {
       notes.addAll(pmoChanges(project, id));
+      Map<String, String> seen = baseSeen(project, id);
       try {
         dev.start(project, id, Actor.DEV);
-        notes.add("Pull nhánh nền mới nhất vào worktree của ticket: " + dev.view(project, id).repos().stream()
+        List<RepoView> repos = dev.view(project, id).repos();
+        notes.add("Pull nhánh nền mới nhất vào repo của service: " + repos.stream()
             .map(r -> r.repo() + "@" + (r.baseCommit() == null ? "-" : r.baseCommit().substring(0, 8))).toList());
+        notes.addAll(baseUpdates(repos, seen));
       } catch (IllegalArgumentException | IllegalStateException e) {
         notes.add("Không pull được nhánh nền: " + e.getMessage());
       }
     }
     return notes;
+  }
+
+  /** Base commit each repo was last seen at: the previous pull of this ticket, else the index SA analysed against. */
+  private Map<String, String> baseSeen(String project, String id) {
+    Map<String, String> out = new LinkedHashMap<>();
+    try {
+      graphs.status(project).repos().stream().filter(r -> r.indexedCommit() != null).forEach(r -> out.put(r.repo(), r.indexedCommit()));
+    } catch (RuntimeException e) {
+      // no index yet: only the previous pull counts
+    }
+    dev.view(project, id).repos().stream().filter(r -> r.baseCommit() != null).forEach(r -> out.put(r.repo(), r.baseCommit()));
+    return out;
+  }
+
+  /** Base-branch commits that landed since then: Dev reviews them against plan.md before coding and records it in summary.md. */
+  private List<String> baseUpdates(List<RepoView> repos, Map<String, String> seen) {
+    List<String> out = new ArrayList<>();
+    for (RepoView r : repos) {
+      String before = seen.get(r.repo());
+      if (before == null || r.baseCommit() == null || before.equals(r.baseCommit())) {
+        continue;
+      }
+      try {
+        Path dir = Path.of(r.worktree());
+        List<String> commits = git.log(dir, before, r.baseCommit());
+        if (!commits.isEmpty()) {
+          out.add("Nhánh nền có commit mới ở " + r.repo() + " từ lúc SA phân tích/lần pull trước: " + clip(commits.toString(), 600)
+              + "; file: " + clip(git.changedFiles(dir, before, r.baseCommit()).toString(), 800)
+              + ". Rà soát với plan.md trước khi code, ghi vào summary.md mục \"Rà soát nhánh nền\".");
+        }
+      } catch (IllegalStateException e) {
+        out.add(r.repo() + ": không so được nhánh nền với " + before.substring(0, 8) + " (" + clip(e.getMessage(), 200) + ")");
+      }
+    }
+    return out;
   }
 
   /** FR-28: commits and uncommitted files in the worktrees that no Dev session made since the last one. */
@@ -350,7 +418,7 @@ public class AgentService {
       }
       String next = q.get(0).id();
       queueRuns.put(project, next);
-      submit(project, next, Role.DEV, Mode.ASK, "Triển khai theo plan.md đã chốt (hàng đợi, ticket kế tiếp)", false);
+      submit(project, next, Role.DEV, Mode.ASK, IMPLEMENT + " (hàng đợi, ticket kế tiếp)", false);
     } catch (RuntimeException e) {
       queueRuns.remove(project);
     }
@@ -363,17 +431,52 @@ public class AgentService {
 
   public Activity activity(String project) {
     List<String> running = new ArrayList<>();
+    Map<String, String> what = new LinkedHashMap<>();
     List<String> failed = new ArrayList<>();
+    Map<String, Integer> questions = new LinkedHashMap<>();
     for (Task t : tasks.list(project)) {
-      if (busy.contains(project + "/" + t.id())) {
+      String key = project + "/" + t.id();
+      if (busy.contains(key)) {
         running.add(t.id());
+        what.put(t.id(), working.getOrDefault(key, "SA"));
         continue;
       }
       chats.read(tasks.folder(project, t.id())).stream().filter(m -> !m.from().equals("PMO")).reduce((a, b) -> b)
           .filter(m -> m.state().equals("error")).ifPresent(m -> failed.add(t.id()));
+      int n = t.status() == TaskStatus.DONE ? 0 : openQuestions(project, t.id());
+      if (n > 0) {
+        questions.put(t.id(), n);
+      }
     }
     String q = queueRuns.get(project);
-    return new Activity(running, failed, q == null || q.isEmpty() ? null : q, q != null);
+    return new Activity(running, what, failed, questions, q == null || q.isEmpty() ? null : q, q != null);
+  }
+
+  /** Items under "Câu hỏi chờ PMO" in summary.md: the same rule as pendingQuestions() of the ticket page's Questions tab. */
+  static int countQuestions(String summary) {
+    Matcher m = QUESTIONS.matcher(summary);
+    if (!m.find()) {
+      return 0;
+    }
+    int n = 0;
+    for (String line : summary.substring(m.end()).split("\\R")) {
+      if (line.matches("#{1,6}\\s.*")) {
+        break;
+      }
+      Matcher item = ITEM.matcher(line);
+      if (item.find() && !NONE.matcher(item.group(1)).matches()) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  private int openQuestions(String project, String id) {
+    try {
+      return countQuestions(tasks.readDoc(project, id, "summary.md").content());
+    } catch (NoSuchElementException e) {
+      return 0;
+    }
   }
 
   /** Sessions running or waiting for a slot on this machine; `devmap serve` warns before stopping while this is above 0. */

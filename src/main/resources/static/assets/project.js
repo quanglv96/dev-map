@@ -1,7 +1,7 @@
 // Project workspace (localhost:7070/<project>): task list | task content | details and PMO decisions.
 // Routes: #  overview · #config · #rules · #graph · #log · #new · #task=<id>
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
-import { WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError } from "./lib.js";
+import { WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError, workState } from "./lib.js";
 import { renderConfig } from "./views/config.js";
 import { onAgentEvent, tokens } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
@@ -25,7 +25,7 @@ const state = { masked: 0 };
 let project;
 let tasks = [];
 let refreshGraph = null;
-let activity = { running: [], failed: [], queueRunning: false };
+let activity = { running: [], working: {}, failed: [], questions: {}, queueRunning: false };
 
 fill(filterStatus, el("option", { value: "" }, t("allStatus")),
   STATUSES.map((s) => el("option", { value: s }, t(`status.${s}`))));
@@ -48,14 +48,20 @@ function setHeader() {
   setTabState();
 }
 
-/** Tab title and icon follow the project: "(1) shop · chờ PMO xác nhận", green/yellow/red dot (AC-08). */
+const WORK_ORDER = ["dev", "verify", "sa", "pmo", "error"];
+
+/**
+ * Tab title and icon always say what is going on (AC-08): "(2) shop · Dev đang triển khai (FEAT-001) +1", with a dot colored
+ * like the work pills: SA blue, Dev purple, SA verifying teal, PMO needed yellow, error red. (n) = tickets waiting for the PMO.
+ */
 function setTabState() {
-  const pending = tasks.filter((x) => WAITS_FOR_PMO.includes(x.status)).length;
-  const state = activity.running.length ? "running" : pending ? "pending" : activity.failed.length ? "error" : null;
-  const label = state === "running" ? t("tab.running", { ids: activity.running.join(", ") })
-    : state === "pending" ? t("tab.pending") : state === "error" ? t("tab.error", { ids: activity.failed.join(", ") }) : "DevMap";
+  const states = tasks.map((x) => [x, workState(x, activity)]).filter(([, w]) => w)
+    .sort((a, b) => WORK_ORDER.indexOf(a[1].cls) - WORK_ORDER.indexOf(b[1].cls));
+  const pending = states.filter(([, w]) => w.cls === "pmo").length;
+  const [top, w] = states[0] ?? [];
+  const label = top ? `${t(w.key, { n: w.n })} (${top.id})${states.length > 1 ? ` +${states.length - 1}` : ""}` : "DevMap";
   document.title = `${pending ? `(${pending}) ` : ""}${project.name} · ${label}`;
-  setFavicon(project.config.color, state);
+  setFavicon(project.config.color, w?.cls);
 }
 
 const openTask = (id) => () => {
@@ -67,7 +73,7 @@ function notifyChanges(before, after) {
   for (const x of tasks) {
     const old = before.get(x.id);
     if (old && old !== x.status && WAITS_FOR_PMO.includes(x.status)) {
-      notify(`${project.name} · ${x.id}`, t(`notify.${x.status}`, { title: x.title }), `${name}/${x.id}`, openTask(x.id));
+      notify(`${project.name} · ${x.id}`, t(`notify.${x.status}`, { title: x.title }), `${name}/${x.id}`, openTask(x.id), true);
     }
   }
   for (const id of after.failed.filter((x) => !activity.failed.includes(x))) {
@@ -75,8 +81,15 @@ function notifyChanges(before, after) {
   }
   for (const id of activity.running.filter((x) => !after.running.includes(x) && !after.failed.includes(x))) {
     const x = tasks.find((y) => y.id === id);
-    if (x && !WAITS_FOR_PMO.includes(x.status)) {
+    if (x && !WAITS_FOR_PMO.includes(x.status) && !after.questions[id]) {
       notify(`${project.name} · ${id}`, t("notify.done"), `${name}/${id}`, openTask(id));
+    }
+  }
+  // SA/Dev asked the PMO something: stays on screen until the PMO clicks through to the Questions tab
+  for (const [id, n] of Object.entries(after.questions)) {
+    if (n > (activity.questions[id] ?? 0)) {
+      const x = tasks.find((y) => y.id === id);
+      notify(`${project.name} · ${id}`, t("notify.questions", { n, title: x?.title ?? "" }), `${name}/${id}`, openTask(id), true);
     }
   }
 }
@@ -88,6 +101,7 @@ async function refreshActivity(before) {
   }
   activity = after;
   setTabState();
+  renderList();
   renderUsage().catch(() => { /* the box just keeps its last numbers */ });
   renderQueueRun();
 }
@@ -128,15 +142,28 @@ function mountNotifyButton() {
   });
 }
 
+function workPill(x) {
+  const w = workState(x, activity);
+  return w ? el("small", { class: `work ${w.cls}` }, t(w.key, { n: w.n })) : null;
+}
+
+/** PMO approved and queued: Dev implements from the documents; SA verifies by itself after Dev hands over. */
+async function implement(id) {
+  try {
+    await api(`${api$}/tasks/${encodeURIComponent(id)}/implement`, { method: "POST" });
+    await refreshActivity(null);
+  } catch (err) {
+    showError(queueBox, err);
+  }
+}
+
 function renderList() {
   const r = route();
   const shown = tasks.filter((x) => (!filterStatus.value || x.status === filterStatus.value)
     && (!filterType.value || x.type === filterType.value));
   list.replaceChildren(...shown.map((x) => el("li", { class: r.id === x.id ? "active" : "" },
     el("a", { href: `#task=${encodeURIComponent(x.id)}` },
-      el("div", { class: "row" },
-        el("strong", { class: "grow" }, x.id),
-        WAITS_FOR_PMO.includes(x.status) ? el("span", { class: "dot pending", title: t("pending") }) : null),
+      el("div", { class: "row" }, el("strong", { class: "grow" }, x.id), workPill(x)),
       el("div", {}, x.title),
       el("small", { class: `badge ${x.status}` }, `${x.type} · ${t(`status.${x.status}`)}`)))));
   if (shown.length === 0) {
@@ -179,6 +206,7 @@ async function renderQueue() {
   };
   queueBox.replaceChildren(el("h3", { class: "section" }, t("queue")), queueRun, el("ol", { class: "queue" }, queue.map((x, i) => el("li", {},
     el("a", { href: `#task=${encodeURIComponent(x.id)}` }, x.id), " ",
+    activity.working[x.id] ? workPill(x) : el("button", { type: "button", class: "link", title: t("implement"), onclick: () => implement(x.id) }, "▶"),
     i > 0 ? el("button", { type: "button", class: "link", title: t("up"), onclick: () => move(i, -1) }, "↑") : null,
     i < queue.length - 1 ? el("button", { type: "button", class: "link", title: t("down"), onclick: () => move(i, 1) }, "↓") : null))));
 }

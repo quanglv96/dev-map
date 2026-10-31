@@ -166,3 +166,23 @@ details summary { cursor: pointer; }
 .chat-form { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .chat-form textarea { width: 100%; }
 .nowrap { white-space: nowrap; }
+
+/* Work state pills (tab icon dot uses the same colors, lib.js DOT): SA blue, Dev purple, verify teal, PMO yellow, error red */
+.work { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.work.sa { background: #dbeafe; color: #1d4ed8; }
+.work.dev { background: #ede9fe; color: #6d28d9; }
+.work.verify { background: #cffafe; color: #0e7490; }
+.work.pmo { background: #fef3c7; color: #b45309; }
+.work.error { background: #fee2e2; color: #b91c1c; }
+
+/* Agent progress banner above the ticket tabs */
+.progress { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; background: var(--panel); }
+.progress.dev { border-left-color: #7c3aed; }
+.progress.verify { border-left-color: #0891b2; }
+.progress .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin: 6px 0; position: relative; }
+.progress .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 30%; background: currentColor; color: var(--accent); animation: progress-slide 1.4s ease-in-out infinite; }
+.progress.dev .bar::after { color: #7c3aed; }
+.progress.verify .bar::after { color: #0891b2; }
+.progress .now { overflow-wrap: anywhere; }
+@keyframes progress-slide { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .progress .bar::after { animation: none; width: 100%; opacity: 0.4; } }

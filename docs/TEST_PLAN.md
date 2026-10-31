@@ -210,9 +210,9 @@ Môi trường: bản sao `samples/shop` (`init-repos.sh <thư mục>`, mỗi re
 **K-07 (giao diện, kiểm bằng tay; AC-04, AC-08)** — chưa chạy trên trình duyệt trong Phase 6
 
 1. Mở `/shop` và `/lendbiz` ở hai tab. Bấm "Bật thông báo" → cho phép.
-2. Hỏi agent ở `shop`: tiêu đề tab `shop · agent đang chạy (NYX-…)…`, biểu tượng có chấm xanh. Chuyển sang tab khác: khi xong có thông báo "Agent đã chạy xong"; bấm vào → về đúng tab, mở đúng ticket.
-3. Agent gửi PMO chốt: tiêu đề `(1) shop · chờ PMO xác nhận`, chấm vàng, thông báo "Chờ PMO chốt giải pháp…". Trang chủ: `(1) DevMap`.
-4. Phiên agent lỗi (ví dụ đặt `devmap.agent.command` sai): tiêu đề `shop · lỗi (…)`, chấm đỏ, thông báo lỗi.
+2. Hỏi agent ở `shop`: tiêu đề tab `shop · SA đang soạn tài liệu (NYX-…)`, biểu tượng có chấm xanh dương (D-51). Chuyển sang tab khác: khi xong có thông báo "Agent đã chạy xong"; bấm vào → về đúng tab, mở đúng ticket.
+3. Agent gửi PMO chốt: tiêu đề `(1) shop · Cần PMO duyệt (NYX-…)`, chấm vàng, thông báo "Chờ PMO chốt giải pháp…". Trang chủ: `(1) DevMap`.
+4. Phiên agent lỗi (ví dụ đặt `devmap.agent.command` sai): tiêu đề `shop · Phiên agent lỗi (…)`, chấm đỏ, thông báo lỗi.
 5. Hai ticket MAINT Sẵn sàng: đổi thứ tự bằng ↑↓, bấm "Chạy hàng đợi" → nút thành "Dừng hàng đợi", "đang làm <mã>"; ticket thứ hai chỉ bắt đầu khi ticket thứ nhất sang "Chờ PMO xác nhận" (AC-04).
 6. Tab "Nhật ký": lọc theo ticket, thấy thao tác của PMO, SA, DEV.
 7. Đang có agent chạy, Ctrl+C ở cửa sổ `devmap serve` → in cảnh báo, server vẫn chạy; Ctrl+C lần nữa trong 10 giây → tắt. Không có agent → Ctrl+C tắt ngay.
@@ -223,3 +223,12 @@ Môi trường: bản sao `samples/shop` (`init-repos.sh <thư mục>`, mỗi re
 1. Ticket Sẵn sàng, chưa có worktree: tích "Code và push thẳng vào nhánh nền" → hộp xác nhận → dòng Branch thành "Nhánh nền của từng repo (push thẳng)". Bấm Bắt đầu triển khai: thẻ repo hiện `main ← main`, ô tích biến mất.
 2. Đi hết gate → SA kiểm chứng → Xác nhận push: hộp xác nhận ghi `→ origin/main`; origin/main lên commit đó, không có branch `feature/*` (tự động: `TicketGitServiceTest.directModePushesToTheBaseBranch`).
 3. Ticket mơ hồ: SA trả lời câu hỏi đánh số, summary.md có `## Câu hỏi chờ PMO` → tab "Câu hỏi chờ PMO (n)" hiện đầu tiên. Trả lời 1 câu, bấm Gửi → chuyển sang Chat, phiên SA mới nhận đúng câu hỏi → trả lời; xong phiên, câu đã trả lời mất khỏi tab.
+
+**K-09 (giao diện, kiểm bằng tay; D-51)** — tự động phần backend: `AgentServiceTest.approvedTicketImplementsItselfAfterReviewingNewBaseCommits`, `queueRunsMaintTicketsInPmoOrder`, `TicketGitServiceTest`, `YamlTest`
+
+1. Tạo ticket mơ hồ, chuyển sang ứng dụng khác: khi SA ghi `## Câu hỏi chờ PMO`, thông báo hệ điều hành "Agent cần PMO trả lời n câu hỏi…" ở lại tới khi bấm; bấm → mở ticket, tab Câu hỏi. Danh sách ticket có nhãn vàng "Cần PMO trả lời (n)".
+2. Cột phải "Repo" chỉ có các service SA đã `set_repos`; "Service khác của dự án (n)" mở ra mới thấy phần còn lại.
+3. Hỏi SA câu thứ hai: bước đầu phiên là "Chỉ mục … repo của ticket đã mới nhất…", không có bảng "Service ảnh hưởng" dựng lại.
+4. PMO chốt → Sẵn sàng: bấm "Triển khai": repo của service chuyển sang branch ticket (`git branch --show-current` trong folder service), thanh tiến trình tím "Dev đang triển khai · n bước · <bước mới nhất>" chạy trên đầu ticket; tiêu đề tab đổi theo. Dev xong → tự sang "SA đang kiểm chứng" (xanh ngọc) → "Cần PMO xác nhận push".
+5. Có commit mới trên nhánh nền sau khi SA phân tích: phiên Dev có bước "Nhánh nền có commit mới ở …", summary.md có `## Rà soát nhánh nền`.
+6. Repo service còn file chưa commit của PMO: "Triển khai" báo "repo đang ở nhánh … với n file chưa commit…", không đổi gì.
