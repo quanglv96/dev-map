@@ -11,7 +11,8 @@ Agent không bao giờ push và không đọc được file bí mật.
 - Claude Code (`claude --version`), đã đăng nhập. Khoá API do Claude Code giữ; DevMap không lưu khoá nào.
 - Công cụ build của từng dự án nếu muốn chạy quality gate (Maven/Gradle/npm…).
 
-Thêm thư mục `bin/` của DevMap (chứa `devmap.cmd` và `devmap`, cạnh `devmap.jar` hoặc trong repo có `target/devmap.jar`) vào PATH. Từ đó `devmap …` thay cho `java -jar devmap.jar …`.
+Windows: chạy `setup.cmd` một lần (kiểm Java/Git/Claude Code, build `devmap.jar`, thêm `bin\` vào PATH, chạy `devmap doctor`), rồi mở terminal mới và gõ `devmap`.
+macOS/Linux hoặc cài tay: thêm thư mục `bin/` của DevMap (chứa `devmap.cmd` và `devmap`, cạnh `devmap.jar` hoặc trong repo có `target/devmap.jar`) vào PATH. Từ đó `devmap …` thay cho `java -jar devmap.jar …`.
 
 Kiểm tra: `devmap doctor`.
 
