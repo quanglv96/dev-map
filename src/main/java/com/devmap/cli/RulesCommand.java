@@ -45,7 +45,7 @@ class RulesCommand implements Runnable {
     }
     boolean ok = true;
     for (RepoConfig r : repos) {
-      for (QualityGate.Result res : rules.runGate(project, r.name(), path != null ? path : Path.of(r.path()))) {
+      for (QualityGate.Result res : rules.runGate(project, r.name(), path != null ? path : r.dir())) {
         System.out.println(r.name() + " / " + res.service() + ": " + (res.passed() ? "ĐẠT" : "KHÔNG ĐẠT"));
         for (QualityGate.Step s : res.steps()) {
           System.out.println("  " + (s.passed() ? "✓" : "✗") + " " + s.name() + "  " + s.command() + "  (" + s.millis() + " ms)");

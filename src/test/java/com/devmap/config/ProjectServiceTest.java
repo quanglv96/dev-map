@@ -141,4 +141,64 @@ class ProjectServiceTest {
     });
     assertThat(dataRoot).doesNotExist();
   }
+
+  /** AC-15 / FR-52: a config.yml with absolute repo paths is migrated once: remote in config.yml, path in workspaces.yml, .bak kept. */
+  @Test
+  void legacyConfigWithAbsolutePathsIsMigratedOnce() throws Exception {
+    GitService git = new GitService();
+    Path order = repos.resolve("order-service");
+    git.run(order, "remote", "add", "origin", "git@github.com:acme/order-service.git");
+    Path dir = dataRoot.resolve("shop");
+    Files.createDirectories(dir);
+    String legacy = "project: shop\ncolor: '#ff8800'\nrepos:\n"
+        + "- name: order-service\n  path: " + order.toString().replace('\\', '/') + "\n  base_branch: test\n"
+        + "- name: payment-service\n  path: " + repos.resolve("payment-service").toString().replace('\\', '/') + "\n  base_branch: main\n";
+    Files.writeString(dir.resolve("config.yml"), legacy);
+    service.create("shop", dataRoot, null, List.of());
+
+    Project p = service.get("shop");
+    String yml = Files.readString(dir.resolve("config.yml"));
+    assertThat(yml).doesNotContainPattern("(?m)^  path:").doesNotContain(tmp.toString().replace('\\', '/'))
+        .contains("remote: git@github.com:acme/order-service.git");
+    assertThat(Files.readString(dir.resolve("config.yml.bak"))).isEqualTo(legacy);
+    assertThat(Files.readString(tmp.resolve("home/workspaces.yml")))
+        .contains("github.com/acme/order-service: " + order.toString().replace('\\', '/'))
+        .contains("shop/payment-service: ");
+    assertThat(p.config().repos()).extracting(RepoConfig::path)
+        .containsExactly(order.toString().replace('\\', '/'), repos.resolve("payment-service").toString().replace('\\', '/'));
+
+    Files.writeString(dir.resolve("config.yml.bak"), "touched");
+    service.get("shop");
+    assertThat(Files.readString(dir.resolve("config.yml.bak"))).as("runs once").isEqualTo("touched");
+  }
+
+  /** AC-14 / FR-51: another machine has no path for a repo until the PMO picks a folder or lets DevMap clone it. */
+  @Test
+  void otherMachinePicksOrClonesMissingRepos() throws Exception {
+    GitService git = new GitService();
+    Path bare = tmp.resolve("origin/order-service.git");
+    git.run(tmp, "clone", "-q", "--bare", repos.resolve("order-service").toString(), bare.toString());
+    git.run(repos.resolve("order-service"), "remote", "add", "origin", bare.toString());
+    service.create("shop", dataRoot, "#ff8800", shopRepos().subList(0, 2));
+    assertThat(Files.readString(dataRoot.resolve("shop/config.yml"))).doesNotContainPattern("(?m)^  path:");
+
+    ProjectService b = new ProjectService(new WorkspaceRepository(tmp.resolve("homeB")), new ProjectRepository(),
+        new ServiceDetector(), git);
+    b.create("shop", dataRoot, null, List.of());
+    assertThat(b.get("shop").config().repos()).allSatisfy(r -> assertThat(r.path()).isNull());
+    assertThat(b.problems(b.get("shop").config())).anySatisfy(m -> assertThat(m).contains("chưa có đường dẫn trên máy này"));
+    assertThatThrownBy(() -> b.get("shop").config().repos().get(0).dir()).hasMessageContaining("chưa có đường dẫn");
+
+    Project cloned = b.cloneRepo("shop", "order-service", tmp.resolve("machineB").toString());
+    Path orderB = tmp.resolve("machineB/order-service");
+    assertThat(orderB.resolve(".git")).exists();
+    assertThat(cloned.config().repos().get(0).path()).isEqualTo(orderB.toString().replace('\\', '/'));
+    assertThatThrownBy(() -> b.locateRepo("shop", "order-service", repos.resolve("payment-service").toString()))
+        .as("payment has no origin, order's remote does not match").isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("remote");
+    Project located = b.locateRepo("shop", "payment-service", repos.resolve("payment-service").toString());
+    assertThat(b.problems(located.config())).isEmpty();
+    assertThat(service.get("shop").config().repos().get(0).path()).as("machine A keeps its own path")
+        .isEqualTo(repos.resolve("order-service").toString().replace('\\', '/'));
+  }
 }

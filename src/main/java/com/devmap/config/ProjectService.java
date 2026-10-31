@@ -15,6 +15,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /** FR-01 → FR-04: register projects, their data folders, repos, base branches and services. */
@@ -31,6 +33,7 @@ public class ProjectService {
     }
   }
 
+  private static final Logger LOG = LoggerFactory.getLogger(ProjectService.class);
   private static final Pattern NAME = Pattern.compile("[a-z0-9][a-z0-9-]{0,39}");
   private static final Set<String> RESERVED = Set.of("api", "assets", "vendor", "error");
   private static final Pattern COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
@@ -83,6 +86,7 @@ public class ProjectService {
       List<RepoConfig> repos = repoInputs.stream().map(this::toRepo).toList();
       ProjectConfig config = ProjectConfig.create(name, color == null ? "#2563eb" : color, repos);
       requireValid(config);
+      rememberPaths(name, repos);
       projects.save(dir, config);
     }
     List<Workspace> all = new ArrayList<>(workspaces.findAll());
@@ -94,9 +98,114 @@ public class ProjectService {
   public synchronized Project update(String name, ProjectConfig config) {
     Workspace ws = workspace(name);
     ProjectConfig fixed = config.withProject(name);
+    // the remote comes from the repo itself when it is here; else keep what config.yml already says (machine B, FR-51)
+    Map<String, String> known = new HashMap<>();
+    if (projects.exists(Path.of(ws.dataDir()))) {
+      projects.load(Path.of(ws.dataDir())).repos().forEach(r -> known.put(r.name(), r.remote()));
+    }
+    List<RepoConfig> repos = fixed.repos().stream().map(r -> {
+      String found = r.path() == null || r.path().isBlank() ? null : git.remoteUrl(Path.of(r.path()));
+      return r.withRemote(found != null ? found : r.remote() != null ? r.remote() : known.get(r.name()));
+    }).toList();
+    fixed = new ProjectConfig(name, fixed.color(), fixed.ticketCode(), fixed.ticketPattern(), fixed.branchPatterns(), repos,
+        fixed.environments(), fixed.scanFullProject(), fixed.secrets());
     requireValid(fixed);
+    rememberPaths(name, repos);
     projects.save(Path.of(ws.dataDir()), fixed);
     return get(name);
+  }
+
+  /** FR-51: the PMO points a repo of the project at a folder that already exists on this machine. */
+  public synchronized Project locateRepo(String project, String repoName, String path) {
+    RepoConfig rc = repo(project, repoName);
+    Path dir = Path.of(path).toAbsolutePath().normalize();
+    if (!git.isRepository(dir)) {
+      throw new IllegalArgumentException(dir + " không phải git repo");
+    }
+    String remote = git.remoteUrl(dir);
+    if (rc.remote() != null && (remote == null || !RepoConfig.normalize(remote).equals(RepoConfig.normalize(rc.remote())))) {
+      throw new IllegalArgumentException(dir + (remote == null ? " không có remote origin" : " có remote " + remote)
+          + ", repo " + repoName + " cần remote " + rc.remote());
+    }
+    rememberPaths(project, List.of(rc.withPath(slash(dir))));
+    return get(project);
+  }
+
+  /** FR-51: clones a repo of the project into parent/<repo name> and remembers the path. */
+  public synchronized Project cloneRepo(String project, String repoName, String parent) {
+    RepoConfig rc = repo(project, repoName);
+    if (rc.remote() == null) {
+      throw new IllegalArgumentException("Repo " + repoName + " không có remote để clone; chọn folder đã có");
+    }
+    Path target = Path.of(parent).toAbsolutePath().normalize().resolve(repoName);
+    if (Files.exists(target)) {
+      throw new IllegalArgumentException(target + " đã tồn tại; chọn folder đó thay vì clone");
+    }
+    git.cloneRepo(rc.remote(), target);
+    rememberPaths(project, List.of(rc.withPath(slash(target))));
+    return get(project);
+  }
+
+  /** Registers every project folder under dataRoot (config.yml inside) not registered yet, e.g. created on another machine. */
+  public synchronized List<String> registerFound(Path dataRoot) {
+    List<String> added = new ArrayList<>();
+    Set<String> known = new HashSet<>(workspaces.findAll().stream().map(Workspace::name).toList());
+    try (Stream<Path> children = Files.list(dataRoot)) {
+      for (Path dir : children.filter(projects::exists).sorted().toList()) {
+        String name = dir.getFileName().toString();
+        if (!known.contains(name) && NAME.matcher(name).matches()) {
+          try {
+            create(name, dataRoot, null, List.of());
+            added.add(name);
+          } catch (RuntimeException e) {
+            LOG.warn("Không đăng ký được dự án {}: {}", name, e.getMessage());
+          }
+        }
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    return added;
+  }
+
+  private RepoConfig repo(String project, String repoName) {
+    Project p = get(project);
+    if (p.config() == null) {
+      throw new IllegalStateException(p.error());
+    }
+    return p.config().repos().stream().filter(r -> r.name().equals(repoName)).findFirst()
+        .orElseThrow(() -> new NoSuchElementException("Dự án không có repo " + repoName));
+  }
+
+  private void rememberPaths(String project, List<RepoConfig> repos) {
+    Map<String, String> paths = new HashMap<>();
+    repos.stream().filter(r -> r.path() != null && !r.path().isBlank()).forEach(r -> paths.put(r.key(project), r.path()));
+    if (!paths.isEmpty()) {
+      workspaces.putRepoPaths(paths);
+    }
+  }
+
+  /**
+   * FR-52: a config.yml from before FR-51 still holds absolute repo paths. Moves them to workspaces.yml, records each repo's
+   * origin as remote, keeps config.yml.bak. Runs once: afterwards config.yml has no path left.
+   */
+  private ProjectConfig migrate(Path dir, ProjectConfig config) {
+    List<RepoConfig> repos = config.repos().stream().map(r -> r.path() == null ? r
+        : r.withRemote(r.remote() != null ? r.remote() : git.remoteUrl(Path.of(r.path())))).toList();
+    projects.backup(dir);
+    rememberPaths(config.project(), repos);
+    ProjectConfig migrated = new ProjectConfig(config.project(), config.color(), config.ticketCode(), config.ticketPattern(),
+        config.branchPatterns(), repos, config.environments(), config.scanFullProject(), config.secrets());
+    projects.save(dir, migrated);
+    LOG.info("Đã migrate {}: {} đường dẫn repo chuyển sang workspaces.yml, bản cũ ở config.yml.bak", dir.resolve("config.yml"),
+        repos.size());
+    return migrated;
+  }
+
+  private ProjectConfig withLocalPaths(ProjectConfig c) {
+    List<RepoConfig> repos = c.repos().stream().map(r -> r.withPath(workspaces.repoPath(r.key(c.project())))).toList();
+    return new ProjectConfig(c.project(), c.color(), c.ticketCode(), c.ticketPattern(), c.branchPatterns(), repos,
+        c.environments(), c.scanFullProject(), c.secrets());
   }
 
   /** Unregisters only; the data folder is never deleted. */
@@ -134,7 +243,8 @@ public class ProjectService {
     for (Project p : list()) {
       out.put(Path.of(p.dataDir()).toAbsolutePath().normalize(), p.name());
       if (p.config() != null) {
-        p.config().repos().forEach(r -> out.put(Path.of(r.path()).toAbsolutePath().normalize(), p.name()));
+        p.config().repos().stream().filter(r -> r.path() != null)
+            .forEach(r -> out.put(Path.of(r.path()).toAbsolutePath().normalize(), p.name()));
       }
     }
     return out;
@@ -217,8 +327,10 @@ public class ProjectService {
       if (!repoNames.add(repo.name())) {
         out.add("Trùng tên repo: " + repo.name());
       }
-      Path path = repo.path() == null ? null : Path.of(repo.path());
-      if (path == null || !git.isRepository(path)) {
+      Path path = repo.path() == null || repo.path().isBlank() ? null : Path.of(repo.path());
+      if (path == null) {
+        out.add("Repo " + repo.name() + ": chưa có đường dẫn trên máy này (chọn folder đã có hoặc clone)");
+      } else if (!git.isRepository(path)) {
         out.add("Repo " + repo.name() + ": " + repo.path() + " không phải git repo");
       } else if (repo.baseBranch() == null || repo.baseBranch().isBlank()) {
         out.add("Repo " + repo.name() + ": chưa khai báo nhánh nền");
@@ -244,7 +356,8 @@ public class ProjectService {
   private RepoConfig toRepo(RepoInput in) {
     Path path = Path.of(in.path()).toAbsolutePath().normalize();
     List<ServiceInfo> services = Files.isDirectory(path) ? detector.detect(path) : List.of();
-    return new RepoConfig(path.getFileName().toString(), path.toString().replace('\\', '/'), in.baseBranch(), services);
+    return new RepoConfig(path.getFileName().toString(), path.toString().replace('\\', '/'), in.baseBranch(), services,
+        git.remoteUrl(path));
   }
 
   private Workspace workspace(String name) {
@@ -258,7 +371,11 @@ public class ProjectService {
       return new Project(ws.name(), ws.dataDir(), null, "Không tìm thấy config.yml trong " + ws.dataDir());
     }
     try {
-      return new Project(ws.name(), ws.dataDir(), projects.load(dir), null);
+      ProjectConfig config = projects.load(dir);
+      if (config.repos().stream().anyMatch(r -> r.path() != null)) {
+        config = migrate(dir, config);
+      }
+      return new Project(ws.name(), ws.dataDir(), withLocalPaths(config), null);
     } catch (RuntimeException e) {
       return new Project(ws.name(), ws.dataDir(), null, e.getMessage());
     }

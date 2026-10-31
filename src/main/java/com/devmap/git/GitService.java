@@ -217,6 +217,29 @@ public class GitService {
     must(dir, "push", "origin", commit + ":refs/heads/" + branch);
   }
 
+  /** URL of origin, or null when the folder is not a repo or has no origin. */
+  public String remoteUrl(Path dir) {
+    if (!isRepository(dir)) {
+      return null;
+    }
+    Out o = run(dir, "remote", "get-url", "origin");
+    return o.ok() && !o.output().isBlank() ? o.output().strip() : null;
+  }
+
+  /** `git clone url target` with the machine's credentials; target must not exist yet. */
+  public void cloneRepo(String url, Path target) {
+    if (url.startsWith("-")) {
+      throw new IllegalArgumentException("URL remote không hợp lệ: " + url);
+    }
+    Path parent = target.toAbsolutePath().getParent();
+    try {
+      Files.createDirectories(parent);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    must(parent, "clone", "-q", "--", url, target.toAbsolutePath().toString());
+  }
+
   public boolean hasOrigin(Path dir) {
     return run(dir, "remote", "get-url", "origin").ok();
   }

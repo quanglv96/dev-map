@@ -35,10 +35,25 @@ public class ProjectRepository {
       if (!Files.exists(conventions)) {
         Files.writeString(conventions, "# Coding convention – " + config.project() + "\n\nChưa thu thập.\n");
       }
-      Yaml.write(dir.resolve(CONFIG), config);
+      // FR-51: config.yml is synced between machines, so it never holds this machine's repo paths
+      Yaml.write(dir.resolve(CONFIG), new ProjectConfig(config.project(), config.color(), config.ticketCode(), config.ticketPattern(),
+          config.branchPatterns(), config.repos().stream().map(r -> r.withPath(null)).toList(), config.environments(),
+          config.scanFullProject(), config.secrets()));
       writeProjectMd(dir.resolve("project.md"), config);
     } catch (IOException e) {
       throw new UncheckedIOException("Không ghi được folder dữ liệu " + dir + ": " + e.getMessage(), e);
+    }
+  }
+
+  /** FR-52: keeps the config.yml from before the migration as config.yml.bak (first migration only). */
+  public void backup(Path dir) {
+    Path bak = dir.resolve(CONFIG + ".bak");
+    try {
+      if (!Files.exists(bak)) {
+        Files.copy(dir.resolve(CONFIG), bak);
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException("Không sao lưu được " + bak + ": " + e.getMessage(), e);
     }
   }
 

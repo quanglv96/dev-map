@@ -154,7 +154,7 @@ public class GraphService {
   }
 
   private RepoReport updateRepo(Path dir, RepoConfig rc, boolean full, UnaryOperator<String> mask) {
-    Path repoPath = Path.of(rc.path());
+    Path repoPath = rc.dir();
     String fetchError = git.fetch(repoPath);
     String head = git.resolveBranch(repoPath, rc.baseBranch());
     String note = fetchError == null ? "" : fetchError + "; ";
@@ -212,8 +212,8 @@ public class GraphService {
   public Estimate estimate(String project) {
     Map<String, Integer> byRepo = new TreeMap<>();
     for (RepoConfig rc : project(project).config().repos()) {
-      String head = git.resolveBranch(Path.of(rc.path()), rc.baseBranch());
-      byRepo.put(rc.name(), head == null ? 0 : (int) git.listFiles(Path.of(rc.path()), head).stream().filter(indexer::indexable).count());
+      String head = git.resolveBranch(rc.dir(), rc.baseBranch());
+      byRepo.put(rc.name(), head == null ? 0 : (int) git.listFiles(rc.dir(), head).stream().filter(indexer::indexable).count());
     }
     return new Estimate(byRepo, byRepo.values().stream().mapToInt(Integer::intValue).sum());
   }

@@ -84,7 +84,7 @@ public class TicketGitService {
     Project p = tasks.project(project);
     for (String name : t.repos()) {
       RepoConfig rc = repoConfig(p, name);
-      Path main = Path.of(rc.path());
+      Path main = rc.dir();
       String fetchError = git.fetch(main);
       String base = git.resolveBranch(main, rc.baseBranch());
       if (base == null) {

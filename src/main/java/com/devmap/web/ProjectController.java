@@ -81,6 +81,21 @@ public class ProjectController {
     service.remove(name);
   }
 
+  public record RepoFolder(String path) {
+  }
+
+  /** FR-51: a repo of the project already on this machine. */
+  @PostMapping("/projects/{name}/repos/{repo}/locate")
+  public Project locateRepo(@PathVariable String name, @PathVariable String repo, @RequestBody RepoFolder req) {
+    return service.locateRepo(name, repo, req.path());
+  }
+
+  /** FR-51: clone a repo of the project into req.path()/<repo>. */
+  @PostMapping("/projects/{name}/repos/{repo}/clone")
+  public Project cloneRepo(@PathVariable String name, @PathVariable String repo, @RequestBody RepoFolder req) {
+    return service.cloneRepo(name, repo, req.path());
+  }
+
   /** NFR-10: the audit log of the project, newest first; ticket filters to one ticket. */
   @GetMapping("/projects/{name}/audit")
   public List<AuditLog.Entry> audit(@PathVariable String name, @RequestParam(required = false) String ticket,

@@ -272,8 +272,8 @@ class AgentTools {
       }
     }
     RepoConfig rc = repoConfig(s, repo);
-    String head = git.resolveBranch(Path.of(rc.path()), rc.baseBranch());
-    return head == null ? null : git.show(Path.of(rc.path()), head, path);
+    String head = git.resolveBranch(rc.dir(), rc.baseBranch());
+    return head == null ? null : git.show(rc.dir(), head, path);
   }
 
   private String writeDoc(AgentSession s, String name, String content) {

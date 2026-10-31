@@ -70,14 +70,14 @@ public class ConventionService {
     Project p = project(project);
     StringBuilder sb = new StringBuilder(BEGIN).append("\n## Thu thập từ code (DevMap, ").append(now()).append(")\n");
     for (RepoConfig rc : p.config().repos()) {
-      String head = git.resolveBranch(Path.of(rc.path()), rc.baseBranch());
+      String head = git.resolveBranch(rc.dir(), rc.baseBranch());
       sb.append("\n### ").append(rc.name()).append(" (`").append(rc.baseBranch()).append("`)\n\n");
       if (head == null) {
         sb.append("Không đọc được nhánh nền.\n");
         continue;
       }
       Stats stats = new Stats();
-      git.readFiles(Path.of(rc.path()), head, this::wanted, stats::add);
+      git.readFiles(rc.dir(), head, this::wanted, stats::add);
       sb.append(stats.markdown());
     }
     sb.append(END);
