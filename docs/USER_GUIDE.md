@@ -24,7 +24,7 @@ devmap init nyxhub --data D:/devmap-data \
 ```
 
 - `--repo đường_dẫn@nhánh_nền`: nhánh nền là nhánh Dev luôn pull trước khi làm (mặc định `main`).
-- Cũng thêm được trên trang chủ (form "Thêm dự án"): nút **Chọn…** mở trình duyệt folder; chọn xong DevMap liệt kê các folder đang có trong folder dữ liệu, folder không dự án nào dùng thì xoá được.
+- Cũng thêm được trên trang chủ (form "Thêm dự án"): nút **Chọn…** mở hộp thoại chọn folder của hệ điều hành (File Explorer trên Windows); chỉ khi chọn xong DevMap mới liệt kê các folder đang có trong folder dữ liệu, folder không dự án nào dùng thì xoá được.
 
 DevMap không tự quét code khi thêm dự án. Muốn có graph đầy đủ ngay: màn hình **Graph** → "Quét toàn bộ dự án" (một lần, chỉ trích chữ ký, không gửi gì cho agent), hoặc `devmap index nyxhub --full`.
 Sau đó chỉ mục tự cập nhật theo git diff mỗi lần SA làm việc.

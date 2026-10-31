@@ -1,6 +1,7 @@
 package com.devmap.web;
 
 import com.devmap.audit.AuditLog;
+import com.devmap.config.FolderPicker;
 import com.devmap.config.Project;
 import com.devmap.config.ProjectConfig;
 import com.devmap.config.ProjectService;
@@ -29,10 +30,12 @@ public class ProjectController {
 
   private final ProjectService service;
   private final AuditLog audit;
+  private final FolderPicker picker;
 
-  public ProjectController(ProjectService service, AuditLog audit) {
+  public ProjectController(ProjectService service, AuditLog audit, FolderPicker picker) {
     this.service = service;
     this.audit = audit;
+    this.picker = picker;
   }
 
   @GetMapping("/projects")
@@ -48,8 +51,17 @@ public class ProjectController {
   }
 
   @GetMapping("/folders")
-  public ProjectService.Folders folders(@RequestParam(required = false) String path) {
+  public ProjectService.Folders folders(@RequestParam String path) {
     return service.folders(path);
+  }
+
+  public record Picked(String path) {
+  }
+
+  /** Opens the OS folder dialog; path is null when the PMO cancels. */
+  @PostMapping("/folders/pick")
+  public Picked pickFolder(@RequestParam(required = false) String start) {
+    return new Picked(picker.pick(start));
   }
 
   @DeleteMapping("/folders")

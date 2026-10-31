@@ -56,36 +56,15 @@ function addRepoRow() {
   repoRows.append(row);
 }
 
-/** Server-side folder picker: the browser cannot hand out absolute paths, the local server can. */
-const picker = document.getElementById("picker");
-let pickerPath = "";
-let pickerDone = null;
-
-async function browse(path) {
+/** OS folder dialog opened by the local server: the browser cannot hand out absolute paths. Null on cancel. */
+async function pickFolder(start, button) {
+  button.disabled = true;
   try {
-    const f = await api(`/api/folders?path=${encodeURIComponent(path)}`);
-    pickerPath = f.path;
-    document.getElementById("picker-path").textContent = f.path || "/";
-    document.getElementById("picker-ok").disabled = !f.path;
-    fill(document.getElementById("picker-dirs"),
-      f.parent !== null ? el("li", {}, el("button", { type: "button", class: "link", onclick: () => browse(f.parent) }, `↑ ${t("upFolder")}`)) : null,
-      f.dirs.map((d) => el("li", {}, el("button", { type: "button", class: "link", onclick: () => browse(d.path) }, `📁 ${d.name}`))));
-  } catch (err) {
-    showError(document.getElementById("picker-dirs"), err);
+    return (await api(`/api/folders/pick?start=${encodeURIComponent(start)}`, { method: "POST" })).path;
+  } finally {
+    button.disabled = false;
   }
 }
-
-function pickFolder(start, done) {
-  pickerDone = done;
-  browse(start);
-  picker.showModal();
-}
-
-document.getElementById("picker-cancel").addEventListener("click", () => picker.close());
-document.getElementById("picker-ok").addEventListener("click", () => {
-  picker.close();
-  pickerDone?.(pickerPath);
-});
 
 /** Folders already under the data root; free ones (no registered project uses them) can be deleted. */
 const dataInput = form.elements.dataRoot;
@@ -122,11 +101,18 @@ async function deleteFolder(path) {
   }
 }
 
-dataInput.addEventListener("change", scanDataRoot);
-document.getElementById("pick-data").addEventListener("click", () => pickFolder(dataInput.value.trim(), (path) => {
-  dataInput.value = path;
-  scanDataRoot();
-}));
+/** Scan only once a folder was actually chosen in the dialog, not while the PMO types. */
+document.getElementById("pick-data").addEventListener("click", async (event) => {
+  try {
+    const path = await pickFolder(dataInput.value.trim(), event.currentTarget);
+    if (path) {
+      dataInput.value = path;
+      scanDataRoot();
+    }
+  } catch (err) {
+    showError(dataFolders, err);
+  }
+});
 
 /** FR-41: decisions waiting for the PMO and running tickets across all projects. */
 async function loadOverview() {

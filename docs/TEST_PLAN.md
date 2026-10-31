@@ -45,6 +45,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 4. Trang chủ có dự án `shop`, 3 repo, 3 service. Bấm vào → `localhost:7070/shop`: tab trình duyệt có tên và màu dự án, cột giữa liệt kê 3 service theo repo, cột phải có folder dữ liệu và nhánh nền.
 5. "Cấu hình dự án": đổi nhánh nền payment-service thành `nope` → báo lỗi, không lưu; đổi lại `main`, thêm môi trường `staging` → "Đã lưu"; `config.yml` cập nhật.
 6. Trên trang chủ thêm dự án thứ hai qua form → mở được ở URL riêng.
+   Nút **Chọn…** mở hộp thoại chọn folder của hệ điều hành (Windows: kiểu File Explorer, nằm trên trình duyệt). Huỷ → ô và danh sách không đổi; gõ tay đường dẫn → không quét; chọn folder → ô điền đường dẫn và danh sách folder bên trong hiện ra.
 7. Kiểm `<folder>/shop/graph/` vẫn trống: không có lần quét nào tự chạy.
 8. Mở `http://localhost:7070/` trong cửa sổ ẩn danh (không cookie) → 401.
 

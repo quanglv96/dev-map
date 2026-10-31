@@ -53,8 +53,6 @@ input[type=color] { padding: 2px; width: 48px; height: 32px; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row input { flex: 1; }
 .row input.short, td input.short { flex: 0 0 120px; width: 120px; }
-.picker { width: min(560px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; }
-.picker ul { max-height: 50vh; overflow: auto; margin: 8px 0; }
 #data-folders ul { margin: 4px 0; }
 
 button.primary { align-self: flex-start; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; cursor: pointer; font: inherit; }

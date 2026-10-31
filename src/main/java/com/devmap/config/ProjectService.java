@@ -110,16 +110,11 @@ public class ProjectService {
   public record Folder(String name, String path, String usedBy) {
   }
 
-  /** Sub-folders of dir for the folder picker and the data-root scan; null/blank dir lists the drives. */
+  /** Sub-folders of dir for the data-root scan. */
   public record Folders(String path, String parent, List<Folder> dirs) {
   }
 
   public Folders folders(String dir) {
-    if (dir == null || dir.isBlank()) {
-      List<Folder> roots = Stream.of(java.io.File.listRoots()).map(f -> slash(f.toPath()))
-          .map(p -> new Folder(p, p, null)).toList();
-      return new Folders("", null, roots);
-    }
     Path path = Path.of(dir).toAbsolutePath().normalize();
     if (!Files.isDirectory(path)) {
       throw new IllegalArgumentException("Không tìm thấy thư mục: " + dir);
