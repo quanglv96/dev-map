@@ -35,7 +35,7 @@ class RuleServiceTest {
         new ServiceDetector(), new GitService());
     projects.create("shop", tmp.resolve("data"), "#ff8800", List.of(
         new RepoInput(repos.resolve("order-service").toString(), "test"),
-        new RepoInput(repos.resolve("payment-service").toString(), "main")), false);
+        new RepoInput(repos.resolve("payment-service").toString(), "main")));
     rules = new RuleService(projects, new RuleRepository(), new QualityGate());
     data = tmp.resolve("data/shop");
   }

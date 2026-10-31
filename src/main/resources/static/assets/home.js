@@ -1,5 +1,5 @@
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
-import { api, el, setFavicon, showError } from "./lib.js";
+import { api, el, fill, setFavicon, showError } from "./lib.js";
 
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
@@ -56,6 +56,78 @@ function addRepoRow() {
   repoRows.append(row);
 }
 
+/** Server-side folder picker: the browser cannot hand out absolute paths, the local server can. */
+const picker = document.getElementById("picker");
+let pickerPath = "";
+let pickerDone = null;
+
+async function browse(path) {
+  try {
+    const f = await api(`/api/folders?path=${encodeURIComponent(path)}`);
+    pickerPath = f.path;
+    document.getElementById("picker-path").textContent = f.path || "/";
+    document.getElementById("picker-ok").disabled = !f.path;
+    fill(document.getElementById("picker-dirs"),
+      f.parent !== null ? el("li", {}, el("button", { type: "button", class: "link", onclick: () => browse(f.parent) }, `↑ ${t("upFolder")}`)) : null,
+      f.dirs.map((d) => el("li", {}, el("button", { type: "button", class: "link", onclick: () => browse(d.path) }, `📁 ${d.name}`))));
+  } catch (err) {
+    showError(document.getElementById("picker-dirs"), err);
+  }
+}
+
+function pickFolder(start, done) {
+  pickerDone = done;
+  browse(start);
+  picker.showModal();
+}
+
+document.getElementById("picker-cancel").addEventListener("click", () => picker.close());
+document.getElementById("picker-ok").addEventListener("click", () => {
+  picker.close();
+  pickerDone?.(pickerPath);
+});
+
+/** Folders already under the data root; free ones (no registered project uses them) can be deleted. */
+const dataInput = form.elements.dataRoot;
+const dataFolders = document.getElementById("data-folders");
+
+async function scanDataRoot() {
+  const root = dataInput.value.trim();
+  if (!root) {
+    fill(dataFolders);
+    return;
+  }
+  try {
+    const f = await api(`/api/folders?path=${encodeURIComponent(root)}`);
+    fill(dataFolders, f.dirs.length === 0 ? null : [el("small", { class: "muted" }, t("dataFolders")),
+      el("ul", { class: "plain" }, f.dirs.map((d) => el("li", {},
+        el("span", { class: "path" }, d.name), " ",
+        d.usedBy
+          ? el("small", { class: "muted" }, t("usedBy", { name: d.usedBy }))
+          : el("button", { type: "button", class: "link danger", onclick: () => deleteFolder(d.path) }, t("remove")))))]);
+  } catch (err) {
+    showError(dataFolders, err);
+  }
+}
+
+async function deleteFolder(path) {
+  if (!confirm(t("confirmDeleteFolder", { path }))) {
+    return;
+  }
+  try {
+    await api(`/api/folders?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+    scanDataRoot();
+  } catch (err) {
+    showError(dataFolders, err);
+  }
+}
+
+dataInput.addEventListener("change", scanDataRoot);
+document.getElementById("pick-data").addEventListener("click", () => pickFolder(dataInput.value.trim(), (path) => {
+  dataInput.value = path;
+  scanDataRoot();
+}));
+
 /** FR-41: decisions waiting for the PMO and running tickets across all projects. */
 async function loadOverview() {
   const pending = document.getElementById("pending");
@@ -93,7 +165,6 @@ form.addEventListener("submit", async (event) => {
     name: data.get("name").trim(),
     color: data.get("color"),
     dataRoot: data.get("dataRoot").trim(),
-    git: data.get("git") === "on",
     repos: data.getAll("repoPath").map((path, i) => ({ path: path.trim(), baseBranch: branches[i].trim() }))
   };
   try {

@@ -100,7 +100,7 @@ class WebTest {
   void projectLifecycleOverApi() throws Exception {
     String repo = tmp.resolve("repos").toString().replace('\\', '/');
     String body = """
-        {"name":"webshop","color":"#00aa55","dataRoot":"%s","git":false,
+        {"name":"webshop","color":"#00aa55","dataRoot":"%s",
          "repos":[{"path":"%s/order-service","baseBranch":"test"},{"path":"%s/payment-service","baseBranch":"main"}]}
         """.formatted(tmp.resolve("data").toString().replace('\\', '/'), repo, repo);
     mvc.perform(post("/api/projects").header(TokenFilter.HEADER, token.value())

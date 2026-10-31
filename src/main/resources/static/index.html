@@ -38,19 +38,31 @@
           <input name="color" type="color" value="#2563eb">
         </label>
         <label><span data-i18n="dataRoot"></span>
-          <input name="dataRoot" required placeholder="D:/devmap-data">
+          <span class="row">
+            <input name="dataRoot" required placeholder="D:/devmap-data">
+            <button type="button" id="pick-data" data-i18n="browse"></button>
+          </span>
           <small class="muted" data-i18n="dataRootHint"></small>
         </label>
+        <div id="data-folders"></div>
         <fieldset>
           <legend data-i18n="repos"></legend>
           <div id="repo-rows"></div>
           <button type="button" id="add-repo" class="link" data-i18n="addRepo"></button>
         </fieldset>
-        <label class="check"><input name="git" type="checkbox"> <span data-i18n="initGit"></span></label>
         <div id="add-error"></div>
         <button type="submit" class="primary" data-i18n="create"></button>
       </form>
     </section>
   </main>
+  <dialog id="picker" class="picker">
+    <div class="path" id="picker-path"></div>
+    <ul class="plain" id="picker-dirs"></ul>
+    <div class="row">
+      <span class="spacer"></span>
+      <button type="button" id="picker-cancel" data-i18n="cancel"></button>
+      <button type="button" id="picker-ok" class="primary" data-i18n="chooseFolder"></button>
+    </div>
+  </dialog>
 </body>
 </html>

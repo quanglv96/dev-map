@@ -42,7 +42,7 @@ class ProjectServiceTest {
   /** AC-01: data folder chosen, several repos with base branches, services listed, nothing scanned. */
   @Test
   void createsDataFolderWithReposAndServices() throws Exception {
-    Project p = service.create("shop", dataRoot, "#ff8800", shopRepos(), false);
+    Project p = service.create("shop", dataRoot, "#ff8800", shopRepos());
 
     Path dir = dataRoot.resolve("shop");
     assertThat(p.dataDir()).isEqualTo(dir.toAbsolutePath().toString().replace('\\', '/'));
@@ -67,35 +67,35 @@ class ProjectServiceTest {
   @Test
   void rejectsMissingBaseBranchAndBadNames() {
     List<RepoInput> bad = List.of(new RepoInput(repos.resolve("payment-service").toString(), "develop"));
-    assertThatThrownBy(() -> service.create("shop", dataRoot, "#ff8800", bad, false))
+    assertThatThrownBy(() -> service.create("shop", dataRoot, "#ff8800", bad))
         .hasMessageContaining("không có nhánh nền 'develop'");
-    assertThatThrownBy(() -> service.create("Shop!", dataRoot, "#ff8800", List.of(), false))
+    assertThatThrownBy(() -> service.create("Shop!", dataRoot, "#ff8800", List.of()))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> service.create("api", dataRoot, "#ff8800", List.of(), false))
+    assertThatThrownBy(() -> service.create("api", dataRoot, "#ff8800", List.of()))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> service.create("x", dataRoot, "#ff8800",
-        List.of(new RepoInput(tmp.toString(), "main")), false)).hasMessageContaining("không phải git repo");
+        List.of(new RepoInput(tmp.toString(), "main")))).hasMessageContaining("không phải git repo");
     assertThat(dataRoot.resolve("shop")).doesNotExist();
   }
 
   @Test
   void removeKeepsDataAndCopiedFolderCanBeRegisteredAgain() {
-    service.create("shop", dataRoot, "#ff8800", shopRepos(), false);
-    assertThatThrownBy(() -> service.create("shop", dataRoot, "#ff8800", List.of(), false)).hasMessageContaining("đã tồn tại");
+    service.create("shop", dataRoot, "#ff8800", shopRepos());
+    assertThatThrownBy(() -> service.create("shop", dataRoot, "#ff8800", List.of())).hasMessageContaining("đã tồn tại");
 
     service.remove("shop");
     assertThat(service.list()).isEmpty();
     assertThat(dataRoot.resolve("shop/config.yml")).exists();
     assertThatThrownBy(() -> service.get("shop")).isInstanceOf(NoSuchElementException.class);
 
-    Project again = service.create("shop", dataRoot, null, List.of(), false);
+    Project again = service.create("shop", dataRoot, null, List.of());
     assertThat(again.config().repos()).hasSize(3);
     assertThat(again.config().color()).isEqualTo("#ff8800");
   }
 
   @Test
   void updateValidatesAndKeepsPmoTextInProjectMd() throws Exception {
-    Project p = service.create("shop", dataRoot, "#ff8800", shopRepos(), false);
+    Project p = service.create("shop", dataRoot, "#ff8800", shopRepos());
     Path md = dataRoot.resolve("shop/project.md");
     Files.writeString(md, Files.readString(md).replace("_(PMO bổ sung)_", "Hệ thống bán hàng."));
 
@@ -116,8 +116,21 @@ class ProjectServiceTest {
   }
 
   @Test
-  void gitOptionMakesDataFolderARepo() {
-    service.create("shop", dataRoot, "#ff8800", List.of(), true);
-    assertThat(dataRoot.resolve("shop/.git")).exists();
+  void scanMarksUsedFoldersAndDeletesOnlyFreeOnes() throws Exception {
+    service.create("shop", dataRoot, "#ff8800", shopRepos());
+    Files.createDirectories(dataRoot.resolve("old/graph"));
+    Files.writeString(dataRoot.resolve("old/graph/x.json"), "{}");
+
+    ProjectService.Folders scan = service.folders(dataRoot.toString());
+    assertThat(scan.dirs()).extracting(ProjectService.Folder::name, ProjectService.Folder::usedBy)
+        .containsExactly(org.assertj.core.groups.Tuple.tuple("old", null), org.assertj.core.groups.Tuple.tuple("shop", "shop"));
+    assertThat(service.folders(tmp.toString()).dirs()).filteredOn(f -> f.name().equals("repos"))
+        .singleElement().satisfies(f -> assertThat(f.usedBy()).as("repos inside").isEqualTo("shop"));
+
+    assertThatThrownBy(() -> service.deleteFolder(dataRoot.resolve("shop").toString())).hasMessageContaining("shop");
+    assertThatThrownBy(() -> service.deleteFolder(tmp.toString())).hasMessageContaining("shop");
+    service.deleteFolder(dataRoot.resolve("old").toString());
+    assertThat(dataRoot.resolve("old")).doesNotExist();
+    assertThat(dataRoot.resolve("shop/config.yml")).exists();
   }
 }

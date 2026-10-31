@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class ProjectController {
 
-  public record CreateProjectRequest(String name, String dataRoot, String color, List<RepoInput> repos, boolean git) {
+  public record CreateProjectRequest(String name, String dataRoot, String color, List<RepoInput> repos) {
   }
 
   private final ProjectService service;
@@ -44,7 +44,18 @@ public class ProjectController {
   @ResponseStatus(HttpStatus.CREATED)
   public Project create(@RequestBody CreateProjectRequest req) {
     Path root = req.dataRoot() == null ? null : Path.of(req.dataRoot());
-    return service.create(req.name(), root, req.color(), req.repos() == null ? List.of() : req.repos(), req.git());
+    return service.create(req.name(), root, req.color(), req.repos() == null ? List.of() : req.repos());
+  }
+
+  @GetMapping("/folders")
+  public ProjectService.Folders folders(@RequestParam(required = false) String path) {
+    return service.folders(path);
+  }
+
+  @DeleteMapping("/folders")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteFolder(@RequestParam String path) {
+    service.deleteFolder(path);
   }
 
   @GetMapping("/projects/{name}")

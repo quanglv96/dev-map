@@ -24,12 +24,9 @@ class ProjectOptions {
   @Option(names = "--color", defaultValue = "#2563eb", description = "Project color #rrggbb.")
   String color;
 
-  @Option(names = "--git", description = "Also make the data folder a git repo.")
-  boolean git;
-
   int create() {
     List<RepoInput> inputs = repos.stream().map(RepoInput::parse).toList();
-    Project p = Core.get(ProjectService.class).create(name, dataRoot, color, inputs, git);
+    Project p = Core.get(ProjectService.class).create(name, dataRoot, color, inputs);
     System.out.println("Đã đăng ký dự án " + p.name() + " -> " + p.dataDir());
     p.config().repos().forEach(r -> System.out.println("  " + r.name() + " @" + r.baseBranch() + ": "
         + r.services().stream().map(s -> s.name()).toList()));

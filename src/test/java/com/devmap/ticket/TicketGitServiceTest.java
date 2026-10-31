@@ -53,7 +53,7 @@ class TicketGitServiceTest {
         new ServiceDetector(), git);
     projects.create("shop", tmp.resolve("data"), "#ff8800", List.of(
         new RepoInput(repos.resolve("order-service").toString(), "test"),
-        new RepoInput(repos.resolve("payment-service").toString(), "main")), false);
+        new RepoInput(repos.resolve("payment-service").toString(), "main")));
     TaskRepository taskRepo = new TaskRepository();
     tasks = new TaskService(projects, taskRepo, new SecretMasker(), new RequestCleaner(), events::add, git);
     rules = new RuleService(projects, new RuleRepository(), new QualityGate());

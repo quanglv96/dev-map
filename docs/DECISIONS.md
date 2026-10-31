@@ -43,7 +43,7 @@ Kết quả ghi vào `repos[].services` trong config.yml; PMO sửa trong "Cấu
 ## D-06 `init` và `workspace add`
 
 Cả hai cùng tham số. Folder đã có `config.yml` (ví dụ chép từ máy khác) thì chỉ đăng ký lại, không ghi đè.
-`workspace remove` chỉ bỏ đăng ký, không xoá folder dữ liệu. `--git` khởi tạo folder dữ liệu thành git repo (mặc định không, CLAUDE.md §5.4).
+`workspace remove` chỉ bỏ đăng ký, không xoá folder dữ liệu. Bỏ tuỳ chọn `--git` (xem D-47).
 
 ## D-07 `ticket_code`
 
@@ -300,3 +300,9 @@ Gate của ticket giờ chỉ chặn vi phạm trong file ticket đã đổi so 
 - Launcher `bin/devmap.cmd` (Windows) và `bin/devmap` (macOS/Linux): tìm `devmap.jar` cạnh script, không có thì `../target/devmap.jar`. Thêm `bin/` vào PATH là gõ được `devmap` ở mọi nơi. Tuỳ chọn JVM qua biến `DEVMAP_OPTS`.
 - Khi chạy, link có token được ghi vào `~/.devmap/serve.url` (xoá khi tắt). Gõ `devmap` lần nữa trong lúc server đang chạy thì chỉ mở lại link đó, không báo lỗi trùng cổng. Token vẫn đổi mỗi lần chạy (NFR-08); file nằm trong thư mục người dùng giống các dữ liệu khác của `~/.devmap`.
 - NFR-09: DevMap không giữ khoá nào; khoá API do Claude Code giữ, quyền Git do git credential manager của máy giữ (fetch/push đi qua git CLI).
+
+## D-47 Chọn folder dữ liệu, dọn folder thừa, bỏ `--git`
+PMO yêu cầu bỏ tuỳ chọn khởi tạo folder dữ liệu thành git repo (khác CLAUDE.md §5.4): mỗi service đã có git riêng.
+Trình duyệt không trả đường dẫn tuyệt đối nên nút **Chọn…** là hộp thoại duyệt folder do server cục bộ liệt kê (`GET /api/folders`).
+Chọn xong, form liệt kê folder con của folder dữ liệu; folder không chứa folder dữ liệu hay repo của dự án đã đăng ký nào thì xoá được
+(`DELETE /api/folders`, có xác nhận). Server từ chối xoá folder đang dùng và gốc ổ đĩa.

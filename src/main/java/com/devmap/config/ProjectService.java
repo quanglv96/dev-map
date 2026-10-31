@@ -1,11 +1,16 @@
 package com.devmap.config;
 
 import com.devmap.git.GitService;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -55,7 +60,7 @@ public class ProjectService {
    * Registers a project. A data folder that already has config.yml (e.g. copied from another machine)
    * is registered as is; otherwise the folder skeleton is created from the given repos.
    */
-  public synchronized Project create(String name, Path dataRoot, String color, List<RepoInput> repoInputs, boolean initGit) {
+  public synchronized Project create(String name, Path dataRoot, String color, List<RepoInput> repoInputs) {
     if (name == null || !NAME.matcher(name).matches() || RESERVED.contains(name)) {
       throw new IllegalArgumentException(
           "Tên dự án chỉ gồm chữ thường, số, dấu '-' (tối đa 40 ký tự) và không trùng tên dành riêng: " + name);
@@ -81,9 +86,6 @@ public class ProjectService {
       requireValid(config);
       projects.save(dir, config);
     }
-    if (initGit && !git.isRepository(dir)) {
-      git.init(dir);
-    }
     List<Workspace> all = new ArrayList<>(workspaces.findAll());
     all.add(new Workspace(name, dir.toString().replace('\\', '/')));
     workspaces.saveAll(all);
@@ -102,6 +104,75 @@ public class ProjectService {
   public synchronized void remove(String name) {
     workspace(name);
     workspaces.saveAll(workspaces.findAll().stream().filter(w -> !w.name().equals(name)).toList());
+  }
+
+  /** A sub-folder; usedBy names the project whose data folder or repo is (inside) it, null when free. */
+  public record Folder(String name, String path, String usedBy) {
+  }
+
+  /** Sub-folders of dir for the folder picker and the data-root scan; null/blank dir lists the drives. */
+  public record Folders(String path, String parent, List<Folder> dirs) {
+  }
+
+  public Folders folders(String dir) {
+    if (dir == null || dir.isBlank()) {
+      List<Folder> roots = Stream.of(java.io.File.listRoots()).map(f -> slash(f.toPath()))
+          .map(p -> new Folder(p, p, null)).toList();
+      return new Folders("", null, roots);
+    }
+    Path path = Path.of(dir).toAbsolutePath().normalize();
+    if (!Files.isDirectory(path)) {
+      throw new IllegalArgumentException("Không tìm thấy thư mục: " + dir);
+    }
+    Map<Path, String> used = usedPaths();
+    try (Stream<Path> children = Files.list(path)) {
+      List<Folder> dirs = children.filter(Files::isDirectory).filter(p -> !p.getFileName().toString().startsWith("."))
+          .sorted().map(p -> new Folder(p.getFileName().toString(), slash(p), usedBy(p, used))).toList();
+      return new Folders(slash(path), path.getParent() == null ? "" : slash(path.getParent()), dirs);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /** Deletes a folder no project uses (its data folder or a repo is not inside it); never a drive root. */
+  public synchronized void deleteFolder(String dir) {
+    Path path = Path.of(dir).toAbsolutePath().normalize();
+    if (!Files.isDirectory(path) || path.getParent() == null) {
+      throw new IllegalArgumentException("Không xoá được thư mục: " + dir);
+    }
+    String user = usedBy(path, usedPaths());
+    if (user != null) {
+      throw new IllegalArgumentException("Thư mục đang được dự án " + user + " dùng: " + dir);
+    }
+    try (Stream<Path> all = Files.walk(path)) {
+      for (Path p : all.sorted(Comparator.reverseOrder()).toList()) {
+        p.toFile().setWritable(true); // git pack files are read-only on Windows
+        Files.delete(p);
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /** Data folders and repo paths of every registered project. */
+  private Map<Path, String> usedPaths() {
+    Map<Path, String> out = new HashMap<>();
+    for (Project p : list()) {
+      out.put(Path.of(p.dataDir()).toAbsolutePath().normalize(), p.name());
+      if (p.config() != null) {
+        p.config().repos().forEach(r -> out.put(Path.of(r.path()).toAbsolutePath().normalize(), p.name()));
+      }
+    }
+    return out;
+  }
+
+  private static String usedBy(Path dir, Map<Path, String> used) {
+    return used.entrySet().stream().filter(e -> e.getKey().startsWith(dir)).map(Map.Entry::getValue).findFirst()
+        .orElse(null);
+  }
+
+  private static String slash(Path p) {
+    return p.toString().replace('\\', '/');
   }
 
   public List<ServiceInfo> detectServices(String repoPath) {

@@ -28,7 +28,7 @@ Làm theo mặc định dưới đây, viết sao cho đổi được bằng c�
 1. Bug không thuộc ticket nào: giữ loại `BUG` riêng.
 2. Mã ticket PMO nhập: không bắt buộc mẫu; cho cấu hình regex tuỳ chọn theo dự án.
 3. Một ticket dùng chung một tên branch ở mọi repo bị chạm.
-4. Folder dữ liệu: tuỳ chọn khởi tạo thành git repo (`devmap init --git`), mặc định không.
+4. Folder dữ liệu: không khởi tạo git (mỗi service đã có git riêng, xem D-47).
 5. Che bí mật: che tất cả mẫu; có danh sách cho phép cấu hình được.
 6. Coding convention: trích từ code và file cấu hình lint hiện có, cho phép nạp thêm file chuẩn của PMO.
 7. Agent mặc định: Claude Code.

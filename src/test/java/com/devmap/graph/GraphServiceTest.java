@@ -45,7 +45,7 @@ class GraphServiceTest {
     projects.create("shop", tmp.resolve("data"), "#ff8800", List.of(
         new RepoInput(repos.resolve("order-service").toString(), "test"),
         new RepoInput(repos.resolve("payment-service").toString(), "main"),
-        new RepoInput(repos.resolve("notification-service").toString(), "main")), false);
+        new RepoInput(repos.resolve("notification-service").toString(), "main")));
     tasks = new TaskService(projects, new TaskRepository(), new SecretMasker(), new RequestCleaner(), e -> { }, new GitService());
     graphs = new GraphService(projects, new GitService(), new GraphRepository(), new SourceIndexer(), new SecretMasker(), tasks, e -> { });
     graphDir = tmp.resolve("data/shop/graph");

@@ -95,7 +95,7 @@ class AgentServiceTest {
     projects.create("shop", tmp.resolve("data"), "#ff8800", List.of(
         new RepoInput(repos.resolve("order-service").toString(), "test"),
         new RepoInput(repos.resolve("payment-service").toString(), "main"),
-        new RepoInput(repos.resolve("notification-service").toString(), "main")), false);
+        new RepoInput(repos.resolve("notification-service").toString(), "main")));
     SecretMasker masker = new SecretMasker();
     TaskRepository taskRepo = new TaskRepository();
     AuditLog audit = new AuditLog(masker);

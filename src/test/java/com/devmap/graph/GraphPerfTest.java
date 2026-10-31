@@ -67,7 +67,7 @@ class GraphPerfTest {
     }
     ProjectService projects = new ProjectService(new WorkspaceRepository(tmp.resolve("home")), new ProjectRepository(),
         new ServiceDetector(), new GitService());
-    projects.create("big", tmp.resolve("data"), "#000000", List.of(new RepoInput(repo.toString(), "main")), false);
+    projects.create("big", tmp.resolve("data"), "#000000", List.of(new RepoInput(repo.toString(), "main")));
     TaskService tasks = new TaskService(projects, new TaskRepository(), new SecretMasker(), new RequestCleaner(), e -> { },
         new GitService());
     GraphService graphs = new GraphService(projects, new GitService(), new GraphRepository(), new SourceIndexer(), new SecretMasker(),

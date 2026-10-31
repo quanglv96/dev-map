@@ -57,14 +57,6 @@ public class GitService {
     }
   }
 
-  public void init(Path dir) {
-    try {
-      Git.init().setDirectory(dir.toFile()).call().close();
-    } catch (GitAPIException e) {
-      throw new IllegalStateException("Không khởi tạo được git ở " + dir + ": " + e.getMessage(), e);
-    }
-  }
-
   /** `git fetch origin` when the repo has an origin; returns an error message or null. Never touches the working tree. */
   public String fetch(Path repo) {
     try (Git git = Git.open(repo.toFile())) {
