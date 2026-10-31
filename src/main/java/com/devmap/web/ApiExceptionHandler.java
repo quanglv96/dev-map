@@ -1,6 +1,7 @@
 package com.devmap.web;
 
 import com.devmap.ticket.PmoOnlyException;
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -31,6 +32,12 @@ public class ApiExceptionHandler {
   @ExceptionHandler({UncheckedIOException.class, IllegalStateException.class})
   public ResponseEntity<Map<String, String>> failure(RuntimeException e) {
     return error(HttpStatus.INTERNAL_SERVER_ERROR, e);
+  }
+
+  /** A browser tab closed under an open SSE stream: the client is gone, nothing to answer or log. */
+  @ExceptionHandler(IOException.class)
+  public void clientGone() {
+    // intentionally empty
   }
 
   private static ResponseEntity<Map<String, String>> error(HttpStatus status, Exception e) {

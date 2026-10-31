@@ -141,9 +141,11 @@ final class GraphBuilder {
 
   /** FR-20: a call becomes service→API (path matched), service→service (host only) or a guess by path alone. */
   private void http(String svc, String file, HttpCall h) {
-    String origin = h.from().startsWith("compose:") ? "svc:" + h.from().substring(8) : h.from().startsWith("config:")
-        ? "svc:" + svc : resolve(svc, h.from()).orElse("svc:" + svc);
-    String type = h.from().startsWith("config:") ? "config" : h.from().startsWith("compose:") ? "compose" : "http";
+    // top-level JS/Python calls have no enclosing symbol; NON_EMPTY also reads a stored "" back as null
+    String from = h.from() == null ? "" : h.from();
+    String origin = from.startsWith("compose:") ? "svc:" + from.substring(8) : from.startsWith("config:")
+        ? "svc:" + svc : resolve(svc, from).orElse("svc:" + svc);
+    String type = from.startsWith("config:") ? "config" : from.startsWith("compose:") ? "compose" : "http";
     String path = h.path() == null ? "" : normalize(h.path());
     String target = h.host() == null ? null : serviceForHost(h.host());
     if (target != null && target.equals(svc) && !type.equals("compose")) {
