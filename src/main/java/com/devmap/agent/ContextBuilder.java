@@ -169,9 +169,10 @@ class ContextBuilder {
 
   private static String resource(String name) {
     try {
-      return new ClassPathResource("prompts/" + name).getContentAsString(StandardCharsets.UTF_8);
+      // The app's own class loader: agent pool threads may carry the system loader, which cannot see BOOT-INF/classes in the jar
+      return new ClassPathResource("prompts/" + name, ContextBuilder.class.getClassLoader()).getContentAsString(StandardCharsets.UTF_8);
     } catch (IOException e) {
-      throw new UncheckedIOException("Thiếu prompts/" + name, e);
+      throw new UncheckedIOException("Thiếu prompts/" + name + ": " + e.getMessage(), e);
     }
   }
 }
