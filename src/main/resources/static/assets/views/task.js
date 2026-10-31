@@ -1,7 +1,7 @@
 // A ticket: create form, Documents tab (versions + diff), right column with status and PMO decisions.
 import { t } from "../i18n.js";
 import { api, diffView, el, fill, markdown, showError } from "../lib.js";
-import { renderChat } from "./chat.js";
+import { askAgent, renderChat } from "./chat.js";
 
 const EDITABLE = ["analysis.md", "plan.md", "summary.md"];
 const selectedDoc = new Map();
@@ -213,6 +213,73 @@ async function pushReview(box, project, detail, dev, error) {
   box.scrollIntoView({ behavior: "smooth" });
 }
 
+/** Numbered or bulleted items under the "Câu hỏi chờ PMO" heading of summary.md (sa.md asks SA to keep that section). */
+export function pendingQuestions(md) {
+  const lines = (md ?? "").split("\n");
+  const start = lines.findIndex((l) => /^#{1,6}\s*(câu hỏi chờ pmo|questions for (the )?pmo)/i.test(l));
+  if (start < 0) {
+    return [];
+  }
+  const out = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^#{1,6}\s/.test(line)) {
+      break;
+    }
+    const m = /^\s*(?:\d+[.)]|[-*])\s+(.+)/.exec(line);
+    if (m && !/^\(?(không có|không còn|none|chưa có)/i.test(m[1])) {
+      out.push(m[1].trim());
+    } else if (!m && line.trim() && out.length) {
+      out[out.length - 1] += ` ${line.trim()}`;
+    }
+  }
+  return out;
+}
+
+/** Questions tab: each open question of the agent with its own answer box; one send starts one new session with all answers. */
+function renderQuestions(box, project, detail, questions, onSent) {
+  const status = el("div");
+  const answers = questions.map(() => el("textarea", { rows: 2, placeholder: t("yourAnswer") }));
+  fill(box, el("p", { class: "muted small" }, t("questionsHint")),
+    el("ol", { class: "questions" }, questions.map((q, i) => el("li", { class: "card question" }, markdown(q), answers[i]))),
+    el("div", { class: "row" }, el("button", { type: "button", class: "primary", onclick: async () => {
+      const filled = questions.map((q, i) => [q, answers[i].value.trim()]).filter(([, a]) => a);
+      if (!filled.length) {
+        showError(status, new Error(t("noAnswers")));
+        return;
+      }
+      try {
+        const text = filled.map(([q, a], i) => `${i + 1}. ${q}\n   → ${a}`).join("\n");
+        await askAgent(project, detail.task.id, `${t("answersIntro")}\n\n${text}`);
+        onSent();
+      } catch (err) {
+        showError(status, err);
+      }
+    } }, t("sendAnswers"))),
+    status);
+}
+
+/** Ticket branch, or the PMO option to code and push straight on the base branch; fixed once a worktree exists. */
+function renderBranch(project, task, dev, error) {
+  const name = el("div", { class: "path" }, dev.direct ? t("directBranch") : task.branch);
+  if (dev.repos.length || task.status === "done") {
+    return name;
+  }
+  const box = el("input", { type: "checkbox", checked: dev.direct });
+  box.addEventListener("change", async () => {
+    if (box.checked && !confirm(t("directConfirm"))) {
+      box.checked = false;
+      return;
+    }
+    try {
+      await api(`${base(project, task.id)}/dev/direct`, { method: "PUT", body: { direct: box.checked } });
+      rerender();
+    } catch (err) {
+      showError(error, err);
+    }
+  });
+  return [name, el("label", { class: "check small" }, box, " ", t("directOption"))];
+}
+
 function renderRepoPicker(project, detail, repoNames, error) {
   const task = detail.task;
   if (task.status === "done") {
@@ -285,7 +352,7 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals) 
     el("dl", {},
       el("dt", {}, t("status")), el("dd", {}, el("span", { class: `badge ${task.status}` }, t(`status.${task.status}`))),
       el("dt", {}, t("type")), el("dd", {}, task.type),
-      el("dt", {}, t("branch")), el("dd", { class: "path" }, task.branch),
+      el("dt", {}, t("branch")), el("dd", {}, renderBranch(project, task, dev, error)),
       el("dt", {}, t("repos")), el("dd", {}, renderRepoPicker(project, detail, repoNames, error)
         ?? (task.repos.length ? task.repos.join(", ") : "–")),
       el("dt", {}, t("version")), el("dd", {}, String(task.version)),
@@ -329,19 +396,26 @@ export async function renderTask(mid, right, project, id, state) {
   const review = el("div");
   const code = el("div");
   const totals = el("span", { class: "small" }, "–");
-  const tab = selectedTab.get(id) ?? (notice ? "docs" : "chat");
+  const summary = detail.docs.includes("summary.md")
+    ? await api(`${base(project, id)}/doc?name=summary.md`).then((d) => d.content).catch(() => "") : "";
+  const questions = pendingQuestions(summary);
+  const names = [questions.length ? "questions" : null, "chat", "docs"].filter(Boolean);
+  const saved = selectedTab.get(id);
+  const tab = names.includes(saved) ? saved : notice ? "docs" : questions.length ? "questions" : "chat";
   const show = (name) => {
     selectedTab.set(id, name);
     tabs.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-    if (name === "chat") {
+    if (name === "questions") {
+      renderQuestions(body, project, detail, questions, () => show("chat"));
+    } else if (name === "chat") {
       renderChat(body, project, detail, totals);
     } else {
       renderDocs(body, project, detail, null, notice);
     }
   };
-  const tabs = el("div", { class: "tabs" }, ["chat", "docs"].map((name) => el("button", {
-    type: "button", class: "tab", "data-tab": name, onclick: () => show(name)
-  }, t(name === "chat" ? "chat" : "docs"))));
+  const tabs = el("div", { class: "tabs" }, names.map((name) => el("button", {
+    type: "button", class: `tab${name === "questions" ? " tab-questions" : ""}`, "data-tab": name, onclick: () => show(name)
+  }, name === "questions" ? [t("questions"), " ", el("span", { class: "count" }, String(questions.length))] : t(name))));
   mid.replaceChildren(el("h2", {}, `${detail.task.id} · ${detail.task.title}`), review, code, tabs, body);
   renderCode(code, project, detail, dev);
   renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review, totals);

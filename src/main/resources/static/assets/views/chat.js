@@ -74,6 +74,11 @@ export function onAgentEvent(change) {
   }
 }
 
+/** One PMO question = one new agent session (FR-37); role "" picks SA or Dev by status. */
+export function askAgent(project, id, question, role = "", fullScan = false) {
+  return api(`${base(project, id)}/ask`, { method: "POST", body: { role, question, fullScan } });
+}
+
 /** totals: element in the right column for the token sums (FR-40). */
 export async function renderChat(box, project, detail, totals) {
   const id = detail.task.id;
@@ -100,7 +105,7 @@ export async function renderChat(box, project, detail, totals) {
           return;
         }
       }
-      await api(`${base(project, id)}/ask`, { method: "POST", body: { role: role.value, question: question.value, fullScan: scan.checked } });
+      await askAgent(project, id, question.value, role.value, scan.checked);
       question.value = "";
       scan.checked = false;
       status.replaceChildren();

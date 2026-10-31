@@ -217,3 +217,9 @@ Môi trường: bản sao `samples/shop` (`init-repos.sh <thư mục>`, mỗi re
 6. Tab "Nhật ký": lọc theo ticket, thấy thao tác của PMO, SA, DEV.
 7. Đang có agent chạy, Ctrl+C ở cửa sổ `devmap serve` → in cảnh báo, server vẫn chạy; Ctrl+C lần nữa trong 10 giây → tắt. Không có agent → Ctrl+C tắt ngay.
 8. Đóng tab khi agent đang chạy → mở lại thấy agent vẫn chạy tiếp.
+
+**K-08 (giao diện, kiểm bằng tay; D-50)**
+
+1. Ticket Sẵn sàng, chưa có worktree: tích "Code và push thẳng vào nhánh nền" → hộp xác nhận → dòng Branch thành "Nhánh nền của từng repo (push thẳng)". Bấm Bắt đầu triển khai: thẻ repo hiện `main ← main`, ô tích biến mất.
+2. Đi hết gate → SA kiểm chứng → Xác nhận push: hộp xác nhận ghi `→ origin/main`; origin/main lên commit đó, không có branch `feature/*` (tự động: `TicketGitServiceTest.directModePushesToTheBaseBranch`).
+3. Ticket mơ hồ: SA trả lời câu hỏi đánh số, summary.md có `## Câu hỏi chờ PMO` → tab "Câu hỏi chờ PMO (n)" hiện đầu tiên. Trả lời 1 câu, bấm Gửi → chuyển sang Chat, phiên SA mới nhận đúng câu hỏi → trả lời; xong phiên, câu đã trả lời mất khỏi tab.

@@ -27,6 +27,9 @@ public class DevController {
   public record ApproveRequest(String repo, List<String> files) {
   }
 
+  public record DirectRequest(boolean direct) {
+  }
+
   private final TicketGitService dev;
   private final TaskService tasks;
 
@@ -43,6 +46,11 @@ public class DevController {
   @GetMapping("/dev")
   public TicketGitService.View view(@PathVariable String project, @PathVariable String id) {
     return dev.view(project, id);
+  }
+
+  @PutMapping("/dev/direct")
+  public TicketGitService.View direct(@PathVariable String project, @PathVariable String id, @RequestBody DirectRequest req) {
+    return dev.setDirect(project, id, req.direct(), Actor.PMO);
   }
 
   @PostMapping("/dev/start")

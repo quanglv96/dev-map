@@ -169,4 +169,28 @@ class TicketGitServiceTest {
     git.commitAll(wt, "NYX-7: sneaky");
     assertThatThrownBy(() -> dev.confirmPush("shop", id, Actor.PMO)).hasMessageContaining("chưa qua quality gate");
   }
+
+  /** PMO option: no ticket branch; the worktree is detached on the base branch and the confirmed push lands on it. */
+  @Test
+  void directModePushesToTheBaseBranch() throws Exception {
+    String id = readyTicket();
+    tasks.setRepos("shop", id, List.of("payment-service"), Actor.PMO);
+    assertThatThrownBy(() -> dev.setDirect("shop", id, true, Actor.DEV)).isInstanceOf(PmoOnlyException.class);
+    dev.setDirect("shop", id, true, Actor.PMO);
+    TicketGitService.RepoView r = dev.start("shop", id, Actor.PMO).repos().get(0);
+    assertThat(r.branch()).isEqualTo("main");
+    Path wt = Path.of(r.worktree());
+    assertThat(git.run(wt, "branch", "--show-current").output()).isEmpty(); // detached, the PMO's main stays where it is
+    assertThatThrownBy(() -> dev.setDirect("shop", id, false, Actor.PMO)).hasMessageContaining("worktree");
+    Files.writeString(wt.resolve("CHANGELOG.md"), "refund\n");
+    dev.commit("shop", id, "payment-service", "changelog", Actor.PMO);
+    dev.gate("shop", id, Actor.PMO);
+    tasks.transition("shop", id, "sa_verify", Actor.DEV);
+    tasks.transition("shop", id, "awaiting_push", Actor.SA);
+    dev.confirmPush("shop", id, Actor.PMO);
+    Path origin = tmp.resolve("origin/payment-service.git");
+    assertThat(git.run(origin, "rev-parse", "refs/heads/main").output()).isEqualTo(git.head(wt));
+    assertThat(git.run(origin, "branch", "--list", "feature/*").output()).isEmpty();
+    assertThat(git.run(repos.resolve("payment-service"), "branch", "--show-current").output()).isEqualTo("main");
+  }
 }

@@ -36,7 +36,7 @@ public class TicketGitService {
       List<String> files, List<String> uncommitted, boolean gatePassed, String pushedHead, String worktree) {
   }
 
-  public record View(List<RepoView> repos, List<String> protectedBranches) {
+  public record View(List<RepoView> repos, List<String> protectedBranches, boolean direct) {
   }
 
   /** Files of an uncommitted change that need the PMO (FR-32) or can never be committed (FR-34). */
@@ -80,11 +80,11 @@ public class TicketGitService {
     if (t.repos().isEmpty()) {
       throw new IllegalArgumentException("Ticket chưa có repo nào; chọn repo ở cột phải");
     }
-    if (rules.isProtected(project, t.branch())) {
+    DevState dev = repo.readDevState(s.folder());
+    if (!dev.direct() && rules.isProtected(project, t.branch())) {
       throw new IllegalArgumentException("Branch " + t.branch() + " là branch được bảo vệ, không làm trên đó được");
     }
     Project p = tasks.project(project);
-    DevState dev = repo.readDevState(s.folder());
     for (String name : t.repos()) {
       RepoConfig rc = repoConfig(p, name);
       Path main = Path.of(rc.path());
@@ -95,7 +95,9 @@ public class TicketGitService {
       }
       Path wt = worktrees.resolve(project).resolve(id).resolve(name);
       RepoWork w = dev.repo(name);
-      if (!Files.exists(wt)) {
+      if (!Files.exists(wt) && dev.direct()) {
+        git.addDetachedWorktree(main, wt, base);
+      } else if (!Files.exists(wt)) {
         git.addWorktree(main, wt, t.branch(), base);
         git.merge(wt, base); // no-op for a new branch; brings an existing ticket branch up to date
       } else {
@@ -104,7 +106,8 @@ public class TicketGitService {
         }
         git.merge(wt, base);
       }
-      w = w != null ? w : new RepoWork(name, wt.toString().replace('\\', '/'), t.branch(), rc.baseBranch(), null, null, null, null);
+      w = w != null ? w : new RepoWork(name, wt.toString().replace('\\', '/'), dev.direct() ? rc.baseBranch() : t.branch(),
+          rc.baseBranch(), null, null, null, null);
       dev = dev.with(w.withBase(base, now()));
       tasks.history(s, actor, name, "pull nhánh nền trước khi làm (AIR-04)",
           name + ": pull nhánh nền " + rc.baseBranch() + " @" + base.substring(0, 8)
@@ -134,7 +137,27 @@ public class TicketGitService {
       out.add(new RepoView(w.repo(), w.branch(), w.baseBranch(), w.baseCommit(), head, git.log(wt, w.baseCommit(), head),
           git.changedFiles(wt, w.baseCommit(), head), git.uncommitted(wt), head.equals(w.gateHead()), w.pushedHead(), w.worktree()));
     }
-    return new View(out, rules.protectedBranches(project));
+    return new View(out, rules.protectedBranches(project), repo.readDevState(s.folder()).direct());
+  }
+
+  /**
+   * PMO option: code on the base branch itself and push straight to it, no ticket branch. Only the PMO, only before the first
+   * worktree exists; the push still waits for the gate, SA verification and the PMO's confirmation, and is never forced.
+   */
+  public synchronized View setDirect(String project, String id, boolean direct, Actor actor) {
+    if (actor != Actor.PMO) {
+      throw new PmoOnlyException("Chỉ PMO được chọn đẩy thẳng vào nhánh nền");
+    }
+    Stored s = tasks.stored(project, id);
+    DevState dev = repo.readDevState(s.folder());
+    if (!dev.repos().isEmpty()) {
+      throw new IllegalArgumentException("Đã tạo worktree, không đổi cách làm branch được nữa");
+    }
+    repo.writeDevState(s.folder(), dev.withDirect(direct));
+    tasks.history(s, actor, null, direct ? "PMO cho phép bỏ qua git.protected_branches cho nhánh nền" : null,
+        direct ? "Code và push thẳng vào nhánh nền, không tạo branch ticket" : "Dùng branch ticket " + s.task().branch());
+    tasks.changed(project, id);
+    return view(project, id);
   }
 
   /** Committed changes since the base plus uncommitted ones, for the PMO to read before commit and push. */
@@ -264,7 +287,7 @@ public class TicketGitService {
       if (!head.equals(w.gateHead())) {
         throw new IllegalArgumentException(w.repo() + ": commit hiện tại chưa qua quality gate và SA kiểm chứng; trả về Dev");
       }
-      if (rules.isProtected(project, w.branch())) {
+      if (!dev.direct() && rules.isProtected(project, w.branch())) {
         throw new IllegalArgumentException(w.repo() + ": không push vào branch được bảo vệ " + w.branch());
       }
       if (!git.hasOrigin(wt)) {

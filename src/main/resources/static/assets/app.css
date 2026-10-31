@@ -28,6 +28,11 @@ a { color: var(--accent); }
 .spacer { flex: 1; }
 .tab { text-decoration: none; border: 0; background: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; color: var(--muted); }
 .tab.active { background: var(--bg); color: var(--text); font-weight: 600; }
+.tab-questions { color: var(--warn-text, #b45309); font-weight: 600; }
+.tab .count { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #d97706; color: #fff; font-size: 12px; text-align: center; }
+.questions { padding-left: 20px; }
+.questions .question { margin-bottom: 10px; }
+.questions textarea { width: 100%; box-sizing: border-box; margin-top: 6px; }
 
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
 .muted { color: var(--muted); }

@@ -130,6 +130,11 @@ public class GitService {
     }
   }
 
+  /** Direct mode: a worktree on no branch at all, so the base branch checked out in the PMO's own repo stays untouched. */
+  public void addDetachedWorktree(Path repo, Path worktree, String commit) {
+    must(repo, "worktree", "add", "--detach", worktree.toString(), commit);
+  }
+
   /** Checked-out branch, or null for a detached HEAD or unreadable repo. */
   public String currentBranch(Path repo) {
     try (Git git = Git.open(repo.toFile())) {

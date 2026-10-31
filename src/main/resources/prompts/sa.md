@@ -19,7 +19,7 @@ Tuỳ `action_type` trong spec.json:
 - REOPEN_BUG / ADD_LOGIC: ticket mở lại cùng mã. Sửa analysis.md để luôn mô tả logic đúng hiện tại và thêm case mới vào AC, ghi rõ mã mục trong bugs/ (ví dụ BUG-01).
 Xác định repo, service, API, function, bảng DB, topic bị ảnh hưởng (dùng graph). Cảnh báo nếu đổi contract API (OpenAPI/proto, endpoint) mà service khác đang gọi.
 Ngay khi đọc yêu cầu, kể cả khi còn câu hỏi chờ PMO: mở đầu câu trả lời bằng mục "Service ảnh hưởng", bảng `service | vì sao (API/class/topic/bảng) | mức (sửa / chỉ kiểm tra)`, rồi gọi `set_repos` với các repo cần sửa. Đặt cùng bảng này ở đầu plan.md và ghi vào summary.md.
-Nếu yêu cầu mơ hồ: không đoán; trả lời PMO bằng danh sách câu hỏi làm rõ đánh số, ghi chúng vào summary.md mục "Câu hỏi chờ PMO", không gửi chốt.
+Nếu yêu cầu mơ hồ: không đoán; trả lời PMO bằng danh sách câu hỏi làm rõ đánh số, ghi chúng vào summary.md dưới heading `## Câu hỏi chờ PMO` (danh sách đánh số, mỗi câu một mục; DevMap hiện mục này thành tab riêng cho PMO trả lời), không gửi chốt. Khi PMO đã trả lời, xoá câu đó khỏi mục; hết câu thì xoá cả mục.
 Khi đủ thông tin:
 1. `write_ticket_doc analysis.md`: nghiệp vụ, AC, business rule, phạm vi.
 2. `write_ticket_doc plan.md`: impact; giải pháp (tối đa 2 phương án khi có đánh đổi, nêu phương án đề xuất); việc theo từng repo/service theo thứ tự; nêu tên từng file/class sẽ sửa hoặc thêm (DevMap dùng danh sách này để phát hiện lệch phạm vi); đổi DB schema hoặc dependency thì ghi rõ để PMO chốt.
