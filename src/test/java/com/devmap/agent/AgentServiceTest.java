@@ -266,10 +266,13 @@ class AgentServiceTest {
           "content", "# Ghi chú\n\n- AC-1: Given đơn mới When tạo Then lưu ghi chú\n"));
       tool(c, "write_ticket_doc", Map.of("name", "plan.md", "content", "# Plan\n\n- order-service: sửa OrderService.java, thêm test\n"));
       tool(c, "write_ticket_doc", Map.of("name", "summary.md", "content", "Chờ PMO chốt"));
+      assertThat(tool(c, "set_repos", Map.of("repos", List.of("nope-service")))).startsWith("ERR");
+      assertThat(tool(c, "set_repos", Map.of("repos", List.of("order-service")))).contains("order-service"); // FR-14
       assertThat(tool(c, "set_status", Map.of("to", "awaiting_approval"))).contains("awaiting_approval");
       return "Đã gửi PMO chốt";
     });
     agents.ask("shop", id, "", "Phân tích giúp", false);
+    assertThat(tasks.detail("shop", id).task().repos()).containsExactly("order-service");
     tasks.transition("shop", id, "ready", Actor.PMO);
 
     String old = "public Order create(String customerId, BigDecimal amount) {";

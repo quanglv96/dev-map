@@ -48,16 +48,29 @@ public class ChatRepository {
     }
   }
 
-  public void deleteTree(Path dir) {
-    if (!Files.exists(dir)) {
-      return;
-    }
-    try (Stream<Path> files = Files.walk(dir)) {
-      for (Path f : files.sorted(Comparator.reverseOrder()).toList()) {
-        Files.delete(f);
+  /**
+   * Best effort, never throws: on Windows the agent's child processes may hold a file for a moment after it exits, so this retries
+   * briefly and gives up with false. A scratch folder left behind must not cost the session its answer.
+   */
+  public boolean deleteTree(Path dir) {
+    for (int attempt = 0; attempt < 5; attempt++) {
+      if (!Files.exists(dir)) {
+        return true;
       }
-    } catch (IOException e) {
-      throw new UncheckedIOException("Không xoá được " + dir, e);
+      try (Stream<Path> files = Files.walk(dir)) {
+        for (Path f : files.sorted(Comparator.reverseOrder()).toList()) {
+          Files.deleteIfExists(f);
+        }
+        return true;
+      } catch (IOException | UncheckedIOException e) {
+        try {
+          Thread.sleep(300L * (attempt + 1));
+        } catch (InterruptedException ie) {
+          Thread.currentThread().interrupt();
+          return false;
+        }
+      }
     }
+    return false;
   }
 }

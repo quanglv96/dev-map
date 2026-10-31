@@ -221,7 +221,9 @@ public class AgentService {
     } finally {
       live.remove(s.token);
       tools.forget(s);
-      chats.deleteTree(s.workDir);
+      if (!chats.deleteTree(s.workDir)) {
+        step(project, id, no, new Step("note", "Chưa xoá được thư mục tạm " + s.workDir + " (file đang bị khoá); sẽ dọn khi ticket xong"));
+      }
     }
     String answer = masker.mask(result.text(), projects.get(project).config().secrets()).text();
     if (!s.written.contains("summary.md")) {

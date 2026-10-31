@@ -81,6 +81,8 @@ class AgentTools {
       tool("set_status", "Chuyển trạng thái ticket. SA: awaiting_approval (gửi PMO chốt), in_dev (trả về Dev), awaiting_push "
           + "(kiểm chứng đạt). Dev: sa_verify (xong, gate đạt). Không chốt giải pháp hay push thay PMO được.",
           Set.of(Role.SA, Role.DEV), "to:string:Trạng thái đích"),
+      tool("set_repos", "Ghi danh sách repo/service bị ảnh hưởng vào ticket (hiện cho PMO, Dev mở worktree ở các repo này). "
+          + "Chỉ khi đang phân tích, trước khi PMO chốt.", Set.of(Role.SA), "repos:array:Tên repo thuộc dự án"),
       tool("verify_facts", "Dữ kiện kiểm chứng DevMap tính từ git diff và graph: file lệch phạm vi, chữ ký/API bị đổi và nơi gọi.",
           Set.of(Role.SA)),
       tool("git_diff", "Diff của branch ticket so với nhánh nền ở một repo (cả phần chưa commit); đã che bí mật.",
@@ -139,6 +141,7 @@ class AgentTools {
       case "get_snippet" -> snippet(s, args);
       case "write_ticket_doc" -> writeDoc(s, text(args, "name"), text(args, "content"));
       case "set_status" -> setStatus(s, text(args, "to"));
+      case "set_repos" -> setRepos(s, args.path("repos"));
       case "verify_facts" -> facts(s).markdown();
       case "git_diff" -> diff(s, text(args, "repo"));
       case "run_quality_gate" -> gate(s);
@@ -285,6 +288,20 @@ class AgentTools {
     s.written.add(name);
     return "Đã ghi " + name + (d.versions() > 0 ? " (v" + d.versions() + ")" : "") + (d.maskedCount() > 0 ? ", đã che " + d.maskedCount()
         + " giá trị giống bí mật" : "");
+  }
+
+  /** FR-14: the SA's impacted services land on the ticket; once the PMO approved, only the PMO changes them. */
+  private String setRepos(AgentSession s, JsonNode repos) {
+    TaskStatus st = tasks.detail(s.project, s.taskId).task().status();
+    if (st != TaskStatus.SA_ANALYSIS && st != TaskStatus.AWAITING_APPROVAL) {
+      throw new IllegalArgumentException("Chỉ ghi repo khi đang phân tích; ticket ở " + st.code() + ", PMO tự đổi nếu cần");
+    }
+    if (!repos.isArray()) {
+      throw new IllegalArgumentException("repos phải là mảng tên repo");
+    }
+    List<String> names = new ArrayList<>();
+    repos.forEach(r -> names.add(r.asText()));
+    return "Repo của ticket: " + tasks.setRepos(s.project, s.taskId, names, s.role.actor).repos();
   }
 
   private String setStatus(AgentSession s, String to) {
@@ -449,7 +466,7 @@ class AgentTools {
       case "write_file", "edit_file", "delete_file" -> "scope + chặn file bí mật (FR-32, FR-34)";
       case "commit" -> "git.commit_template, scope";
       case "run_quality_gate" -> "quality: tách lớp, phân tích tĩnh, unit test";
-      case "set_status" -> "luồng 8 trạng thái, cổng duyệt PMO";
+      case "set_status", "set_repos" -> "luồng 8 trạng thái, cổng duyệt PMO";
       default -> "lọc bí mật, ngữ cảnh 2–3 tầng, không nguyên file (FR-34/35)";
     };
     return new String[] {repo, service, rule};
