@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 /**
@@ -31,6 +32,11 @@ public class QualityGate {
   }
 
   private static final int TAIL_LINES = 60;
+  private static final int MAX_OWN_LINES = 200;
+  /** A line naming a source file: a lint violation or compiler error of that file. */
+  private static final Pattern FILE_REF = Pattern.compile("[\\w.-]+\\.(java|kt|kts|groovy|ts|tsx|js|jsx|mjs|cjs|vue|py|go)\\b");
+  // ponytail: known linters by name; a build/compile step is never scoped, an error it reports in an untouched file may be ours
+  private static final Pattern LINTER = Pattern.compile("checkstyle|pmd|spotbugs|lint|ruff|flake8|sonar", Pattern.CASE_INSENSITIVE);
 
   private static String lines(List<LayerChecker.Violation> v) {
     return String.join("\n", v.stream().map(LayerChecker.Violation::toString).toList());
@@ -62,7 +68,7 @@ public class QualityGate {
       if (q.staticCommands().isEmpty()) {
         steps.add(missing("static"));
       }
-      q.staticCommands().forEach(c -> steps.add(command("static", c, dir, q.timeoutMinutes())));
+      q.staticCommands().forEach(c -> steps.add(command("static", c, dir, q.timeoutMinutes(), LINTER.matcher(c).find() ? changed : null)));
     }
     if (q.unitTest()) {
       steps.add(blank(q.unitTestCommand()) ? missing("unit_test") : command("unit_test", q.unitTestCommand(), dir, q.timeoutMinutes()));
@@ -91,8 +97,15 @@ public class QualityGate {
     return command;
   }
 
-  /** Runs one configured command through the OS shell, output to a temp file (no pipe to drain, no deadlock). */
   static Step command(String name, String configured, Path dir, int timeoutMinutes) {
+    return command(name, configured, dir, timeoutMinutes, null);
+  }
+
+  /**
+   * Runs one configured command through the OS shell, output to a temp file (no pipe to drain, no deadlock). changed non-null: a
+   * failing linter fails only on lines naming a file the ticket touched; violations already in other files are counted, not blocking.
+   */
+  static Step command(String name, String configured, Path dir, int timeoutMinutes, Collection<String> changed) {
     String command = withWrapper(configured, dir);
     long t0 = System.currentTimeMillis();
     Path log = null;
@@ -111,7 +124,8 @@ public class QualityGate {
       // cmd: 9009, sh: 127 = command not found
       String hint = p.exitValue() == 9009 || p.exitValue() == 127 ? "\nKhông tìm thấy lệnh trên máy chạy DevMap: cài công cụ "
           + "(có trong PATH khi chạy devmap) hoặc sửa lệnh ở trang Quy tắc" : "";
-      return new Step(name, command, p.exitValue() == 0, p.exitValue(), System.currentTimeMillis() - t0, tail(log) + hint);
+      Step st = new Step(name, command, p.exitValue() == 0, p.exitValue(), System.currentTimeMillis() - t0, tail(log) + hint);
+      return st.passed() || changed == null || !hint.isEmpty() ? st : scoped(st, read(log), changed);
     } catch (IOException e) {
       return new Step(name, command, false, -1, System.currentTimeMillis() - t0, "Không chạy được: " + e.getMessage());
     } catch (InterruptedException e) {
@@ -128,13 +142,30 @@ public class QualityGate {
     }
   }
 
-  private static String tail(Path log) {
+  /** No file named in the log (plugin/config error): the failure stands as it is. */
+  static Step scoped(Step st, List<String> log, Collection<String> changed) {
+    List<String> refs = log.stream().filter(l -> FILE_REF.matcher(l).find()).toList();
+    if (refs.isEmpty()) {
+      return st;
+    }
+    List<String> own = refs.stream().filter(l -> changed.stream().anyMatch(f -> l.replace('\\', '/').contains(f))).toList();
+    String out = (own.isEmpty() ? "" : "Lỗi ở file ticket sửa (" + own.size() + "):\n"
+        + String.join("\n", own.subList(0, Math.min(own.size(), MAX_OWN_LINES))) + "\n\n")
+        + "Lỗi có sẵn ở file ticket không sửa: " + (refs.size() - own.size()) + " dòng (không chặn, không sửa trong ticket này)";
+    return new Step(st.name(), st.command(), own.isEmpty(), st.exitCode(), st.millis(), out);
+  }
+
+  private static List<String> read(Path log) {
     try {
-      List<String> lines = new String(Files.readAllBytes(log), StandardCharsets.UTF_8).lines().toList();
-      return String.join("\n", lines.subList(Math.max(0, lines.size() - TAIL_LINES), lines.size()));
+      return new String(Files.readAllBytes(log), StandardCharsets.UTF_8).lines().toList();
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
+  }
+
+  private static String tail(Path log) {
+    List<String> lines = read(log);
+    return String.join("\n", lines.subList(Math.max(0, lines.size() - TAIL_LINES), lines.size()));
   }
 
   private static boolean blank(String s) {

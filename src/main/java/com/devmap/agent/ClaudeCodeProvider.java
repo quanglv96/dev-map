@@ -63,8 +63,10 @@ public class ClaudeCodeProvider implements AgentProvider {
       cfg.putObject("mcpServers").set("devmap", server);
       Files.writeString(dir.resolve("mcp.json"), cfg.toString());
       Files.writeString(dir.resolve("system.md"), call.systemPrompt());
-      Process p = new ProcessBuilder(argv(dir)).directory(dir.toFile())
-          .redirectError(dir.resolve("stderr.txt").toFile()).start();
+      ProcessBuilder pb = new ProcessBuilder(argv(dir)).directory(dir.toFile()).redirectError(dir.resolve("stderr.txt").toFile());
+      // run_quality_gate runs builds and tests for minutes: let the tool call live as long as the session
+      pb.environment().put("MCP_TOOL_TIMEOUT", String.valueOf(TimeUnit.MINUTES.toMillis(timeoutMinutes)));
+      Process p = pb.start();
       CompletableFuture.delayedExecutor(timeoutMinutes, TimeUnit.MINUTES).execute(p::destroyForcibly);
       try (OutputStream in = p.getOutputStream()) {
         in.write(call.prompt().getBytes(StandardCharsets.UTF_8));

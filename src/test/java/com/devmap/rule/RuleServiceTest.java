@@ -127,6 +127,22 @@ class RuleServiceTest {
     assertThat(QualityGate.withWrapper("mvnx test", dir)).isEqualTo("mvnx test");
   }
 
+  /** A linter fails a ticket only on the files it touched; old violations elsewhere are counted, not blocking. */
+  @Test
+  void lintFailsOnlyOnTouchedFiles() {
+    QualityGate.Step failed = new QualityGate.Step("static", "mvn checkstyle:check", false, 1, 5, "tail");
+    List<String> log = List.of("[ERROR] D:\\w\\svc\\src\\main\\java\\Old.java:3:1: Line is longer than 80 characters. [LineLength]",
+        "[ERROR] Failed to execute goal ... You have 1 Checkstyle violation.");
+    QualityGate.Step old = QualityGate.scoped(failed, log, List.of("src/main/java/New.java"));
+    assertThat(old.passed()).isTrue();
+    assertThat(old.output()).contains("không sửa: 1 dòng");
+    QualityGate.Step own = QualityGate.scoped(failed, log, List.of("src/main/java/Old.java"));
+    assertThat(own.passed()).isFalse();
+    assertThat(own.output()).contains("Old.java:3:1");
+    // nothing names a file (plugin/config error): the failure stands
+    assertThat(QualityGate.scoped(failed, List.of("[ERROR] Failed to execute goal"), List.of("a.java")).passed()).isFalse();
+  }
+
   @Test
   void globs() {
     assertThat(Glob.matches("pom.xml", "a/b/pom.xml")).isTrue();
