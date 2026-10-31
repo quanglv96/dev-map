@@ -293,3 +293,10 @@ Gate của ticket giờ chỉ chặn vi phạm trong file ticket đã đổi so 
 - Thêm công cụ `delete_file` cho Dev (cùng kiểm tra đường dẫn và file bí mật): lần chạy thật Dev chỉ làm rỗng được file cần xoá.
 - Ghi chú trước phiên Dev tách "Commit PMO tự làm" (chắc chắn của PMO) và "File chưa commit (phiên Dev trước để lại hoặc PMO sửa tay)": trước đây file chưa commit của chính Dev bị ghi là của PMO.
 - `samples/shop/*/.gitignore` có `target/`: không có thì output build của gate thành "file chưa commit".
+
+## D-46 Gõ `devmap` là mở giao diện
+
+- `devmap` không tham số chạy `serve` và mở trình duyệt đúng link có token (`--no-open` để không mở). SRS ghi `devmap serve`; lệnh đó vẫn giữ nguyên.
+- Launcher `bin/devmap.cmd` (Windows) và `bin/devmap` (macOS/Linux): tìm `devmap.jar` cạnh script, không có thì `../target/devmap.jar`. Thêm `bin/` vào PATH là gõ được `devmap` ở mọi nơi. Tuỳ chọn JVM qua biến `DEVMAP_OPTS`.
+- Khi chạy, link có token được ghi vào `~/.devmap/serve.url` (xoá khi tắt). Gõ `devmap` lần nữa trong lúc server đang chạy thì chỉ mở lại link đó, không báo lỗi trùng cổng. Token vẫn đổi mỗi lần chạy (NFR-08); file nằm trong thư mục người dùng giống các dữ liệu khác của `~/.devmap`.
+- NFR-09: DevMap không giữ khoá nào; khoá API do Claude Code giữ, quyền Git do git credential manager của máy giữ (fetch/push đi qua git CLI).

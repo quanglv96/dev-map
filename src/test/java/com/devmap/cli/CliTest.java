@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.devmap.SampleRepos;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -63,5 +65,15 @@ class CliTest {
 
     assertThat(run(0, "workspace", "remove", "shop")).contains("giữ nguyên");
     assertThat(run(0, "workspace", "list")).isEmpty();
+  }
+
+  @Test
+  void serveReusesTheRunningServerLink() throws Exception {
+    System.setProperty("devmap.home", tmp.toString());
+    Files.writeString(tmp.resolve("serve.url"), "http://localhost:1/?token=abc");
+    try (ServerSocket running = new ServerSocket(0)) {
+      assertThat(run(0, "serve", "--no-open", "--port", String.valueOf(running.getLocalPort())))
+          .contains("DevMap đang chạy: http://localhost:1/?token=abc");
+    }
   }
 }

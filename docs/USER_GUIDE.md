@@ -11,12 +11,14 @@ Agent không bao giờ push và không đọc được file bí mật.
 - Claude Code (`claude --version`), đã đăng nhập. Khoá API do Claude Code giữ; DevMap không lưu khoá nào.
 - Công cụ build của từng dự án nếu muốn chạy quality gate (Maven/Gradle/npm…).
 
-Kiểm tra: `java -jar devmap.jar doctor`.
+Thêm thư mục `bin/` của DevMap (chứa `devmap.cmd` và `devmap`, cạnh `devmap.jar` hoặc trong repo có `target/devmap.jar`) vào PATH. Từ đó `devmap …` thay cho `java -jar devmap.jar …`.
+
+Kiểm tra: `devmap doctor`.
 
 ## 2. Thêm dự án
 
 ```sh
-java -jar devmap.jar init nyxhub --data D:/devmap-data \
+devmap init nyxhub --data D:/devmap-data \
   --repo D:/code/order-service@test --repo D:/code/payment-service@main
 ```
 
@@ -24,16 +26,17 @@ java -jar devmap.jar init nyxhub --data D:/devmap-data \
 - `--git`: biến folder dữ liệu thành repo git (để đồng bộ giữa các máy).
 - Cũng thêm được trên trang chủ (form "Thêm dự án").
 
-DevMap không tự quét code khi thêm dự án. Muốn có graph đầy đủ ngay: màn hình **Graph** → "Quét toàn bộ dự án" (một lần, chỉ trích chữ ký, không gửi gì cho agent), hoặc `java -jar devmap.jar index nyxhub --full`.
+DevMap không tự quét code khi thêm dự án. Muốn có graph đầy đủ ngay: màn hình **Graph** → "Quét toàn bộ dự án" (một lần, chỉ trích chữ ký, không gửi gì cho agent), hoặc `devmap index nyxhub --full`.
 Sau đó chỉ mục tự cập nhật theo git diff mỗi lần SA làm việc.
 
 ## 3. Chạy
 
 ```sh
-java -jar devmap.jar serve          # --port 7070
+devmap                  # = devmap serve: chạy server và tự mở trình duyệt
+devmap serve --port 7071 --no-open
 ```
 
-Mở đúng link in ra (có `?token=…`); token đổi mỗi lần chạy. Mỗi dự án một tab: `localhost:7070/nyxhub`, `localhost:7070/lendbiz`.
+Trình duyệt tự mở đúng link có `?token=…` (token đổi mỗi lần chạy). Gõ `devmap` lần nữa khi server đang chạy thì chỉ mở lại trang. Mỗi dự án một tab: `localhost:7070/nyxhub`, `localhost:7070/lendbiz`.
 
 - Tiêu đề tab: `(số việc chờ PMO) tên dự án · trạng thái`. Biểu tượng có chấm xanh (agent đang chạy), vàng (chờ PMO), đỏ (lỗi).
 - Bấm "Bật thông báo" một lần để nhận thông báo trình duyệt khi agent cần PMO quyết, chạy xong hoặc lỗi; bấm thông báo để mở đúng ticket.
@@ -70,7 +73,7 @@ Tick "Quét toàn bộ dự án cho câu này" khi graph thiếu quan hệ: qué
 
 Gate chạy cho mọi service mà ticket chạm: kiểm tách lớp Controller → Service → Repository (chỉ chặn vi phạm trong file ticket sửa; vi phạm cũ được liệt kê để làm ticket riêng), lệnh phân tích tĩnh, unit test.
 Lệnh lấy từ rule của service (preset theo loại dự án). Nếu máy không có `mvn` trong PATH, sửa lệnh trong màn hình Rule, ví dụ `mvnw.cmd -q test`.
-Kiểm bằng dòng lệnh: `java -jar devmap.jar rules check nyxhub --repo order-service`.
+Kiểm bằng dòng lệnh: `devmap rules check nyxhub --repo order-service`.
 
 ## 7. Dòng lệnh
 
@@ -86,7 +89,7 @@ Kiểm bằng dòng lệnh: `java -jar devmap.jar rules check nyxhub --repo orde
 
 ## 8. Cấu hình máy
 
-Truyền bằng `-D` trước `-jar`, ví dụ `java -Ddevmap.agent.max-concurrent=3 -jar devmap.jar serve`.
+Truyền bằng `-D` trước `-jar`, ví dụ `java -Ddevmap.agent.max-concurrent=3 -jar devmap.jar serve`, hoặc với launcher: `set DEVMAP_OPTS=-Ddevmap.agent.max-concurrent=3` rồi `devmap`.
 
 | Khoá | Mặc định | Ý nghĩa |
 | --- | --- | --- |

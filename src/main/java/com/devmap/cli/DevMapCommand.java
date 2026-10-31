@@ -37,7 +37,8 @@ public class DevMapCommand implements Runnable {
       cmd.getErr().println("Lỗi: " + e.getMessage());
       return 1;
     });
-    int code = cli.execute(args);
+    // plain `devmap` = start the UI and open it (what a PMO types every morning)
+    int code = cli.execute(args.length == 0 ? new String[] {"serve"} : args);
     if (code == 0 && isServe(cli.getParseResult())) {
       return; // the web server keeps the JVM alive until Ctrl+C
     }
