@@ -53,6 +53,18 @@ public class EventController {
     send(change.status().project(), "sync", change);
   }
 
+  /** Writing is what reveals a closed tab, and the server drives it so a throttled background tab still counts as open. */
+  public int pingTabs() {
+    emitters.keySet().forEach(emitter -> {
+      try {
+        emitter.send(SseEmitter.event().comment("ping"));
+      } catch (IOException | IllegalStateException e) {
+        emitters.remove(emitter);
+      }
+    });
+    return emitters.size();
+  }
+
   private void send(String changed, String name, Object data) {
     emitters.forEach((emitter, project) -> {
       if (changed != null && !project.isEmpty() && !project.equals(changed)) {

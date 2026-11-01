@@ -226,6 +226,7 @@ Môi trường: bản sao `samples/shop` (`init-repos.sh <thư mục>`, mỗi re
 6. Tab "Nhật ký": lọc theo ticket, thấy thao tác của PMO, SA, DEV.
 7. Đang có agent chạy, Ctrl+C ở cửa sổ `devmap serve` → in cảnh báo, server vẫn chạy; Ctrl+C lần nữa trong 10 giây → tắt. Không có agent → Ctrl+C tắt ngay.
 8. Đóng tab khi agent đang chạy → mở lại thấy agent vẫn chạy tiếp.
+9. D-56 (logic ở `TabWatcherTest`): mở hai tab, đóng một → server vẫn chạy; F5 tab còn lại → vẫn chạy; đóng nốt → trong 25 giây tiến trình `java` thoát, `~/.devmap/serve.url` bị xoá. Đóng hết tab khi agent đang chạy → server chờ agent xong rồi mới thoát. `devmap serve --keep-running`: đóng hết tab, server vẫn chạy.
 
 **K-08 (giao diện, kiểm bằng tay; D-50)**
 

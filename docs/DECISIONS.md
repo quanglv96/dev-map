@@ -375,3 +375,11 @@ Máy khác clone + `setup.cmd` vẫn thấy giao diện cũ. Nguyên nhân có t
 Trước đây mở lại ticket chỉ đổi trạng thái và ghi `bugs/`, chat không có gì nên PMO tưởng chưa nhận.
 - Mở lại xong DevMap tự mở một phiên SA như câu hỏi của PMO: mô tả (đã che, đã làm sạch) hiện trong chat với tiền tố "Báo bug:"/"Bổ sung logic:", giao diện chuyển sang tab Chat và hiện thanh tiến trình. Không có tuỳ chọn tắt: PMO đã chủ động báo.
 - Đang có phiên chạy trên ticket thì từ chối trước khi mở lại, tránh ticket đã mở lại mà không phiên nào xử lý.
+
+## D-56 Đóng hết tab thì tắt DevMap
+PMO yêu cầu tắt hoàn toàn DevMap khi đóng tab trình duyệt.
+- **Nhận biết tab**: mỗi tab giữ một luồng SSE `/api/events`. Server ghi comment `ping` vào mọi luồng mỗi 5 giây; ghi lỗi nghĩa là tab đã đóng. Không dùng `beforeunload`/`sendBeacon` vì sự kiện đó cũng chạy khi tải lại trang và không chạy khi trình duyệt crash; không để tab tự gửi heartbeat vì trình duyệt làm chậm timer của tab nền.
+- **Điều kiện tắt**: đã từng có tab, hiện không còn tab nào, không có agent hay quét chỉ mục đang chạy, kéo dài 15 giây kể từ nhịp ping cuối còn thấy tab, tức tắt sau khi đóng tab khoảng 10–25 giây (đủ cho tải lại trang, chuyển trang). Chưa có tab nào thì không tắt, kể cả `--no-open`.
+- **SRS "Đóng tab không dừng agent" vẫn giữ**: còn agent thì server chờ xong mới tắt.
+- `devmap serve --keep-running` tắt tính năng này.
+- `ponytail:` trình duyệt tự giải phóng tab nền (ví dụ Memory Saver của Chrome) cũng đóng luồng SSE; nếu đó là tab DevMap duy nhất thì server tắt, chạy lại `devmap` hoặc dùng `--keep-running`. Khoá đồng bộ vẫn chờ hết hạn 10 phút như mọi lần tắt `serve` (D-52).

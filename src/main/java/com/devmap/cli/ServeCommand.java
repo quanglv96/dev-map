@@ -2,8 +2,11 @@ package com.devmap.cli;
 
 import com.devmap.DevMapApplication;
 import com.devmap.agent.AgentService;
+import com.devmap.graph.GraphService;
 import com.devmap.sync.SyncService;
+import com.devmap.web.EventController;
 import com.devmap.web.ServerToken;
+import com.devmap.web.TabWatcher;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -14,6 +17,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.springframework.boot.Banner;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -28,11 +33,16 @@ import sun.misc.Signal;
 @Command(name = "serve", mixinStandardHelpOptions = true, description = "Start the DevMap web UI on 127.0.0.1.")
 class ServeCommand implements Callable<Integer> {
 
+  private static final long TAB_CHECK_SECONDS = 5;
+
   @Option(names = "--port", defaultValue = "7070", description = "Port (default: ${DEFAULT-VALUE}).")
   int port;
 
   @Option(names = "--no-open", description = "Do not open the browser.")
   boolean noOpen;
+
+  @Option(names = "--keep-running", description = "Keep running after the last DevMap tab is closed.")
+  boolean keepRunning;
 
   @Override
   public Integer call() throws IOException {
@@ -63,10 +73,31 @@ class ServeCommand implements Callable<Integer> {
     ctx.getBean(SyncService.class).start(); // FR-48: pull, lock, auto-commit in the background; the UI is already up
     System.out.println();
     System.out.println("DevMap: " + url);
-    System.out.println("Ctrl+C to stop.");
+    System.out.println(keepRunning ? "Ctrl+C to stop." : "Ctrl+C to stop, or close every DevMap tab.");
     browse(url);
     warnBeforeStop(ctx.getBean(AgentService.class));
+    if (!keepRunning) {
+      exitWhenTabsClosed(ctx);
+    }
     return 0;
+  }
+
+  /** Closing the last tab stops DevMap, but only once agents and index jobs are done (SRS: closing a tab does not stop agents). */
+  private static void exitWhenTabsClosed(ConfigurableApplicationContext ctx) {
+    EventController events = ctx.getBean(EventController.class);
+    AgentService agents = ctx.getBean(AgentService.class);
+    GraphService graph = ctx.getBean(GraphService.class);
+    TabWatcher watcher = new TabWatcher();
+    Executors.newSingleThreadScheduledExecutor(r -> {
+      Thread t = new Thread(r, "devmap-tabs");
+      t.setDaemon(true);
+      return t;
+    }).scheduleWithFixedDelay(() -> {
+      if (watcher.shouldExit(events.pingTabs(), agents.runningCount() > 0 || graph.indexing(), System.currentTimeMillis())) {
+        System.out.println("Đã đóng hết tab DevMap: tắt server.");
+        System.exit(0);
+      }
+    }, TAB_CHECK_SECONDS, TAB_CHECK_SECONDS, TimeUnit.SECONDS);
   }
 
   /** This build: the jar (first class path entry) and its modification time. */

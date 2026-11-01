@@ -101,6 +101,10 @@ public class GraphService {
     this.events = events;
   }
 
+  public boolean indexing() {
+    return !running.isEmpty();
+  }
+
   /** Fetch every repo, then index: incrementally by git diff, or every file when full. Synchronous. */
   public Report update(String project, boolean full) {
     return update(project, full, null);

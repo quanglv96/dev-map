@@ -40,7 +40,8 @@ Trình duyệt tự mở đúng link có `?token=…` (token đổi mỗi lần 
 
 - Tiêu đề tab: `(số việc chờ PMO) tên dự án · trạng thái`. Biểu tượng có chấm xanh (agent đang chạy), vàng (chờ PMO), đỏ (lỗi).
 - Bấm "Bật thông báo" một lần để nhận thông báo trình duyệt khi agent cần PMO quyết, chạy xong hoặc lỗi; bấm thông báo để mở đúng ticket.
-- Đóng tab không dừng agent. Tắt `serve` bằng Ctrl+C; nếu agent còn chạy, DevMap cảnh báo và cần Ctrl+C lần nữa trong 10 giây.
+- Đóng hết tab DevMap thì server tự tắt sau khoảng 10–25 giây. Tải lại trang, chuyển trang hay còn tab khác đang mở thì không tắt. Muốn server chạy tiếp sau khi đóng tab: `devmap serve --keep-running`.
+- Đóng tab không dừng agent: còn agent hoặc lần quét chỉ mục đang chạy thì server chờ xong rồi mới tự tắt. Tắt `serve` bằng Ctrl+C; nếu agent còn chạy, DevMap cảnh báo và cần Ctrl+C lần nữa trong 10 giây.
 
 ## 4. Một ticket từ đầu đến cuối
 
