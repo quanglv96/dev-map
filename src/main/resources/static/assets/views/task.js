@@ -399,15 +399,23 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
   const reopenBox = el("div", { class: "reopen" });
   const reopen = (kind) => {
     const area = el("textarea", { rows: 4, placeholder: t("describe") });
-    reopenBox.replaceChildren(area, el("button", { type: "button", class: "primary", onclick: async () => {
+    const send = el("button", { type: "button", class: "primary", onclick: async () => {
+      send.disabled = true;
       try {
         await api(`${base(project, task.id)}/reopen`, { method: "POST", body: { kind, description: area.value } });
         reopenBox.replaceChildren();
+        selectedTab.set(task.id, "chat"); // SA starts at once: its progress is what the PMO wants to see next
         rerender();
       } catch (err) {
+        send.disabled = false;
         showError(error, err);
       }
-    } }, t("send")));
+    } }, t("send"));
+    reopenBox.replaceChildren(el("strong", {}, t(kind === "bug" ? "reportBug" : "addLogic")),
+      el("p", { class: "muted small" }, t("reopenHint")), area,
+      el("div", { class: "row" }, send,
+        el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
+    area.focus();
   };
 
   fill(right,

@@ -52,7 +52,7 @@ Trình duyệt tự mở đúng link có `?token=…` (token đổi mỗi lần 
    - PMO có thể tự sửa/commit trong worktree (đường dẫn ở cột phải); phiên Dev sau được báo.
 5. **SA kiểm chứng** tự chạy: đối chiếu AC với diff, ghi `verify.md`. Lệch phạm vi hoặc chữ ký bị đổi mà nơi gọi chưa kiểm → trả về Dev. Đạt → "Chờ PMO xác nhận".
 6. **Xác nhận push**: DevMap push đúng commit đã qua gate và kiểm chứng lên nhánh của ticket (không bao giờ vào nhánh bảo vệ). Ticket sang Done; ngữ cảnh phiên bị xoá, tài liệu giữ lại.
-7. **Báo bug / Bổ sung logic** sau deploy: mở lại cùng mã, đi lại từ SA phân tích.
+7. **Báo bug / Bổ sung logic** sau deploy: mở lại cùng mã, SA tự phân tích ngay; mô tả của PMO và tiến trình của SA hiện ở tab Chat.
 
 Ticket MAINT: xếp thứ tự trong khung "Hàng đợi" ở cột trái (↑↓) rồi bấm **Chạy hàng đợi**; Dev làm lần lượt, ticket sau bắt đầu khi ticket trước đã qua SA kiểm chứng. Ticket nào lỗi hoặc bị trả về thì hàng đợi dừng.
 

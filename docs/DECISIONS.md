@@ -370,3 +370,8 @@ Máy khác clone + `setup.cmd` vẫn thấy giao diện cũ. Nguyên nhân có t
 - Server gửi `Cache-Control: no-cache` cho file tĩnh (`spring.web.resources.cache.cachecontrol.no-cache`): trình duyệt luôn hỏi lại (304 nếu không đổi).
 - `~/.devmap/serve.url` thêm dòng 2 = bản đang chạy (đường dẫn jar + thời điểm build). `devmap` thấy server đang chạy là bản khác → báo, không mở, trả mã 1.
 - Launcher ưu tiên `target/devmap.jar` (bản vừa build) hơn `bin/devmap.jar`; `setup.cmd` luôn `clean package` khi có `pom.xml` và cảnh báo `devmap.cmd` khác trên PATH.
+
+## D-55 Báo bug / Bổ sung logic tự chạy SA
+Trước đây mở lại ticket chỉ đổi trạng thái và ghi `bugs/`, chat không có gì nên PMO tưởng chưa nhận.
+- Mở lại xong DevMap tự mở một phiên SA như câu hỏi của PMO: mô tả (đã che, đã làm sạch) hiện trong chat với tiền tố "Báo bug:"/"Bổ sung logic:", giao diện chuyển sang tab Chat và hiện thanh tiến trình. Không có tuỳ chọn tắt: PMO đã chủ động báo.
+- Đang có phiên chạy trên ticket thì từ chối trước khi mở lại, tránh ticket đã mở lại mà không phiên nào xử lý.

@@ -75,7 +75,7 @@ public class TaskController {
 
   @PostMapping("/projects/{project}/tasks/{id}/reopen")
   public Task reopen(@PathVariable String project, @PathVariable String id, @RequestBody ReopenRequest req) {
-    return tasks.reopen(project, id, req.kind(), req.description(), Actor.PMO);
+    return agents.reopen(project, id, req.kind(), req.description());
   }
 
   @GetMapping("/projects/{project}/tasks/{id}/doc")

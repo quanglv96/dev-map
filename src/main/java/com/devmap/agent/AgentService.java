@@ -177,6 +177,17 @@ public class AgentService {
     return submit(project, id, Role.SA, Mode.ASK, AUTO_ANALYZE, false);
   }
 
+  /** FR-10: the PMO's report opens the ticket again and goes to SA right away; it shows in the chat like any question. */
+  public Task reopen(String project, String id, String kind, String description) {
+    // a question on a Done ticket may still run: refuse before the ticket reopens with no session to pick it up
+    if (busy.contains(project + "/" + id)) {
+      throw new IllegalArgumentException("Agent đang chạy cho " + id + "; chờ phiên này xong");
+    }
+    Task reopened = tasks.reopen(project, id, kind, description, Actor.PMO);
+    ask(project, id, "sa", ("bug".equals(kind) ? "Báo bug: " : "Bổ sung logic: ") + description, false);
+    return reopened;
+  }
+
   private ChatMessage submit(String project, String id, Role role, Mode mode, String question, boolean fullScan) {
     String key = project + "/" + id;
     if (!busy.add(key)) {

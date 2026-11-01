@@ -24,6 +24,7 @@ import com.devmap.rule.RuleService;
 import com.devmap.rule.Rules;
 import com.devmap.secret.SecretMasker;
 import com.devmap.ticket.RequestCleaner;
+import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskChanged;
 import com.devmap.ticket.TaskRepository;
 import com.devmap.ticket.TaskService;
@@ -479,6 +480,42 @@ class AgentServiceTest {
     });
     agents.ask("shop", id, "sa", "Kiểm chứng", false);
     assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH);
+  }
+
+  /** FR-10: "Báo bug" starts SA by itself; the report and SA's session show in the chat. Refused while a session still runs. */
+  @Test
+  void reportingABugStartsSaInTheChat() {
+    String id = ticket("NYX-8", "Hoàn tiền");
+    tasks.setRepos("shop", id, List.of(), Actor.PMO); // documents only: no worktree in this flow
+    for (String s : List.of("sa_analysis", "awaiting_approval")) {
+      tasks.transition("shop", id, s, Actor.SA);
+    }
+    tasks.writeDoc("shop", id, "plan.md", "- payment-service: PaymentService.java\n", Actor.SA);
+    for (String s : List.of("ready", "in_dev", "sa_verify", "awaiting_push", "done")) {
+      tasks.transition("shop", id, s, s.equals("done") || s.equals("ready") ? Actor.PMO : Actor.SA);
+    }
+    fake.scripts.add(c -> {
+      assertThatThrownBy(() -> agents.reopen("shop", id, "bug", "x")).hasMessageContaining("đang chạy");
+      return "ok";
+    });
+    agents.ask("shop", id, "sa", "Ticket này sửa gì?", false);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.DONE);
+    int before = fake.calls.size();
+
+    assertThatThrownBy(() -> agents.reopen("shop", id, "bug", " ")).hasMessageContaining("Chưa mô tả");
+    assertThat(fake.calls).hasSize(before);
+
+    fake.scripts.add(c -> {
+      assertThat(c.prompt()).contains("REOPEN_BUG", "Hoàn tiền lần 2 bị trùng");
+      return "Đang phân tích";
+    });
+    Task t = agents.reopen("shop", id, "bug", "Hoàn tiền lần 2 bị trùng");
+    assertThat(t.reopened()).isEqualTo(1);
+    assertThat(fake.calls).hasSize(before + 1);
+    List<ChatMessage> chat = agents.chat("shop", id).messages();
+    assertThat(chat.get(chat.size() - 2).text()).isEqualTo("Báo bug: Hoàn tiền lần 2 bị trùng");
+    assertThat(chat.get(chat.size() - 1).from()).isEqualTo("SA");
+    assertThat(chat.get(chat.size() - 1).text()).isEqualTo("Đang phân tích");
   }
 
   @Test
