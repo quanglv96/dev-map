@@ -6,6 +6,7 @@ import { renderConfig } from "./views/config.js";
 import { onAgentEvent, tokens } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
 import { mountSync, onSync, onSyncEvent, renderConflicts, syncStatus } from "./sync.js";
+import { reportFocus, trayActive } from "./tray.js";
 import { renderLog } from "./views/log.js";
 import { renderRules } from "./views/rules.js";
 import { renderNewTask, renderTask } from "./views/task.js";
@@ -27,6 +28,13 @@ let project;
 let tasks = [];
 let refreshGraph = null;
 let activity = { running: [], working: {}, failed: [], questions: {}, queueRunning: false };
+let trayNotifies = false;
+
+// FR-63: a tray link says /<project>?ticket=<id>; inside the page a ticket is the #task= route
+const linkedTicket = new URLSearchParams(location.search).get("ticket");
+if (linkedTicket) {
+  history.replaceState(null, "", `${location.pathname}#task=${encodeURIComponent(linkedTicket)}`);
+}
 
 fill(filterStatus, el("option", { value: "" }, t("allStatus")),
   STATUSES.map((s) => el("option", { value: s }, t(`status.${s}`))));
@@ -71,6 +79,9 @@ const openTask = (id) => () => {
 
 /** Notify when the agent needs the PMO, finished, or failed; only while this tab is in the background. */
 function notifyChanges(before, after) {
+  if (trayNotifies) {
+    return; // the tray icon already says it, also with the browser closed
+  }
   for (const x of tasks) {
     const old = before.get(x.id);
     if (old && old !== x.status && WAITS_FOR_PMO.includes(x.status)) {
@@ -136,7 +147,7 @@ async function renderUsage() {
 
 function mountNotifyButton() {
   const b = document.getElementById("notify-on");
-  b.hidden = !("Notification" in window) || Notification.permission !== "default";
+  b.hidden = trayNotifies || !("Notification" in window) || Notification.permission !== "default";
   b.addEventListener("click", async () => {
     await Notification.requestPermission();
     b.hidden = true;
@@ -385,9 +396,11 @@ try {
   await refreshTasks();
   await refreshActivity(null);
   setHeader();
+  trayNotifies = await trayActive();
   mountNotifyButton();
   await render();
   listen();
+  reportFocus(name, () => (route().view === "task" ? route().id : null));
 } catch (err) {
   document.title = `${name} · DevMap`;
   showError(mid, err.message.startsWith("Không có dự án") ? new Error(t("notFound")) : err);

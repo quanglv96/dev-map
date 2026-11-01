@@ -1,6 +1,7 @@
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
 import { api, el, fill, setFavicon, showError } from "./lib.js";
 import { renderCloneForm, syncPill } from "./sync.js";
+import { renderTraySettings } from "./tray.js";
 
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
@@ -167,6 +168,7 @@ events.addEventListener("sync", (e) => {
   }
 });
 loadOverview();
+renderTraySettings(document.getElementById("tray-settings"));
 
 // FR-46 / FR-57: a new machine clones a project's data repo, or imports a zip; turning sync on is in each project's settings
 renderCloneForm(document.getElementById("sync-clone"), () => loadProjects());
