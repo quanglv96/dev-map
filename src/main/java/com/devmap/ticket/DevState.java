@@ -14,6 +14,10 @@ public record DevState(List<RepoWork> repos, List<String> approved, boolean dire
   public record RepoWork(String repo, String worktree, String branch, String baseBranch, String baseCommit, String gateHead,
       String pushedHead, String pulledAt) {
 
+    RepoWork withWorktree(String path) {
+      return new RepoWork(repo, path, branch, baseBranch, baseCommit, gateHead, pushedHead, pulledAt);
+    }
+
     RepoWork withBase(String commit, String at) {
       return new RepoWork(repo, worktree, branch, baseBranch, commit, null, pushedHead, at);
     }

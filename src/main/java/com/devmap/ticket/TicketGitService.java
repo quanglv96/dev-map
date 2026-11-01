@@ -77,7 +77,7 @@ public class TicketGitService {
     if (t.repos().isEmpty()) {
       throw new IllegalArgumentException("Ticket chưa có repo nào; chọn repo ở cột phải");
     }
-    DevState dev = repo.readDevState(s.folder());
+    DevState dev = tasks.devState(project, s);
     if (!dev.direct() && rules.isProtected(project, t.branch())) {
       throw new IllegalArgumentException("Branch " + t.branch() + " là branch được bảo vệ, không làm trên đó được");
     }
@@ -122,7 +122,7 @@ public class TicketGitService {
   public View view(String project, String id) {
     Stored s = tasks.stored(project, id);
     List<RepoView> out = new ArrayList<>();
-    for (RepoWork w : repo.readDevState(s.folder()).repos()) {
+    for (RepoWork w : tasks.devState(project, s).repos()) {
       Path wt = Path.of(w.worktree());
       if (!Files.exists(wt)) {
         out.add(new RepoView(w.repo(), w.branch(), w.baseBranch(), w.baseCommit(), null, List.of(), List.of(), List.of(), false,
@@ -135,7 +135,7 @@ public class TicketGitService {
       out.add(new RepoView(w.repo(), w.branch(), w.baseBranch(), w.baseCommit(), head, git.log(wt, w.baseCommit(), head),
           git.changedFiles(wt, w.baseCommit(), head), dirty, head.equals(w.gateHead()), w.pushedHead(), w.worktree()));
     }
-    return new View(out, rules.protectedBranches(project), repo.readDevState(s.folder()).direct());
+    return new View(out, rules.protectedBranches(project), tasks.devState(project, s).direct());
   }
 
   /**
@@ -147,7 +147,7 @@ public class TicketGitService {
       throw new PmoOnlyException("Chỉ PMO được chọn đẩy thẳng vào nhánh nền");
     }
     Stored s = tasks.stored(project, id);
-    DevState dev = repo.readDevState(s.folder());
+    DevState dev = tasks.devState(project, s);
     if (!dev.repos().isEmpty()) {
       throw new IllegalArgumentException("Đã tạo worktree, không đổi cách làm branch được nữa");
     }
@@ -160,17 +160,17 @@ public class TicketGitService {
 
   /** Committed changes since the base plus uncommitted ones, for the PMO to read before commit and push. */
   public String diff(String project, String id, String repoName) {
-    RepoWork w = work(tasks.stored(project, id), repoName);
+    RepoWork w = work(project, tasks.stored(project, id), repoName);
     Path wt = Path.of(w.worktree());
     return git.diffText(wt, w.baseCommit(), git.tip(wt, w.branch()), checkedOut(w));
   }
 
   public ScopeCheck checkScope(String project, String id, String repoName) {
     Stored s = tasks.stored(project, id);
-    RepoWork w = work(s, repoName);
+    RepoWork w = work(project, s, repoName);
     List<String> files = git.uncommitted(Path.of(w.worktree()));
     ScopeReport scope = rules.scope(project, repoName, files);
-    List<String> approved = repo.readDevState(s.folder()).approved();
+    List<String> approved = tasks.devState(project, s).approved();
     Set<String> need = new LinkedHashSet<>();
     for (List<String> l : List.of(scope.forbidden(), scope.schema(), scope.dependency())) {
       l.stream().filter(f -> !approved.contains(repoName + ":" + f)).forEach(need::add);
@@ -184,8 +184,8 @@ public class TicketGitService {
       throw new PmoOnlyException("Chỉ PMO được duyệt đổi DB schema, dependency hoặc thư mục cấm");
     }
     Stored s = tasks.stored(project, id);
-    work(s, repoName);
-    DevState dev = repo.readDevState(s.folder());
+    work(project, s, repoName);
+    DevState dev = tasks.devState(project, s);
     Set<String> all = new LinkedHashSet<>(dev.approved());
     files.forEach(f -> all.add(repoName + ":" + f));
     repo.writeDevState(s.folder(), dev.withApproved(List.copyOf(all)));
@@ -212,11 +212,11 @@ public class TicketGitService {
     if (!check.needApproval().isEmpty()) {
       throw new PmoOnlyException("Cần PMO duyệt trước khi commit: " + check.needApproval());
     }
-    RepoWork w = work(s, repoName);
+    RepoWork w = work(project, s, repoName);
     requireCheckedOut(w);
     String text = rules.commitMessage(project, s.task().id(), message);
     git.commitAll(Path.of(w.worktree()), text);
-    DevState dev = repo.readDevState(s.folder());
+    DevState dev = tasks.devState(project, s);
     repo.writeDevState(s.folder(), dev.withApproved(dev.approved().stream().filter(a -> !a.startsWith(repoName + ":")).toList()));
     tasks.history(s, actor, repoName, "git.commit_template, scope",
         repoName + ": commit \"" + text + "\" (" + check.files().size() + " file)");
@@ -228,14 +228,17 @@ public class TicketGitService {
   /** FR-31 / AIR-13: runs the quality gate of every repo of the ticket, writes tests.md, remembers which commit passed. */
   public synchronized List<QualityGate.Result> gate(String project, String id, Actor actor) {
     Stored s = tasks.stored(project, id);
-    DevState dev = repo.readDevState(s.folder());
-    if (dev.repos().isEmpty()) {
+    DevState dev = tasks.devState(project, s);
+    // dev.json also keeps repos of earlier rounds (a reopened ticket may touch fewer): only the ticket's repos now need the gate
+    List<String> names = s.task().repos();
+    List<RepoWork> current = dev.repos().stream().filter(w -> names.contains(w.repo())).toList();
+    if (current.isEmpty()) {
       throw new IllegalArgumentException("Chưa có worktree; bấm Bắt đầu triển khai trước");
     }
+    current.forEach(this::requireCheckedOut); // before any step runs: gates take minutes, fail now rather than after the first repo
     List<QualityGate.Result> all = new ArrayList<>();
     StringBuilder md = new StringBuilder("# Test và quality gate – " + id + "\n\n_Chạy lúc " + now() + "_\n");
-    for (RepoWork w : dev.repos()) {
-      requireCheckedOut(w);
+    for (RepoWork w : current) {
       Path wt = Path.of(w.worktree());
       List<QualityGate.Result> results = rules.runGate(project, w.repo(), wt, git.changedLines(wt, w.baseCommit()));
       List<String> dirty = git.uncommitted(wt);
@@ -259,7 +262,7 @@ public class TicketGitService {
     repo.writeDevState(s.folder(), dev);
     tasks.writeDoc(project, id, "tests.md", md.toString(), Actor.DEVMAP);
     tasks.history(s, actor, null, "quality: tách lớp, phân tích tĩnh, unit test", "Chạy quality gate: "
-        + (dev.repos().stream().allMatch(w -> w.gateHead() != null) ? "đạt" : "không đạt"));
+        + (dev.repos().stream().filter(w -> names.contains(w.repo())).allMatch(w -> w.gateHead() != null) ? "đạt" : "không đạt"));
     tasks.changed(project, id);
     return all;
   }
@@ -276,12 +279,15 @@ public class TicketGitService {
     if (s.task().status() != TaskStatus.AWAITING_PUSH) {
       throw new IllegalArgumentException("Chỉ push khi ticket đang chờ PMO xác nhận");
     }
-    DevState dev = repo.readDevState(s.folder());
+    DevState dev = tasks.devState(project, s);
     for (RepoWork w : dev.repos()) {
       Path wt = Path.of(w.worktree());
       String head = git.tip(wt, w.branch());
       if (head.equals(w.baseCommit()) || head.equals(w.pushedHead())) {
         continue; // nothing to push, or already pushed
+      }
+      if (w.pushedHead() != null && !s.task().repos().contains(w.repo())) {
+        continue; // pushed in an earlier round and no longer part of the ticket: new commits on its branch are not this ticket's
       }
       if (!head.equals(w.gateHead())) {
         throw new IllegalArgumentException(w.repo() + ": commit hiện tại chưa qua quality gate và SA kiểm chứng; trả về Dev");
@@ -310,7 +316,7 @@ public class TicketGitService {
   /** FR-55 step 1, nothing changes: the repos, branches and uncommitted files of a ticket being developed. */
   public List<HandoffRepo> handoffPlan(String project, String id) {
     Stored s = tasks.stored(project, id);
-    DevState dev = requireHandoffable(s);
+    DevState dev = requireHandoffable(project, s);
     List<HandoffRepo> out = new ArrayList<>();
     for (RepoWork w : dev.repos()) {
       requireCheckedOut(w);
@@ -330,7 +336,7 @@ public class TicketGitService {
       throw new PmoOnlyException("Chỉ PMO được xác nhận push để chuyển ticket sang máy khác");
     }
     Stored s = tasks.stored(project, id);
-    DevState dev = requireHandoffable(s);
+    DevState dev = requireHandoffable(project, s);
     for (RepoWork w : dev.repos()) {
       requireCheckedOut(w);
       if (!git.uncommitted(Path.of(w.worktree())).isEmpty()) {
@@ -368,7 +374,7 @@ public class TicketGitService {
       throw new IllegalArgumentException("Ticket không có handoff để làm tiếp");
     }
     Project p = tasks.project(project);
-    DevState dev = repo.readDevState(s.folder());
+    DevState dev = tasks.devState(project, s);
     for (Task.Handoff.Repo hr : h.repos()) {
       RepoConfig rc = repoConfig(p, hr.repo());
       Path main = rc.dir();
@@ -394,11 +400,11 @@ public class TicketGitService {
     return view(project, id);
   }
 
-  private DevState requireHandoffable(Stored s) {
+  private DevState requireHandoffable(String project, Stored s) {
     if (s.task().status() != TaskStatus.IN_DEV) {
       throw new IllegalArgumentException("Chỉ chuyển máy được khi ticket đang Dev triển khai");
     }
-    DevState dev = repo.readDevState(s.folder());
+    DevState dev = tasks.devState(project, s);
     if (dev.repos().isEmpty()) {
       throw new IllegalArgumentException("Ticket chưa có repo nào được checkout; chưa có gì để chuyển");
     }
@@ -489,8 +495,8 @@ public class TicketGitService {
     return stash;
   }
 
-  private RepoWork work(Stored s, String repoName) {
-    RepoWork w = repo.readDevState(s.folder()).repo(repoName);
+  private RepoWork work(String project, Stored s, String repoName) {
+    RepoWork w = tasks.devState(project, s).repo(repoName);
     if (w == null) {
       throw new NoSuchElementException(repoName + ": chưa có worktree");
     }

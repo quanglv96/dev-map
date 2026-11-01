@@ -395,3 +395,9 @@ PMO giữ phương án chốt xong vào hàng đợi chờ Dev, đổi câu ch�
 - Cột giữa mở mặc định chỉ có Chat. Mục "Code" (commit, file, diff, form commit) chuyển thành tab "Code", chỉ có khi ticket đã có repo làm việc. Thẻ xác nhận push/bàn giao vẫn hiện ở cột giữa, chỉ khi PMO bấm nút đó.
 - Quality gate nằm ở cột phải: dòng "Quality gate" hiện kết quả từng repo kèm liên kết mở tab Code; khi đang triển khai, nút "Chạy quality gate" đứng ngay dưới "Dev triển khai" và báo đang chạy.
 - **Nhảy scroll**: mỗi lần làm mới, `renderTask` xoá cột giữa rồi mới tải lại tab nên cột ngắn đi và trình duyệt kéo scroll về đầu. Giờ tab được dựng xong ngoài trang rồi thay một lần; lần làm mới cũ hơn bị bỏ qua. Chat chỉ tự xuống cuối khi PMO đang ở cuối, tin đã xong giữ nguyên phần tử nên bước đã mở không bị đóng.
+
+## D-59 dev.json đồng bộ giữa các máy, ticket mở lại chỉ gate repo đang làm
+Lỗi "repo đang ở nhánh null": `dev.json` đi theo folder dữ liệu nên giữ đường dẫn repo của máy kia; ticket mở lại chỉ còn một repo nên "Pull nhánh nền" không ghi lại đường dẫn repo cũ, còn gate vẫn chạy mọi repo trong `dev.json` và dừng ở đó.
+- Đọc `dev.json` qua `TaskService.devState`: đường dẫn không có trên máy này thì dùng đường dẫn repo của máy này (`workspaces.yml`); đường dẫn có thật (worktree cũ của máy này) giữ nguyên.
+- Gate chỉ chạy repo trong `repos` của ticket, cùng phạm vi với cổng sang `sa_verify`, và kiểm nhánh mọi repo trước khi chạy bước nào. Repo ra khỏi ticket mà đã push ở vòng trước thì "Xác nhận push" bỏ qua; repo ra khỏi ticket mà chưa từng push vẫn bị chặn như cũ để không mất commit.
+- `prompts/dev.md`: commit trước, gate sau. Thứ tự cũ không đạt được vì gate chỉ tính khi đã commit hết và phải đúng commit hiện tại.

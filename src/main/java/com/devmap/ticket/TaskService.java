@@ -134,10 +134,10 @@ public class TaskService {
       throw new IllegalArgumentException("Chưa có plan.md, chưa chốt được giải pháp");
     }
     if (from == TaskStatus.IN_DEV && to == TaskStatus.SA_VERIFY) {
-      requireGatePassed(s);
+      requireGatePassed(project, s);
     }
     if (to == TaskStatus.DONE) {
-      requirePushed(s);
+      requirePushed(project, s);
     }
     Task updated = s.task().withStatus(to, now());
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
@@ -252,8 +252,8 @@ public class TaskService {
   }
 
   /** AIR-13 / FR-31: SA verifies only code whose current commit passed the quality gate, with nothing left uncommitted. */
-  private void requireGatePassed(Stored s) {
-    DevState dev = repo.readDevState(s.folder());
+  private void requireGatePassed(String project, Stored s) {
+    DevState dev = devState(project, s);
     List<String> problems = new ArrayList<>();
     for (String name : s.task().repos()) {
       DevState.RepoWork w = dev.repo(name);
@@ -274,8 +274,8 @@ public class TaskService {
   }
 
   /** FR-27: Done only after the verified commit of every changed repo was pushed through "Xác nhận push". */
-  private void requirePushed(Stored s) {
-    List<String> missing = repo.readDevState(s.folder()).repos().stream()
+  private void requirePushed(String project, Stored s) {
+    List<String> missing = devState(project, s).repos().stream()
         .filter(w -> !git.tip(Path.of(w.worktree()), w.branch()).equals(w.baseCommit()))
         .filter(w -> w.pushedHead() == null || !w.pushedHead().equals(w.gateHead()))
         .map(DevState.RepoWork::repo).toList();
@@ -407,6 +407,22 @@ public class TaskService {
   /** The ticket folder in the data folder (chat.json lives there next to the documents). */
   public Path folder(String project, String id) {
     return stored(project, id).folder();
+  }
+
+  /**
+   * dev.json syncs with the data folder, so a repo's path may be the other machine's. A path missing here means this machine's
+   * copy of that repo (workspaces.yml); a path that exists, such as an old worktree of this machine, stays as it is.
+   */
+  DevState devState(String project, Stored s) {
+    DevState dev = repo.readDevState(s.folder());
+    List<RepoConfig> known = project(project).config().repos();
+    return new DevState(dev.repos().stream().map(w -> {
+      if (Files.exists(Path.of(w.worktree()))) {
+        return w;
+      }
+      return known.stream().filter(r -> r.name().equals(w.repo()) && r.path() != null && !r.path().isBlank()).findFirst()
+          .map(r -> w.withWorktree(r.dir().toString().replace('\\', '/'))).orElse(w);
+    }).toList(), dev.approved(), dev.direct());
   }
 
   Stored stored(String project, String id) {

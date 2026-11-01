@@ -195,6 +195,44 @@ class TicketGitServiceTest {
     assertThat(git.run(repos.resolve("payment-service"), "branch", "--show-current").output()).isEqualTo("main");
   }
 
+  /**
+   * dev.json came from another machine and the reopened ticket touches one repo: the gate runs only on that repo, the other's path
+   * means this machine's copy (no "nhánh null"), and new commits on the other's base branch do not block the push.
+   */
+  @Test
+  void reopenedTicketWithARepoPathFromAnotherMachine() throws Exception {
+    String id = readyTicket();
+    dev.setDirect("shop", id, true, Actor.PMO);
+    dev.start("shop", id, Actor.PMO);
+    Path payment = repos.resolve("payment-service");
+    Path order = repos.resolve("order-service");
+    Path folder = tasks.stored("shop", id).folder();
+    TaskRepository taskRepo = new TaskRepository();
+    DevState state = taskRepo.readDevState(folder);
+    DevState.RepoWork other = state.repo("payment-service");
+    String pushed = git.head(payment);
+    taskRepo.writeDevState(folder, state.with(new DevState.RepoWork(other.repo(), "Z:/other-machine/payment-service", other.branch(),
+        other.baseBranch(), other.baseCommit(), pushed, pushed, other.pulledAt())));
+    tasks.setRepos("shop", id, List.of("order-service"), Actor.PMO);
+
+    assertThat(dev.view("shop", id).repos()).filteredOn(r -> r.repo().equals("payment-service")).singleElement()
+        .satisfies(r -> {
+          assertThat(Path.of(r.worktree())).isEqualTo(payment);
+          assertThat(r.head()).isEqualTo(pushed);
+        });
+    assertThat(dev.diff("shop", id, "payment-service")).isNotNull();
+
+    Files.writeString(order.resolve("CHANGELOG.md"), "refund\n");
+    dev.commit("shop", id, "order-service", "changelog", Actor.DEV);
+    assertThat(dev.gate("shop", id, Actor.DEV)).isNotEmpty().allMatch(r -> !r.service().equals("payment-service"));
+    tasks.transition("shop", id, "sa_verify", Actor.DEV);
+    tasks.transition("shop", id, "awaiting_push", Actor.SA);
+    SampleRepos.commit(payment, "main", Map.of("OTHER.md", "from a teammate\n"));
+    dev.confirmPush("shop", id, Actor.PMO);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.DONE);
+    assertThat(git.run(tmp.resolve("origin/payment-service.git"), "rev-parse", "refs/heads/main").output()).isEqualTo(pushed);
+  }
+
   /** A ticket begun in an old detached worktree: pulling the base moves its uncommitted code into the service repo, losing none. */
   @Test
   void oldWorktreeChangesMoveIntoTheServiceRepo() throws Exception {
