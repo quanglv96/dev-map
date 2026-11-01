@@ -142,6 +142,80 @@ class SyncServiceTest {
     assertThat(a.events).anySatisfy(e -> assertThat(((SyncService.SyncChanged) e).pulled()).isTrue());
   }
 
+  /** A repo pushed under D-52: the project sits in shop/ of the repo instead of its root. */
+  private void pushNestedProject(boolean withRootConfig) throws Exception {
+    Machine a = machineA();
+    String id = ticket(a);
+    a.tasks.writeDoc("shop", id, "analysis.md", "# Phân tích của A\n", Actor.SA);
+    a.sync.syncNow("shop");
+    Path work = tmp.resolve("nesting");
+    git.run(tmp, "clone", "-q", remote, work.toString());
+    git.run(work, "config", "user.name", "devmap-test");
+    git.run(work, "config", "user.email", "devmap@example.invalid");
+    Files.createDirectories(work.resolve("shop"));
+    for (String top : List.of("config.yml", "tasks", "project.md")) {
+      git.run(work, "mv", top, "shop/" + top);
+    }
+    if (withRootConfig) {
+      Files.copy(work.resolve("shop/config.yml"), work.resolve("config.yml"));
+      git.run(work, "add", "config.yml");
+    }
+    assertThat(git.run(work, "commit", "-q", "-am", "layout D-52").ok()).isTrue();
+    assertThat(git.run(work, "push", "-q", "origin", "HEAD:main").ok()).isTrue();
+  }
+
+  /** Clone of a D-52 repo: tickets are found though they were pushed under shop/, and the root layout goes back to the remote. */
+  @Test
+  void cloneMovesNestedProjectToTheRoot() throws Exception {
+    pushNestedProject(false);
+    Machine b = machineB();
+    assertThat(b.tasks.list("shop")).hasSize(1);
+    assertThat(b.tasks.readDoc("shop", b.tasks.list("shop").get(0).id(), "analysis.md").content()).isEqualTo("# Phân tích của A\n");
+    assertThat(b.data.resolve("shop/shop")).doesNotExist();
+
+    assertThat(b.sync.syncNow("shop").state()).isEqualTo(State.SYNCED);
+    assertThat(inRemote("ls-tree", "-r", "--name-only", "main")).contains("tasks/").doesNotContain("shop/tasks/");
+  }
+
+  /** A pull that brings shop/tasks next to the root config.yml: the tickets show up; a differing file is kept twice. */
+  @Test
+  void pullMovesNestedProjectToTheRootKeepingBothVersions() throws Exception {
+    Path repos = SampleRepos.create(tmp.resolve("machineB/code"));
+    Machine b = new Machine("machineB");
+    Files.createDirectories(b.data);
+    b.projects.create("shop", b.data, "#112233", List.of(new RepoInput(repos.resolve("order-service").toString(), "test")));
+    pushNestedProject(true);
+    b.sync.initSync("shop", remote);
+    b.identity();
+
+    Status st = b.sync.syncNow("shop");
+    assertThat(b.tasks.list("shop")).hasSize(1);
+    assertThat(b.data.resolve("shop/shop/tasks")).doesNotExist();
+    assertThat(st.conflicts()).extracting(SyncService.Conflict::file).containsExactly("config.yml");
+    assertThat(st.conflicts().get(0).conflictFile()).isEqualTo("config.conflict-machineB.yml");
+  }
+
+  /** Each machine picks its own folder: cloning a project known here under another path points it at the clone. */
+  @Test
+  void cloneIntoAnotherFolderRepointsAKnownProject() throws Exception {
+    Machine a = machineA();
+    String id = ticket(a);
+    a.sync.syncNow("shop");
+
+    Machine b = new Machine("machineB");
+    Path old = tmp.resolve("machineB/old-data");
+    Files.createDirectories(old);
+    b.projects.create("shop", old, "#112233", List.of());
+    Path elsewhere = tmp.resolve("machineB/ten-khac");
+
+    SyncService.Setup setup = b.sync.cloneProject(remote, elsewhere);
+
+    assertThat(b.projects.get("shop").dataDir()).isEqualTo(elsewhere.resolve("shop").toString().replace('\\', '/'));
+    assertThat(b.tasks.list("shop")).extracting(t -> t.id()).contains(id);
+    assertThat(setup.warning()).contains(old.resolve("shop").toString().replace('\\', '/'));
+    assertThat(old.resolve("shop/config.yml")).exists();
+  }
+
   /** FR-47: one ticket file → data(<project>/<ticket>): <action>; changes settle for one tick before they are committed. */
   @Test
   void commitMessageNamesProjectTicketAndAction() throws Exception {

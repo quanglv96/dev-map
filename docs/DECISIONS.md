@@ -361,6 +361,8 @@ PMO yêu cầu: cấu hình đồng bộ riêng cho từng dự án, không chun
 - **CLI**: `devmap sync <dự án>`, `devmap data init-sync <dự án> <remote>`, `devmap data clone <remote> [folder gốc]`.
 - **Giao diện**: thanh đồng bộ ở trang dự án là của dự án đó; bật đồng bộ và auto push ở **Cấu hình dự án**; trang chủ hiện nhãn trạng thái cạnh từng dự án và form **Clone dự án từ repo dữ liệu** cho máy mới.
 - `ponytail:` repo gốc kiểu D-52 (đã init ở folder cha) không được migrate tự động: nó ngừng đồng bộ; bật lại từng dự án ở Cấu hình dự án (mỗi dự án một remote mới). Xoá `.git` của folder cha nếu không dùng nữa.
+- **Remote còn layout D-52** (dự án nằm ở `<tên>/` trong repo, task không hiện vì DevMap đọc `tasks/` ở gốc): sau mỗi pull và khi clone, `<tên>/` có `config.yml` của đúng dự án thì được chuyển lên gốc rồi commit, đẩy lại. File gốc đã có mà khác nội dung thì giữ bản gốc, bản lồng thành `*.conflict-<máy>.*` để PMO chọn ở giao diện xung đột. File không đồng bộ (`graph/`, `logs/`…) ở lại chỗ cũ. Máy khác đang giữ khoá thì không chuyển (chỉ xem không commit), chờ "Chiếm quyền". Repo D-52 chứa nhiều dự án: clone báo lỗi nêu tên các dự án.
+- **Clone vào path khác trên máy đã có dự án**: đăng ký trỏ sang folder vừa clone (giữ `auto_push`), folder cũ không bị xoá và được nêu trong cảnh báo.
 
 ## D-54 Không hiện giao diện cũ sau khi cập nhật DevMap
 Máy khác clone + `setup.cmd` vẫn thấy giao diện cũ. Nguyên nhân có thể: trình duyệt dùng lại JS/CSS đã cache cho `localhost:7070`; một `devmap serve` cũ còn chạy và `devmap` mở lại link của nó; `bin\devmap.jar` cũ hoặc thư mục DevMap khác nằm trước trên PATH.

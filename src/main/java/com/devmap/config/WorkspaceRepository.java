@@ -91,6 +91,11 @@ public class WorkspaceRepository {
     saveAll(findAll().stream().map(w -> w.name().equals(project) ? new Workspace(w.name(), w.dataDir(), on) : w).toList());
   }
 
+  /** The project's data folder is now dir on this machine; its other settings stay. */
+  public synchronized void moveProject(String project, String dir) {
+    saveAll(findAll().stream().map(w -> w.name().equals(project) ? new Workspace(w.name(), dir, w.autoPush()) : w).toList());
+  }
+
   public String repoPath(String key) {
     return read().repos().get(key);
   }

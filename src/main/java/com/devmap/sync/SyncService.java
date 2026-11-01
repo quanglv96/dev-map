@@ -39,6 +39,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -174,12 +175,12 @@ public class SyncService {
     data.cloneTo(remote, tmp);
     String name;
     try {
-      name = Files.exists(tmp.resolve("config.yml")) ? Yaml.readTree(tmp.resolve("config.yml")).path("project").asText(null) : null;
-      if (name == null || name.isBlank()) {
-        throw new IllegalArgumentException("Repo " + remote + " không phải dữ liệu một dự án DevMap (thiếu config.yml)");
-      }
+      name = clonedProject(remote, tmp);
       if (Files.exists(root.resolve(name))) {
         throw new IllegalArgumentException("Đã có folder " + root.resolve(name) + "; không ghi đè");
+      }
+      if (nestedProject(tmp, name)) {
+        data.flatten(tmp, name, machine());
       }
       Files.move(tmp, root.resolve(name));
     } catch (IOException e) {
@@ -189,19 +190,64 @@ public class SyncService {
       DataRepo.deleteTree(tmp);
       throw e;
     }
-    if (workspaces.findAll().stream().map(Workspace::name).noneMatch(name::equals)) {
-      projects.create(name, root, null, List.of());
-    }
+    String oldDir = registerClone(name, root);
     if (workspaces.dataDir() == null) {
       workspaces.setDataDir(slash(root));
     }
+    syncs.remove(name); // state of the previous folder
     ProjectSync s = of(name);
     s.commitPending(true);
     s.lastSync = Instant.now(clock);
     s.refresh();
-    s.warning = publicWarning(remote);
+    s.warning = joinWarnings(oldDir == null ? null : "Dự án " + name + " chuyển sang folder vừa clone; dữ liệu cũ vẫn ở " + oldDir
+        + " nhưng không còn được dùng", publicWarning(remote));
     s.publishIfChanged(true);
     return new Setup(s.status(), s.warning);
+  }
+
+  /** Each machine keeps the data where it likes: a project known here under another folder now points at the clone. */
+  private String registerClone(String name, Path root) {
+    Workspace known = workspaces.findAll().stream().filter(w -> w.name().equals(name)).findFirst().orElse(null);
+    if (known == null) {
+      projects.create(name, root, null, List.of());
+      return null;
+    }
+    workspaces.moveProject(name, slash(root.resolve(name)));
+    return Files.exists(Path.of(known.dataDir())) ? known.dataDir() : null;
+  }
+
+  /** The project in the repo root, else the only one in a sub-folder (a repo pushed under D-52, when the data root was the repo). */
+  private String clonedProject(String remote, Path repo) throws IOException {
+    String name = projectIn(repo);
+    if (name != null) {
+      return name;
+    }
+    try (Stream<Path> children = Files.list(repo)) {
+      List<String> nested = children.filter(Files::isDirectory).map(SyncService::projectIn).filter(Objects::nonNull).sorted().toList();
+      if (nested.size() > 1) {
+        throw new IllegalArgumentException("Repo " + remote + " chứa nhiều dự án (" + String.join(", ", nested)
+            + "); mỗi dự án cần một repo dữ liệu riêng");
+      }
+      if (nested.isEmpty()) {
+        throw new IllegalArgumentException("Repo " + remote + " không phải dữ liệu một dự án DevMap (thiếu config.yml)");
+      }
+      return nested.get(0);
+    }
+  }
+
+  /** The project named by dir/config.yml, null when there is none. */
+  private static String projectIn(Path dir) {
+    Path config = dir.resolve("config.yml");
+    String name = Files.isRegularFile(config) ? Yaml.readTree(config).path("project").asText(null) : null;
+    return name == null || name.isBlank() ? null : name;
+  }
+
+  private static boolean nestedProject(Path root, String project) {
+    return project.equals(projectIn(root.resolve(project)));
+  }
+
+  private static String joinWarnings(String first, String second) {
+    return first == null ? second : second == null ? first : first + ". " + second;
   }
 
   public synchronized void setAutoPush(String project, boolean on) {
@@ -577,11 +623,23 @@ public class SyncService {
         lastError = null;
         message = created.isEmpty() ? null : "Có xung đột, đã giữ cả hai bản: " + String.join(", ", created);
         lastSync = Instant.now(clock);
+        flattenNested();
         boolean pulled = !before.equals(data.head(root));
         refresh();
         publishIfChanged(pulled);
       } finally {
         syncing = false;
+      }
+    }
+
+    /** The repo brought the project in a sub-folder (pushed under D-52): move it to the root, unless another machine holds the lock. */
+    void flattenNested() {
+      Path root = root();
+      Lock lock = data.readLock(root);
+      boolean mayWrite = !readOnly && (lock == null || mine(lock) || expired(lock));
+      if (mayWrite && nestedProject(root, name) && data.flatten(root, name, machine())) {
+        LOG.info("Đã chuyển dữ liệu {} từ {}/ lên gốc repo", name, name);
+        commitPending(true);
       }
     }
 
@@ -664,7 +722,11 @@ public class SyncService {
       lockChoice = false;
       lockMessage = null;
       writeLock(Instant.now(clock));
-      publishIfChanged(false);
+      flattenNested();
+      if (pushAllowed() && data.ahead(root()) > 0) {
+        push(false);
+      }
+      publishIfChanged(true);
       return status();
     }
 

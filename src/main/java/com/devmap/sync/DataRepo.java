@@ -290,6 +290,56 @@ public class DataRepo {
     }
   }
 
+  /**
+   * D-53: moves the project a D-52 repo kept in {@code <nested>/} up to the repo root, where DevMap reads it. A file the root already
+   * has with other content stays, the nested one becomes {@code <name>.conflict-<machine>.<ext>}. Files that are never synced stay
+   * where they are. Returns true when something moved; nothing is committed here.
+   */
+  public boolean flatten(Path root, String nested, String machine) {
+    Path from = root.resolve(nested);
+    try (Stream<Path> walk = Files.walk(from)) {
+      List<Path> files = walk.filter(Files::isRegularFile).toList();
+      boolean moved = false;
+      for (Path f : files) {
+        String rel = from.relativize(f).toString().replace('\\', '/');
+        if (rel.equals(LOCK) || rel.equals(".gitignore")) {
+          Files.delete(f); // the repo root has its own
+          moved = true;
+        } else if (!ignored(rel)) {
+          moveUp(f, root.resolve(rel), machine);
+          moved = true;
+        }
+      }
+      deleteEmptyDirs(from);
+      return moved;
+    } catch (IOException e) {
+      throw new UncheckedIOException("Không chuyển được dữ liệu từ " + from + " lên gốc repo: " + e.getMessage(), e);
+    }
+  }
+
+  private static void moveUp(Path file, Path target, String machine) throws IOException {
+    Files.createDirectories(target.getParent());
+    if (!Files.exists(target)) {
+      Files.move(file, target);
+    } else if (Files.mismatch(file, target) == -1) {
+      Files.delete(file);
+    } else {
+      Files.move(file, conflictCopy(target, machine));
+    }
+  }
+
+  private static void deleteEmptyDirs(Path dir) throws IOException {
+    try (Stream<Path> walk = Files.walk(dir)) {
+      for (Path d : walk.filter(Files::isDirectory).sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList()) {
+        try (Stream<Path> children = Files.list(d)) {
+          if (children.findAny().isEmpty()) {
+            Files.delete(d);
+          }
+        }
+      }
+    }
+  }
+
   private static Path conflictCopy(Path file, String machine) {
     String name = file.getFileName().toString();
     int dot = name.lastIndexOf('.');
