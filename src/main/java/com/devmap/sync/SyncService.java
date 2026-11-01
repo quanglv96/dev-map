@@ -127,6 +127,25 @@ public class SyncService {
     }
   }
 
+  /**
+   * FR-67, quitting from the tray: no more ticks, and every lock this machine holds is removed from the data repo so another machine
+   * need not wait out the 10 minutes. One project failing (no network) leaves its lock to expire as usual.
+   */
+  public synchronized void releaseLocks() {
+    if (ticker != null) {
+      ticker.shutdown();
+    }
+    for (Workspace w : workspaces.findAll()) {
+      if (enabled(w.name())) {
+        try {
+          of(w.name()).releaseLock();
+        } catch (RuntimeException e) {
+          LOG.warn("Chưa nhả được khoá của {}: {}", w.name(), e.getMessage());
+        }
+      }
+    }
+  }
+
   /** One background step for every synced project. */
   synchronized void tick() {
     for (Workspace w : workspaces.findAll()) {
@@ -736,6 +755,17 @@ public class SyncService {
       Instant now = Instant.now(clock);
       data.writeLock(root(), new Lock(machine(), since.toString(), now.toString()));
       lastHeartbeat = now;
+      if (commitPending(true) && pushAllowed()) {
+        push(false);
+      }
+    }
+
+    void releaseLock() {
+      Lock lock = data.readLock(root());
+      if (readOnly || lock == null || !mine(lock)) {
+        return;
+      }
+      data.deleteLock(root());
       if (commitPending(true) && pushAllowed()) {
         push(false);
       }

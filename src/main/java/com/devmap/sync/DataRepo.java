@@ -394,6 +394,14 @@ public class DataRepo {
     }
   }
 
+  public void deleteLock(Path root) {
+    try {
+      Files.deleteIfExists(root.resolve(LOCK));
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
   /** FR-50 for export: the same exclusions as .gitignore. */
   public static boolean ignored(String relPath) {
     String[] parts = relPath.replace('\\', '/').split("/");

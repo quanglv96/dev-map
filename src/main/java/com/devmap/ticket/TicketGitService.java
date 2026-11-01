@@ -47,6 +47,10 @@ public class TicketGitService {
   public record BasePulled(String project) {
   }
 
+  /** The quality gate of a ticket did not pass: the tray tells the PMO (FR-64). */
+  public record GateFailed(String project, String taskId) {
+  }
+
   private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
   private final TaskService tasks;
@@ -261,9 +265,12 @@ public class TicketGitService {
     }
     repo.writeDevState(s.folder(), dev);
     tasks.writeDoc(project, id, "tests.md", md.toString(), Actor.DEVMAP);
-    tasks.history(s, actor, null, "quality: tách lớp, phân tích tĩnh, unit test", "Chạy quality gate: "
-        + (dev.repos().stream().filter(w -> names.contains(w.repo())).allMatch(w -> w.gateHead() != null) ? "đạt" : "không đạt"));
+    boolean passed = dev.repos().stream().filter(w -> names.contains(w.repo())).allMatch(w -> w.gateHead() != null);
+    tasks.history(s, actor, null, "quality: tách lớp, phân tích tĩnh, unit test", "Chạy quality gate: " + (passed ? "đạt" : "không đạt"));
     tasks.changed(project, id);
+    if (!passed) {
+      events.publishEvent(new GateFailed(project, id));
+    }
     return all;
   }
 

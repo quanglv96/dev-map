@@ -259,6 +259,30 @@ class SyncServiceTest {
     assertThat(a.sync.commitPending("shop", false)).as("same on the next tick: settled").isTrue();
   }
 
+  /** FR-67: the lock leaves the data repo with the machine. */
+  @Test
+  void quittingReleasesTheLockSoTheOtherMachineNeedNotWait() throws Exception {
+    Machine a = machineA();
+    a.sync.tick();
+    assertThat(inRemote("show", "main:" + DataRepo.LOCK)).contains("machineA");
+    a.sync.releaseLocks();
+    assertThat(inRemote("ls-tree", "--name-only", "main")).doesNotContain(DataRepo.LOCK);
+    Machine b = machineB();
+    b.sync.tick();
+    assertThat(b.sync.readOnly("shop")).isFalse();
+  }
+
+  /** FR-67: a machine that does not hold the lock leaves it alone. */
+  @Test
+  void quittingLeavesAnotherMachinesLock() throws Exception {
+    Machine a = machineA();
+    a.sync.tick();
+    Machine b = machineB();
+    b.sync.tick();
+    b.sync.releaseLocks();
+    assertThat(inRemote("show", "main:" + DataRepo.LOCK)).contains("machineA");
+  }
+
   /** AC-16: A holds the lock → B warned and read-only; B takes over → A read-only; 10 min without heartbeat = expired. */
   @Test
   void softLockWarnsTakesOverAndExpires() throws Exception {
