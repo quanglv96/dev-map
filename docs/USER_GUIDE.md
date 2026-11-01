@@ -144,3 +144,27 @@ Hai máy cùng sửa một file khi chưa đồng bộ: bản đã lên remote g
 **Không dùng git**
 
 Cấu hình dự án → **Xuất dữ liệu dự án (zip)** (hoặc `devmap data export nyxhub`), sang máy kia: trang chủ → **Nhập** (hoặc `devmap data import devmap-nyxhub.zip --data D:/devmap-data`). Zip không có graph/cache/log; nhập không ghi đè dự án đã có.
+
+## 10. Biểu tượng khay và thông báo
+
+Chạy `DevMap.cmd` ở thư mục DevMap: không có cửa sổ terminal (chỉ loé rất ngắn khi khởi động), biểu tượng hiện ở góc phải thanh taskbar. Nếu Windows ẩn biểu tượng, bấm mũi tên `^` và kéo nó ra ngoài. Cần xem log trực tiếp thì chạy `DevMap-console.cmd`; log của `DevMap.cmd` nằm ở `~/.devmap/logs/devmap.log`. Chạy `DevMap.cmd` lần nữa chỉ mở trình duyệt.
+
+**Đóng hết tab không còn tắt DevMap khi có biểu tượng**, để vẫn nhận được thông báo. Tắt bằng menu **Thoát DevMap**. Chạy với `--no-tray` hoặc trên máy không có khay thì vẫn tự tắt như mục 3.
+
+| Biểu tượng | Ý nghĩa |
+| --- | --- |
+| Không có dấu | Không có gì cần làm |
+| Chấm đỏ kèm số | Số việc chờ bạn: chốt giải pháp, xác nhận push, trả lời câu hỏi (trên 9 hiện `9+`) |
+| Chấm đỏ có dấu ✕ | Agent lỗi, đồng bộ lỗi hoặc xung đột |
+| Chấm vàng | Agent đang chạy |
+
+Có nhiều trạng thái cùng lúc thì ưu tiên số, rồi đến lỗi, rồi đến chấm vàng. Rê chuột để xem số việc và số agent; double-click để mở trang chủ; chuột phải để mở menu.
+
+**Popup hiện khi**: chờ chốt giải pháp, agent hỏi lại nghiệp vụ, SA kiểm chứng xong chờ xác nhận push, agent lỗi hoặc quality gate không đạt, xung đột đồng bộ hoặc máy khác giữ quyền. Bấm popup để mở đúng ticket mà không phải nhập token. Popup chỉ có tên dự án, mã ticket và trạng thái ngắn, không có code hay nội dung phân tích.
+
+- Nhiều việc trong 10 giây gộp thành `Có 3 việc chờ bạn`; cùng một việc không báo lại trong 5 phút, nên popup có thể hiện chậm tối đa khoảng 10 giây.
+- Đang mở đúng ticket đó ở tab đang hiển thị thì không có popup.
+- **Trang chủ → Thông báo Windows**: bật/tắt theo loại sự kiện và dự án, đặt giờ yên lặng (mặc định 22:00–07:00; trong giờ này không popup, kể cả lỗi, biểu tượng vẫn cập nhật). Lưu ở `~/.devmap/notifications.yml`, không đồng bộ giữa các máy.
+- **Menu → Tạm tắt thông báo**: 1 giờ, đến 7 giờ sáng, hoặc bật lại.
+- **Menu → Khởi động cùng Windows**: tạo hoặc xoá shortcut trong thư mục Startup của bạn (không sửa registry, không cần quyền admin). Khi đó DevMap chạy nền, không tự mở trình duyệt. Shortcut lưu đường dẫn jar hiện tại; chuyển thư mục DevMap thì tắt và bật lại.
+- **Menu → Thoát DevMap**: còn agent đang chạy thì hỏi xác nhận; thoát sẽ dừng agent và nhả khoá đồng bộ để máy khác mở được ngay.

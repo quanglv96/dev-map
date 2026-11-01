@@ -270,3 +270,28 @@ Hai "máy" giả lập trong thư mục tạm của test: `machineA/`, `machineB
 4. Rút mạng cả hai máy, cùng sửa analysis.md của một ticket (Cấu hình → sửa tay hoặc qua agent): thanh trên "Có thay đổi chưa đẩy". Cắm mạng, Đồng bộ ngay ở cả hai: ticket có nhãn đỏ "Có xung đột"; mở ticket thấy hai bản cạnh nhau; Lưu bản ghép → nhãn mất ở cả hai máy sau lần đồng bộ sau.
 5. Ticket đang Dev triển khai trên A: Chuyển sang máy khác → thẻ liệt kê repo/branch/file → Xác nhận push và chuyển. Máy B: mở ticket → Tiếp tục trên máy này → `git log -1` trong repo service của B là commit WIP.
 6. `~/.devmap/workspaces.yml` máy A: `sync: {auto_push: false}`, khởi động lại; sửa một tài liệu → thanh trên có thẻ "… commit dữ liệu chờ đẩy" và nút Đẩy lên remote.
+
+## Biểu tượng khay và thông báo (TRAY, `docs/CHANGE-TRAY.md`)
+
+| Test | Kiểm |
+| --- | --- |
+| `NotificationTest.importantChangesRaiseANotice`, `lightEventsAndStatesThatJustStayRaiseNothing` | AC-21: đúng loại thì báo; agent xong bước, đồng bộ xong, ticket đứng yên không báo |
+| `NotificationTest.quietHoursCrossMidnightAndHoldForErrorsToo`, `snoozeEndsByItself`, `kindsAndProjectsTurnOffOneByOne` | AC-21: giờ yên lặng, tạm tắt, bật/tắt theo loại và dự án |
+| `NotificationTest.theTicketOnScreenDoesNotPopUp`, `TrayServiceTest.theTicketOpenInAVisibleTabStaysQuiet` | FR-65: đang mở đúng ticket thì không popup |
+| `NotificationTest.threeEventsInTenSecondsBecomeOneNotification`, `theSameEventOfTheSameTicketWaitsFiveMinutes` | AC-22 |
+| `NotificationTest.aTokenInAnEventNeverReachesTheScreen`, `noticesCarryFixedLinesOnly` | AC-23 |
+| `TrayTest.withoutATrayTheNotifierDeclinesQuietly`, `WebTest.serverRunsWithoutATray` | AC-24 |
+| `TrayServiceTest` | Ticket thật qua notifier giả: popup, số việc, việc có từ trước khi chạy, giờ yên lặng, gate không đạt |
+| `TrayTest.eachStateIsDrawnAtEachSize`, `picksThePreparedSizeForTheScreenScale` | FR-59: 4 trạng thái ở 16/24/32 px |
+| `TrayTest.autostartWritesAndRemovesTheShortcut` | FR-70: tạo và xoá `.lnk` thật ở thư mục tạm (chỉ Windows) |
+| `WebTest.oneTimeLinkLogsInOnceAndKeepsTheTicket`, `TrayTest.loginLinksWorkOnceAndExpire` | Link khay dùng một lần, hết hạn, giữ ticket |
+| `SyncServiceTest.quittingReleasesTheLockSoTheOtherMachineNeedNotWait`, `quittingLeavesAnotherMachinesLock` | FR-67: nhả đúng khoá của máy này |
+
+**K-11 (kiểm bằng tay trên Windows 10 và Windows 11, có ảnh chụp nếu được)** — chưa chạy
+
+- [ ] **AC-25** Chạy `DevMap.cmd`: không còn cửa sổ terminal sau khi khởi động; biểu tượng hiện ở khay, rõ nét ở 100% và 150% DPI.
+- [ ] **AC-26** Đóng trình duyệt, cho agent chạy tới bước cần chốt giải pháp: toast hiện ở góc màn hình; bấm vào mở đúng dự án, đúng ticket, không phải nhập token.
+- [ ] **AC-27** Biểu tượng hiện chấm đỏ kèm số việc chờ; hết việc chờ thì chấm mất.
+- [ ] **AC-28** Menu chuột phải hiển thị đúng tiếng Việt có dấu; "Việc chờ bạn" mở đúng ticket; Thoát hỏi xác nhận khi còn agent chạy; sau khi thoát biểu tượng mất và Task Manager không còn `javaw`.
+- [ ] **AC-29** Chạy `DevMap.cmd` lần hai: không có server thứ hai, trình duyệt mở ra.
+- [ ] **AC-30** Bật "Khởi động cùng Windows", đăng xuất rồi đăng nhập lại: DevMap tự chạy, biểu tượng hiện, không tự mở trình duyệt. Tắt mục này: shortcut trong `shell:startup` mất.
