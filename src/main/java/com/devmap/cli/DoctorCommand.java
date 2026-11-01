@@ -1,5 +1,6 @@
 package com.devmap.cli;
 
+import com.devmap.agent.ClaudeCodeProvider;
 import com.devmap.config.Project;
 import com.devmap.config.ProjectService;
 import java.io.BufferedReader;
@@ -21,10 +22,7 @@ class DoctorCommand implements Callable<Integer> {
     report(java >= 17, true, "Java " + java + (java >= 17 ? "" : " (cần 17+)"));
     String git = firstLine("git", "--version");
     report(git != null, true, git != null ? git : "không tìm thấy git trên PATH");
-    String claude = firstLine("claude", "--version");
-    if (claude == null) {
-      claude = firstLine("claude.cmd", "--version");
-    }
+    String claude = firstLine(ClaudeCodeProvider.defaultCommand(), "--version");
     report(claude != null, false, claude != null ? "Claude Code " + claude : "không tìm thấy Claude Code (cần cho agent SA/Dev)");
 
     ProjectService projects = Core.get(ProjectService.class);

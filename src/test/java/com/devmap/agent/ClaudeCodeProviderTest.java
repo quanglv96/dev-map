@@ -4,10 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devmap.agent.AgentProvider.Event;
 import com.devmap.agent.AgentProvider.Result;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ClaudeCodeProviderTest {
 
@@ -43,5 +47,20 @@ class ClaudeCodeProviderTest {
     assertThat(String.join(" ", argv)).contains("-p --output-format stream-json --verbose --no-session-persistence",
         "--setting-sources project --strict-mcp-config", "--allowed-tools mcp__devmap --permission-mode dontAsk");
     assertThat(argv.get(argv.indexOf("--tools") + 1)).isEmpty();
+  }
+
+  /** Native install (claude.exe) and npm install (claude.cmd) both work; the first PATH folder holding either one wins. */
+  @Test
+  void findsClaudeOnPathWhicheverWayItWasInstalled(@TempDir Path tmp) throws IOException {
+    Path empty = Files.createDirectory(tmp.resolve("empty"));
+    Path nativeDir = Files.createDirectory(tmp.resolve("native"));
+    Path npmDir = Files.createDirectory(tmp.resolve("npm"));
+    Path exe = Files.createFile(nativeDir.resolve("claude.exe"));
+    Path cmd = Files.createFile(npmDir.resolve("claude.cmd"));
+    String sep = File.pathSeparator;
+    assertThat(ClaudeCodeProvider.findOnPath(empty + sep + nativeDir + sep + npmDir)).isEqualTo(exe.toString());
+    assertThat(ClaudeCodeProvider.findOnPath(empty + sep + npmDir + sep + nativeDir)).isEqualTo(cmd.toString());
+    assertThat(ClaudeCodeProvider.findOnPath(empty.toString())).isEqualTo("claude");
+    assertThat(ClaudeCodeProvider.findOnPath(null)).isEqualTo("claude");
   }
 }

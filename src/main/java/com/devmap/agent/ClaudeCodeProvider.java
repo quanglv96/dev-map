@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,10 +38,32 @@ public class ClaudeCodeProvider implements AgentProvider {
 
   public ClaudeCodeProvider(@Value("${devmap.agent.command:}") String command, @Value("${devmap.agent.model:}") String model,
       @Value("${devmap.agent.timeout-minutes:30}") int timeoutMinutes) {
-    boolean windows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
-    this.command = command.isBlank() ? windows ? "claude.cmd" : "claude" : command;
+    this.command = command.isBlank() ? defaultCommand() : command;
     this.model = model;
     this.timeoutMinutes = timeoutMinutes;
+  }
+
+  /** The Claude Code command of this machine; `devmap doctor` checks this same one. */
+  public static String defaultCommand() {
+    boolean windows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
+    return windows ? findOnPath(System.getenv("Path")) : "claude";
+  }
+
+  /** The native installer gives claude.exe, npm gives claude.cmd, and CreateProcess only guesses .exe: look for both on PATH. */
+  static String findOnPath(String path) {
+    for (String dir : (path == null ? "" : path).split(File.pathSeparator)) {
+      for (String name : List.of("claude.exe", "claude.cmd", "claude.bat")) {
+        try {
+          Path file = Path.of(dir.strip(), name);
+          if (!dir.isBlank() && Files.isRegularFile(file)) {
+            return file.toString();
+          }
+        } catch (InvalidPathException e) {
+          break; // a malformed PATH entry holds nothing
+        }
+      }
+    }
+    return "claude";
   }
 
   List<String> argv(Path workDir) {

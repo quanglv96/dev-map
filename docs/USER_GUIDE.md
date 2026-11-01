@@ -100,7 +100,7 @@ Truyền bằng `-D` trước `-jar`, ví dụ `java -Ddevmap.agent.max-concurre
 | --- | --- | --- |
 | `devmap.home` | `~/.devmap` | danh sách dự án, worktree, nhật ký phiên |
 | `devmap.agent.max-concurrent` | 2 | số agent chạy cùng lúc trên máy; phiên sau chờ lượt |
-| `devmap.agent.command` | `claude` (`claude.cmd` trên Windows) | lệnh Claude Code |
+| `devmap.agent.command` | `claude` (Windows: tự tìm `claude.exe`/`claude.cmd` trên PATH) | lệnh Claude Code |
 | `devmap.agent.model` | (mặc định của Claude Code) | model cho agent |
 | `devmap.agent.timeout-minutes` | 30 | thời gian tối đa một phiên |
 

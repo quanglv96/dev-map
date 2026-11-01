@@ -229,7 +229,7 @@ không phải chạy một JVM cho mỗi lần hook, và Dev cũng không bao gi
 Đã kiểm bằng `claude --help` (2.1.312) và chạy thử: `claude -p --output-format stream-json --verbose --no-session-persistence --setting-sources project --strict-mcp-config
 --mcp-config <mcp.json> --system-prompt-file <system.md> --tools "" --allowed-tools mcp__devmap --permission-mode dontAsk [--model …]`, prompt qua stdin.
 Thư mục làm việc là một folder rỗng `~/.devmap/sessions/<dự án>/<ticket>/<n>/`, xoá ngay sau phiên; `--setting-sources project` trong folder rỗng nghĩa là không nạp hook, plugin, MCP của người dùng.
-Cấu hình (`-D` hoặc biến môi trường Spring): `devmap.agent.command` (mặc định `claude.cmd` trên Windows, `claude` nơi khác), `devmap.agent.model`, `devmap.agent.timeout-minutes` (30),
+Cấu hình (`-D` hoặc biến môi trường Spring): `devmap.agent.command` (mặc định trên Windows: `claude.exe`/`claude.cmd`/`claude.bat` đầu tiên tìm thấy trên PATH; `claude` nơi khác), `devmap.agent.model`, `devmap.agent.timeout-minutes` (30),
 `devmap.agent.max-concurrent` (2, NFR-12: phiên sau xếp hàng). Thay agent khác: viết một `AgentProvider` mới (NFR-14).
 
 ## D-36 Ngữ cảnh mỗi phiên (FR-37, AIR-09 → AIR-11, 5 lớp tối ưu token)
