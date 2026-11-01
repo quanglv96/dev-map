@@ -1,3 +1,5 @@
 bin/devmap text eol=lf
 bin/devmap.cmd text eol=crlf
 setup.cmd text eol=crlf
+DevMap.cmd text eol=crlf
+DevMap-console.cmd text eol=crlf

@@ -36,6 +36,7 @@ echo Xong. Mo terminal MOI roi go:
 echo   devmap                      ^(mo giao dien^)
 echo   devmap init ^<du-an^> --data D:/devmap-data --repo D:/code/repo@main
 echo Hoac them du an ngay tren trang chu.
+echo Khong muon cua so terminal: chay DevMap.cmd ^(bieu tuong o khay he thong^).
 pause
 exit /b 0
 
