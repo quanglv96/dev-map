@@ -401,3 +401,8 @@ Lỗi "repo đang ở nhánh null": `dev.json` đi theo folder dữ liệu nên 
 - Đọc `dev.json` qua `TaskService.devState`: đường dẫn không có trên máy này thì dùng đường dẫn repo của máy này (`workspaces.yml`); đường dẫn có thật (worktree cũ của máy này) giữ nguyên.
 - Gate chỉ chạy repo trong `repos` của ticket, cùng phạm vi với cổng sang `sa_verify`, và kiểm nhánh mọi repo trước khi chạy bước nào. Repo ra khỏi ticket mà đã push ở vòng trước thì "Xác nhận push" bỏ qua; repo ra khỏi ticket mà chưa từng push vẫn bị chặn như cũ để không mất commit.
 - `prompts/dev.md`: commit trước, gate sau. Thứ tự cũ không đạt được vì gate chỉ tính khi đã commit hết và phải đúng commit hiện tại.
+
+## D-60 Gate tự cài thư viện Node khi repo chưa có node_modules
+Lỗi "'ng' is not recognized": repo vừa clone hoặc worktree mới không có `node_modules`, `npm run build` không thấy `ng`. Agent Dev không có shell nên ticket kẹt ở `in_dev` tới khi PMO cài tay.
+- Repo có `package.json`, không có `node_modules`, có lockfile: gate thêm bước `deps` trước các lệnh: `npm ci`, `pnpm install --frozen-lockfile` hoặc `yarn install --frozen-lockfile`. Các lệnh này không sửa lockfile nên gate không tạo thay đổi chưa commit. Gate vốn đã chạy script của repo nên không mở rộng phạm vi tin cậy.
+- Không có lockfile thì không tự cài, vì `npm install` sẽ sinh file mới trong repo (và package trong monorepo cài ở thư mục gốc). Khi đó lệnh lỗi kèm gợi ý thiếu `node_modules`. `npm run` báo thiếu lệnh bằng mã thoát 1 nên gợi ý cũ theo mã 9009/127 không bắt được.

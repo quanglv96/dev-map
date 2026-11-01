@@ -68,6 +68,10 @@ public class QualityGate {
       steps.add(new Step("layering", "Controller → Service → Repository", v.isEmpty(), v.isEmpty() ? 0 : 1,
           System.currentTimeMillis() - t0, out));
     }
+    String install = installCommand(dir);
+    if (install != null && (q.staticAnalysis() || q.unitTest() || q.integrationTest())) {
+      steps.add(command("deps", install, dir, q.timeoutMinutes()));
+    }
     if (q.staticAnalysis()) {
       if (q.staticCommands().isEmpty()) {
         steps.add(missing("static"));
@@ -86,6 +90,27 @@ public class QualityGate {
 
   private static Step missing(String name) {
     return new Step(name, "", false, -1, 0, "Rule bật bước này nhưng chưa cấu hình lệnh chạy");
+  }
+
+  private static boolean depsMissing(Path dir) {
+    return Files.exists(dir.resolve("package.json")) && !Files.exists(dir.resolve("node_modules"));
+  }
+
+  /**
+   * A Node repo without node_modules (fresh clone or worktree): the install that keeps the lockfile as it is, so the gate never
+   * leaves an uncommitted change. null = nothing to install, or no lockfile to install from (a monorepo package, the PMO decides).
+   */
+  static String installCommand(Path dir) {
+    if (!depsMissing(dir)) {
+      return null;
+    }
+    if (Files.exists(dir.resolve("package-lock.json"))) {
+      return "npm ci";
+    }
+    if (Files.exists(dir.resolve("pnpm-lock.yaml"))) {
+      return "pnpm install --frozen-lockfile";
+    }
+    return Files.exists(dir.resolve("yarn.lock")) ? "yarn install --frozen-lockfile" : null;
   }
 
   // ponytail: wrapper looked up in the service folder only, walk up to the repo root if a multi-module repo needs it
@@ -128,7 +153,10 @@ public class QualityGate {
       }
       // cmd: 9009, sh: 127 = command not found
       String hint = p.exitValue() == 9009 || p.exitValue() == 127 ? "\nKhông tìm thấy lệnh trên máy chạy DevMap: cài công cụ "
-          + "(có trong PATH khi chạy devmap) hoặc sửa lệnh ở trang Quy tắc" : "";
+          + "(có trong PATH khi chạy devmap) hoặc sửa lệnh ở trang Quy tắc"
+          // npm run reports a missing ng/tsc as exit 1, so the code above does not see it
+          : p.exitValue() != 0 && depsMissing(dir) ? "\nRepo chưa cài thư viện (không có node_modules): đây là lỗi môi trường, "
+          + "không phải lỗi code. Chạy npm install trong repo rồi chạy lại gate" : "";
       Step st = new Step(name, command, p.exitValue() == 0, p.exitValue(), System.currentTimeMillis() - t0, tail(log) + hint);
       return st.passed() || changed == null || !hint.isEmpty() ? st : scoped(st, read(log), changed);
     } catch (IOException e) {

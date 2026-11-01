@@ -129,6 +129,24 @@ class RuleServiceTest {
     assertThat(QualityGate.withWrapper("mvnx test", dir)).isEqualTo("mvnx test");
   }
 
+  /** A fresh Node clone gets the install that keeps its lockfile; without a lockfile the failure says what is missing. */
+  @Test
+  void gateInstallsNodeDependenciesWhenMissing(@TempDir Path dir) throws Exception {
+    assertThat(QualityGate.installCommand(dir)).isNull();
+    Files.writeString(dir.resolve("package.json"), "{}");
+    assertThat(QualityGate.installCommand(dir)).isNull();
+    assertThat(QualityGate.command("static", "java -no-such-flag", dir, 1).output()).contains("không có node_modules");
+
+    Files.writeString(dir.resolve("yarn.lock"), "");
+    assertThat(QualityGate.installCommand(dir)).isEqualTo("yarn install --frozen-lockfile");
+    Files.writeString(dir.resolve("package-lock.json"), "{}");
+    assertThat(QualityGate.installCommand(dir)).isEqualTo("npm ci");
+
+    Files.createDirectory(dir.resolve("node_modules"));
+    assertThat(QualityGate.installCommand(dir)).isNull();
+    assertThat(QualityGate.command("static", "java -no-such-flag", dir, 1).output()).doesNotContain("node_modules");
+  }
+
   /** A linter fails a ticket only on the files it touched; old violations elsewhere are counted, not blocking. */
   @Test
   void lintFailsOnlyOnTouchedFiles() {
