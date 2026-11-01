@@ -61,7 +61,7 @@ public class AuditFilter extends OncePerRequestFilter {
       case "", "/" -> "dự án";
       case "/config" -> "sửa cấu hình dự án";
       case "/queue" -> "xếp lại hàng đợi";
-      case "/queue/run" -> "chạy/dừng hàng đợi";
+      case "/queue/run" -> "Dev triển khai/tạm dừng triển khai hàng đợi";
       case "/graph/update" -> "chạy cập nhật chỉ mục";
       case "/graph/edges" -> "thêm edge tay";
       case "/rules/default" -> "sửa rule mặc định của dự án";

@@ -104,7 +104,7 @@ async function refreshActivity(before) {
   setTabState();
   renderList();
   renderUsage().catch(() => { /* the box just keeps its last numbers */ });
-  renderQueueRun();
+  await renderQueue();
 }
 
 const usageBox = document.getElementById("usage");
@@ -178,23 +178,36 @@ function renderList() {
   }
 }
 
-const queueRun = el("div", { class: "row small" });
+const queueRun = el("div", { class: "queue-run" });
+
+/** The queue button and the ticket page's pause button: both refresh the queue and the open ticket. */
+async function setQueueRun(on) {
+  try {
+    activity = await api(`${api$}/queue/run`, { method: "POST", body: { on } });
+    await renderQueue();
+    const r = route();
+    if (r.view === "task" && !document.querySelector(EDITING)) {
+      await renderTask(mid, right, name, r.id, state);
+    }
+  } catch (err) {
+    showError(queueRun, err);
+  }
+}
+
+window.addEventListener("queue-pause", () => setQueueRun(false));
 
 function renderQueueRun() {
   const on = activity.queueRunning;
   fill(queueRun,
-    el("button", { type: "button", class: on ? "small" : "primary small", onclick: async () => {
-      try {
-        activity = await api(`${api$}/queue/run`, { method: "POST", body: { on: !on } });
-        renderQueueRun();
-      } catch (err) {
-        showError(queueRun, err);
-      }
-    } }, t(on ? "queueStop" : "queueRun")),
-    on ? el("span", { class: "muted" }, activity.queueTicket ? t("queueAt", { id: activity.queueTicket }) : "") : null);
+    el("button", { type: "button", class: on ? "secondary" : "primary", onclick: () => setQueueRun(!on) },
+      t(on ? "implementPause" : "implement")),
+    el("span", { class: "muted small" }, on
+      ? [activity.queueTicket ? `${t("queueAt", { id: activity.queueTicket })}. ` : "", t("implementPauseHint")]
+      : t("queueHint")));
 }
 
 async function renderQueue() {
+  renderQueueRun();
   const queue = await api(`${api$}/queue`);
   if (queue.length === 0) {
     queueBox.replaceChildren(activity.queueRunning ? queueRun : "");
@@ -211,11 +224,16 @@ async function renderQueue() {
       showError(queueBox, err);
     }
   };
-  queueBox.replaceChildren(el("h3", { class: "section" }, t("queue")), queueRun, el("ol", { class: "queue" }, queue.map((x, i) => el("li", {},
-    el("a", { href: `#task=${encodeURIComponent(x.id)}` }, x.id), " ",
-    activity.working[x.id] ? workPill(x) : el("button", { type: "button", class: "link", title: t("implement"), onclick: () => implement(x.id) }, "▶"),
-    i > 0 ? el("button", { type: "button", class: "link", title: t("up"), onclick: () => move(i, -1) }, "↑") : null,
-    i < queue.length - 1 ? el("button", { type: "button", class: "link", title: t("down"), onclick: () => move(i, 1) }, "↓") : null))));
+  // while the queue runs every Ready ticket waits its turn, so only the pause button is offered
+  const start = (x) => (activity.queueRunning ? null
+    : el("button", { type: "button", class: "link", title: t("implementOne"), onclick: () => implement(x.id) }, "▶"));
+  queueBox.replaceChildren(el("h3", { class: "section" }, `${t("queue")} (${queue.length})`), queueRun, el("ol", { class: "queue" }, queue.map((x, i) => el("li", {},
+    el("div", { class: "row" },
+      el("a", { href: `#task=${encodeURIComponent(x.id)}`, title: x.title }, x.id),
+      el("span", { class: "queue-tools" },
+        activity.working[x.id] ? workPill(x) : start(x),
+        el("button", { type: "button", class: i > 0 ? "link" : "link gone", title: t("up"), onclick: () => move(i, -1) }, "↑"),
+        el("button", { type: "button", class: i < queue.length - 1 ? "link" : "link gone", title: t("down"), onclick: () => move(i, 1) }, "↓")))))));
 }
 
 function renderProjectInfo() {

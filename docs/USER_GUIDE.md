@@ -55,7 +55,7 @@ Trình duyệt tự mở đúng link có `?token=…` (token đổi mỗi lần 
 6. **Xác nhận push**: DevMap push đúng commit đã qua gate và kiểm chứng lên nhánh của ticket (không bao giờ vào nhánh bảo vệ). Ticket sang Done; ngữ cảnh phiên bị xoá, tài liệu giữ lại.
 7. **Báo bug / Bổ sung logic** sau deploy: mở lại cùng mã, SA tự phân tích ngay; mô tả của PMO và tiến trình của SA hiện ở tab Chat.
 
-Ticket MAINT: xếp thứ tự trong khung "Hàng đợi" ở cột trái (↑↓) rồi bấm **Chạy hàng đợi**; Dev làm lần lượt, ticket sau bắt đầu khi ticket trước đã qua SA kiểm chứng. Ticket nào lỗi hoặc bị trả về thì hàng đợi dừng.
+Sau khi chốt, ticket vào khung "Hàng đợi Dev" ở cột trái: xếp thứ tự (↑↓) rồi bấm **Dev triển khai**; Dev làm lần lượt, ticket sau bắt đầu khi ticket trước đã qua SA kiểm chứng. Bấm **Tạm dừng triển khai** (ở khung này hoặc trên trang ticket) thì phiên đang chạy vẫn làm xong và ticket kế tiếp chưa bắt đầu. Ticket nào lỗi hoặc bị trả về thì hàng đợi dừng. Muốn làm riêng một ticket: bấm ▶ ở dòng của ticket hoặc **Dev triển khai** trên trang ticket.
 
 Tick "Quét toàn bộ dự án cho câu này" khi graph thiếu quan hệ: quét đúng một lần cho câu hỏi đó (có hộp báo số file trước khi chạy).
 

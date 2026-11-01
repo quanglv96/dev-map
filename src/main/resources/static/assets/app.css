@@ -97,6 +97,8 @@ textarea.editor { font-family: ui-monospace, Consolas, monospace; font-size: 13p
 h3.section { margin-top: 20px; }
 .actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .actions button.primary { align-self: stretch; }
+.actions button, .queue-run button { padding: 6px 12px; }
+.actions button.primary, .queue-run button.primary { border: 1px solid var(--accent); }
 .filters select { flex: 1; }
 
 .task-list { list-style: none; padding: 0; margin: 8px 0; }
@@ -105,6 +107,11 @@ h3.section { margin-top: 20px; }
 .task-list li.active a { background: var(--bg); }
 .dot.pending { background: #f59e0b; }
 ol.queue { padding-left: 20px; margin: 0; }
+ol.queue a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-tools { display: flex; flex: none; align-items: center; }
+.queue-tools .gone { visibility: hidden; }
+.queue-run { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.queue-run button { width: 100%; }
 
 .badge { display: inline-block; padding: 1px 6px; border-radius: 10px; background: var(--bg); color: var(--muted); font-size: 11px; }
 .badge.awaiting_approval, .badge.awaiting_push { background: #fef3c7; color: #b45309; }
@@ -153,7 +160,9 @@ details summary { cursor: pointer; }
 
 /* Chat (Messenger style): PMO on the right, agents on the left with a dashed frame */
 .tabs { display: flex; gap: 4px; margin: 8px 0 12px; border-bottom: 1px solid var(--line); }
-.chat { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding: 4px 0 8px; }
+.chat { display: flex; flex-direction: column; gap: 10px; max-height: max(240px, calc(100vh - 340px)); overflow-y: auto; padding: 4px 0 8px; }
+.gate-summary { display: flex; flex-direction: column; gap: 2px; align-items: stretch; }
+.gate-summary button { align-self: flex-start; padding-left: 0; }
 .msg { display: flex; flex-direction: column; max-width: 85%; }
 .msg.pmo { align-self: flex-end; align-items: flex-end; }
 .msg.pmo .bubble { background: var(--accent); color: #fff; border-radius: 12px 12px 2px 12px; padding: 8px 12px; white-space: pre-wrap; }

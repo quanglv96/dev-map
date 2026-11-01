@@ -108,7 +108,7 @@ public class AgentService {
   private final Set<String> busy = ConcurrentHashMap.newKeySet();
   /** project/ticket → SA, DEV or VERIFY while a session runs or waits for a slot (tab title and progress bar). */
   private final Map<String, String> working = new ConcurrentHashMap<>();
-  // ponytail: queue runs live in memory; a restart stops them and the PMO presses "Chạy hàng đợi" again
+  // ponytail: queue runs live in memory; a restart stops them and the PMO presses "Dev triển khai" again
   private final Map<String, String> queueRuns = new ConcurrentHashMap<>();
   // ponytail: the account quota lives in memory, refreshed by every session; after a restart it shows again after the next one
   private final Map<String, Quota> quota = new ConcurrentHashMap<>();
@@ -398,7 +398,7 @@ public class AgentService {
     if (!on) {
       queueRuns.remove(project);
     } else if (!queueRuns.containsKey(project)) {
-      tasks.note(project, firstQueued(project), Actor.PMO, "Chạy hàng đợi: Dev làm lần lượt theo thứ tự PMO xếp");
+      tasks.note(project, firstQueued(project), Actor.PMO, "Dev triển khai hàng đợi: làm lần lượt theo thứ tự PMO xếp");
       queueRuns.put(project, "");
       nextInQueue(project);
     }

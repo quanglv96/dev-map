@@ -339,7 +339,7 @@ class AgentServiceTest {
     assertThat(Path.of(dev.view("shop", id).repos().get(0).worktree()).resolve("src/main/java/com/shop/order/Extra.java")).doesNotExist();
   }
 
-  /** AC-04, FR-07, NFR-10: "Chạy hàng đợi" – Dev works Ready MAINT tickets one by one in the PMO's order; every step is logged. */
+  /** AC-04, FR-07, NFR-10: "Dev triển khai" – Dev works Ready MAINT tickets one by one in the PMO's order; every step is logged. */
   @Test
   void queueRunsMaintTicketsInPmoOrder() throws Exception {
     List<String> ids = new ArrayList<>();
@@ -387,7 +387,7 @@ class AgentServiceTest {
     assertThatThrownBy(() -> agents.runQueue("shop", true)).hasMessageContaining("trống");
 
     String log = Files.readString(tmp.resolve("data/shop/logs/audit.jsonl"));
-    assertThat(log).contains("Chạy hàng đợi", "\"actor\":\"DEV\"", "Công cụ write_file", "\"service\":\"order-service\"",
+    assertThat(log).contains("Dev triển khai hàng đợi", "\"actor\":\"DEV\"", "Công cụ write_file", "\"service\":\"order-service\"",
         "scope + chặn file bí mật", "git.commit_template", "cổng duyệt PMO", "\"actor\":\"SA\"").doesNotContain("class Maint");
   }
 

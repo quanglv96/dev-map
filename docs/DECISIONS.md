@@ -383,3 +383,15 @@ PMO yêu cầu tắt hoàn toàn DevMap khi đóng tab trình duyệt.
 - **SRS "Đóng tab không dừng agent" vẫn giữ**: còn agent thì server chờ xong mới tắt.
 - `devmap serve --keep-running` tắt tính năng này.
 - `ponytail:` trình duyệt tự giải phóng tab nền (ví dụ Memory Saver của Chrome) cũng đóng luồng SSE; nếu đó là tab DevMap duy nhất thì server tắt, chạy lại `devmap` hoặc dùng `--keep-running`. Khoá đồng bộ vẫn chờ hết hạn 10 phút như mọi lần tắt `serve` (D-52).
+
+## D-57 Nút "Dev triển khai" / "Tạm dừng triển khai"
+PMO giữ phương án chốt xong vào hàng đợi chờ Dev, đổi câu chữ và đồng bộ nút (thay tên nút ở D-43, D-51).
+- Một cặp nhãn ở mọi nơi: "Chạy hàng đợi" và "Triển khai (…)" và "Dev triển khai theo tài liệu" đều thành **Dev triển khai**; "Dừng hàng đợi" thành **Tạm dừng triển khai**. Trạng thái `in_dev` đổi thành "Đang triển khai" để khỏi trùng tên nút.
+- Khi hàng đợi đang chạy: ticket Sẵn sàng và ticket hàng đợi đang làm hiện "Tạm dừng triển khai" thay cho nút bắt đầu, ▶ ở khung hàng đợi ẩn đi. Hàng đợi tắt: ▶ hoặc "Dev triển khai" trên trang ticket làm riêng ticket đó.
+- Tạm dừng vẫn như D-43: không ngắt phiên đang chạy (DevMap chưa có lệnh dừng phiên agent), chỉ không bắt đầu ticket kế tiếp; giao diện ghi rõ điều này. Ticket chạy riêng ngoài hàng đợi không có nút tạm dừng.
+- Giao diện: nút chính và phụ trong `.actions` và khung hàng đợi cùng cỡ; khung hàng đợi gồm tiêu đề kèm số ticket, nút rộng hết cột, một dòng giải thích, rồi danh sách có ▶ ↑ ↓ thẳng cột bên phải.
+
+## D-58 Cột giữa chỉ còn chat, mục Code thành tab, sửa nhảy scroll
+- Cột giữa mở mặc định chỉ có Chat. Mục "Code" (commit, file, diff, form commit) chuyển thành tab "Code", chỉ có khi ticket đã có repo làm việc. Thẻ xác nhận push/bàn giao vẫn hiện ở cột giữa, chỉ khi PMO bấm nút đó.
+- Quality gate nằm ở cột phải: dòng "Quality gate" hiện kết quả từng repo kèm liên kết mở tab Code; khi đang triển khai, nút "Chạy quality gate" đứng ngay dưới "Dev triển khai" và báo đang chạy.
+- **Nhảy scroll**: mỗi lần làm mới, `renderTask` xoá cột giữa rồi mới tải lại tab nên cột ngắn đi và trình duyệt kéo scroll về đầu. Giờ tab được dựng xong ngoài trang rồi thay một lần; lần làm mới cũ hơn bị bỏ qua. Chat chỉ tự xuống cuối khi PMO đang ở cuối, tin đã xong giữ nguyên phần tử nên bước đã mở không bị đóng.

@@ -1,7 +1,7 @@
 // A ticket: create form, Documents tab (versions + diff), right column with status and PMO decisions.
 import { t } from "../i18n.js";
 import { api, diffView, el, fill, markdown, showError, workState } from "../lib.js";
-import { askAgent, renderChat, renderProgress } from "./chat.js";
+import { askAgent, placeChat, renderChat, renderProgress } from "./chat.js";
 import { renderConflicts, syncStatus } from "../sync.js";
 
 const EDITABLE = ["analysis.md", "plan.md", "summary.md"];
@@ -144,11 +144,11 @@ async function commitRepo(project, id, repo, message, status) {
     el("button", { type: "button", class: "link", onclick: () => status.replaceChildren() }, t("cancel"))));
 }
 
-/** "Code" section: per repo branch, commits, files, gate result, diff and commit form (FR-26, FR-27). */
+/** "Code" tab: per repo branch, commits, files, gate result, diff and commit form (FR-26, FR-27). */
 function renderCode(box, project, detail, dev) {
   const id = detail.task.id;
   const canCommit = detail.task.status === "in_dev";
-  fill(box, dev.repos.length ? el("h3", {}, t("codeSection")) : null, dev.repos.map((r) => {
+  fill(box, dev.repos.map((r) => {
     const out = el("div");
     const status = el("div");
     const message = el("input", { placeholder: t("commitMessage", { code: id }) });
@@ -359,7 +359,16 @@ function renderRepoPicker(project, detail, repoNames, error) {
     } }, t("saveRepos")));
 }
 
-function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, activity) {
+/** Right column: quality gate result per repo; the commits and diffs behind it are one click away in the Code tab. */
+function gateSummary(dev, openCode) {
+  return dev.repos.length ? el("div", { class: "gate-summary" },
+    dev.repos.map((r) => el("div", { class: "row small" },
+      el("span", { class: "grow path" }, r.repo),
+      el("span", { class: `badge ${r.gatePassed ? "done" : "awaiting_approval"}` }, r.gatePassed ? t("gatePassed") : t("gateNotPassed")))),
+    el("button", { type: "button", class: "link small", onclick: openCode }, t("viewCode"))) : null;
+}
+
+function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, activity, openCode) {
   const task = detail.task;
   const work = workState(task, activity);
   const running = Boolean(activity.working?.[task.id]);
@@ -393,8 +402,21 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     }
   };
   const implementNow = (a) => from === "ready" && a.to === "in_dev";
-  const gates = detail.actions.filter((a) => a.pmoGate || implementNow(a) || (from === "awaiting_approval" && a.to === "sa_analysis"));
-  const manual = detail.actions.filter((a) => !gates.includes(a));
+  // the queue is running and this ticket is in it: same pause button as the queue box instead of starting it out of turn
+  const queued = activity.queueRunning && (from === "ready" || activity.queueTicket === task.id);
+  const pause = queued ? [el("button", { type: "button", class: "secondary", onclick: () => window.dispatchEvent(new Event("queue-pause")) }, t("implementPause")),
+    el("p", { class: "muted small" }, t("implementPauseHint"))] : null;
+  const decide = detail.actions.filter((a) => a.pmoGate || implementNow(a) || (from === "awaiting_approval" && a.to === "sa_analysis"));
+  const manual = detail.actions.filter((a) => !decide.includes(a));
+  const gates = decide.filter((a) => !(queued && implementNow(a)));
+
+  const gateButton = el("button", { type: "button", class: "secondary", onclick: async () => {
+    gateButton.disabled = true;
+    gateButton.textContent = t("gateRunning");
+    await call("/dev/gate");
+    gateButton.disabled = false;
+    gateButton.textContent = t("runGate");
+  } }, t("runGate"));
 
   const reopenBox = el("div", { class: "reopen" });
   const reopen = (kind) => {
@@ -430,19 +452,21 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       el("dt", {}, t("version")), el("dd", {}, String(task.version)),
       el("dt", {}, t("reopened")), el("dd", {}, String(task.reopened)),
       detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null,
-      el("dt", {}, t("tokens")), el("dd", {}, totals)),
-    gates.length || from === "done" ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
+      el("dt", {}, t("tokens")), el("dd", {}, totals),
+      dev.repos.length ? [el("dt", {}, t("gateRow")), el("dd", {}, gateSummary(dev, openCode))] : null),
+    gates.length || from === "done" || (queued && from !== "in_dev") ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
     el("div", { class: "actions" }, gates.map((a) => el("button", {
-      type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", onclick: () => move(a.to, a.pmoGate)
-    }, actionLabel(from, a.to)))),
+      type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", title: implementNow(a) ? t("implementOne") : null, onclick: () => move(a.to, a.pmoGate)
+    }, actionLabel(from, a.to))), from === "in_dev" ? null : pause),
     from === "done" ? el("div", { class: "actions" },
       el("button", { type: "button", class: "secondary", onclick: () => reopen("bug") }, t("reportBug")),
       el("button", { type: "button", class: "secondary", onclick: () => reopen("logic") }, t("addLogic"))) : null,
     reopenBox,
     from === "in_dev" ? [el("h3", { class: "section" }, t("devSteps")), el("div", { class: "actions" },
-      running ? null : el("button", { type: "button", class: "primary", onclick: () => call("/implement") }, t("implement")),
+      running || queued ? null : el("button", { type: "button", class: "primary", onclick: () => call("/implement") }, t("implement")),
+      pause,
+      dev.repos.length ? gateButton : null,
       el("button", { type: "button", class: "secondary", onclick: () => call("/dev/start") }, t("pullBase")),
-      dev.repos.length ? el("button", { type: "button", class: "secondary", onclick: () => call("/dev/gate") }, t("runGate")) : null,
       dev.repos.length && !dev.direct && !running ? el("button", { type: "button", class: "secondary",
         onclick: () => handoffReview(reviewBox, project, task, error) }, t("handoff")) : null),
     el("p", { class: "muted small" }, t("gateHint"))] : null,
@@ -453,8 +477,11 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     error);
 }
 
+let lastRender = 0;
+
 /** Loads the ticket and fills the middle and right columns. state.masked: warning to show once after creation. */
 export async function renderTask(mid, right, project, id, state) {
+  const thisRender = ++lastRender;
   let detail;
   try {
     detail = await api(base(project, id));
@@ -470,12 +497,11 @@ export async function renderTask(mid, right, project, id, state) {
   state.masked = 0;
   const body = el("div");
   const review = el("div");
-  const code = el("div");
   const totals = el("span", { class: "small" }, "–");
   const summary = detail.docs.includes("summary.md")
     ? await api(`${base(project, id)}/doc?name=summary.md`).then((d) => d.content).catch(() => "") : "";
   const questions = pendingQuestions(summary);
-  const names = [questions.length ? "questions" : null, "chat", "docs"].filter(Boolean);
+  const names = [questions.length ? "questions" : null, "chat", "docs", dev.repos.length ? "code" : null].filter(Boolean);
   const saved = selectedTab.get(id);
   const tab = names.includes(saved) ? saved : notice ? "docs" : questions.length ? "questions" : "chat";
   const show = (name) => {
@@ -483,22 +509,41 @@ export async function renderTask(mid, right, project, id, state) {
     tabs.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
     if (name === "questions") {
       renderQuestions(body, project, detail, questions, () => show("chat"));
+    } else if (name === "code") {
+      renderCode(body, project, detail, dev);
     } else if (name === "chat") {
-      renderChat(body, project, detail, totals);
+      return renderChat(body, project, detail, totals);
     } else {
-      renderDocs(body, project, detail, null, notice);
+      return renderDocs(body, project, detail, null, notice);
     }
+    return null;
   };
   const tabs = el("div", { class: "tabs" }, names.map((name) => el("button", {
     type: "button", class: `tab${name === "questions" ? " tab-questions" : ""}`, "data-tab": name, onclick: () => show(name)
-  }, name === "questions" ? [t("questions"), " ", el("span", { class: "count" }, String(questions.length))] : t(name))));
+  }, name === "questions" ? [t("questions"), " ", el("span", { class: "count" }, String(questions.length))]
+    : t(name === "code" ? "codeSection" : name))));
   const progress = el("div");
   const conflicts = el("div");
+  if (thisRender !== lastRender) {
+    return; // a newer refresh of the page is already on its way
+  }
+  renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review, totals, activity, () => show("code"));
+  // the tab is filled off the page and swapped in whole: an emptied column would drop the scroll position to the top
+  try {
+    await show(tab);
+  } catch (err) {
+    showError(body, err);
+  }
+  if (thisRender !== lastRender) {
+    return;
+  }
   fill(mid, el("h2", {}, `${detail.task.id} · ${detail.task.title}`), renderHandoff(project, detail.task), conflicts, progress,
-    review, code, tabs, body);
+    review, tabs, body);
+  if (mid.dataset.task !== id) {
+    mid.dataset.task = id;
+    mid.scrollTop = 0;
+  }
   renderConflicts(conflicts, project, id, rerender);
   renderProgress(progress, project, id).catch(() => { /* the chat tab still shows the steps */ });
-  renderCode(code, project, detail, dev);
-  renderRight(right, project, detail, dev, info.config.repos.map((r) => r.name), review, totals, activity);
-  show(tab);
+  placeChat();
 }

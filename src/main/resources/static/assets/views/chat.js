@@ -64,10 +64,26 @@ async function draw() {
   drawView(await api(`${base(current.project, current.id)}/chat`));
 }
 
+const atBottom = (list) => list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+
+/** A finished message never changes: its node stays, so an opened step or input log and the reading position survive a redraw. */
+function messageNode(m) {
+  const key = `${m.from}/${m.id}/${m.at}`;
+  const kept = current.nodes.get(key);
+  if (kept && kept.state === m.state && m.state !== "running") {
+    return kept.node;
+  }
+  const node = messageView(current.project, current.id, m);
+  current.nodes.set(key, { state: m.state, node });
+  return node;
+}
+
 function drawView(view) {
-  const { project, id, list, totals } = current;
-  fill(list, view.messages.length ? view.messages.map((m) => messageView(project, id, m)) : el("p", { class: "muted" }, t("noChat")));
-  list.scrollTop = list.scrollHeight;
+  const { list, totals } = current;
+  const follow = atBottom(list);
+  const top = list.scrollTop;
+  fill(list, view.messages.length ? view.messages.map(messageNode) : el("p", { class: "muted" }, t("noChat")));
+  list.scrollTop = follow ? list.scrollHeight : top; // follows new steps unless the PMO scrolled up to read
   current.form.querySelector("button[type=submit]").disabled = view.running;
   if (totals) {
     fill(totals, t("tokensTicket", { n: tokens(view.ticket).toLocaleString() }), el("br"),
@@ -119,6 +135,13 @@ export function askAgent(project, id, question, role = "", fullScan = false) {
   return api(`${base(project, id)}/ask`, { method: "POST", body: { role, question, fullScan } });
 }
 
+/** Once the list is on the page: back to where the PMO was reading on this ticket, else the newest message. */
+export function placeChat() {
+  if (current?.list.isConnected) {
+    current.list.scrollTop = current.restore ?? current.list.scrollHeight;
+  }
+}
+
 /** totals: element in the right column for the token sums (FR-40). */
 export async function renderChat(box, project, detail, totals) {
   const id = detail.task.id;
@@ -154,7 +177,10 @@ export async function renderChat(box, project, detail, totals) {
       showError(status, err);
     }
   });
-  current = { project, id, list, form, totals };
+  const same = current?.project === project && current.id === id && current.list.isConnected;
+  const restore = same && !atBottom(current.list) ? current.list.scrollTop : null;
+  current = { project, id, list, form, totals, restore, nodes: new Map() };
   box.replaceChildren(list, form);
   await draw();
+  placeChat();
 }
