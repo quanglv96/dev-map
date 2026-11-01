@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.devmap.SampleRepos;
+import com.devmap.tray.LoginLinks;
+import com.devmap.tray.TrayService;
 import jakarta.servlet.http.Cookie;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,12 +50,65 @@ class WebTest {
   @Autowired
   ServerToken token;
 
+  @Autowired
+  LoginLinks links;
+
+  @Autowired
+  TrayService tray;
+
   /** NFR-08: every request needs the run token. */
   @Test
   void rejectsRequestsWithoutToken() throws Exception {
     mvc.perform(get("/api/projects")).andExpect(status().isUnauthorized());
     mvc.perform(get("/api/projects").header(TokenFilter.HEADER, "wrong")).andExpect(status().isUnauthorized());
     mvc.perform(get("/")).andExpect(status().isUnauthorized());
+  }
+
+  /** Tray links: one-time code instead of the run token, the ticket survives the redirect, the code does not work twice. */
+  @Test
+  void oneTimeLinkLogsInOnceAndKeepsTheTicket() throws Exception {
+    String code = links.issue();
+    mvc.perform(get("/shop").param("once", code).param("ticket", "NYX 1"))
+        .andExpect(status().isFound())
+        .andExpect(redirectedUrl("/shop?ticket=NYX+1"))
+        .andExpect(cookie().value(TokenFilter.COOKIE, token.value()))
+        .andExpect(cookie().httpOnly(TokenFilter.COOKIE, true));
+    mvc.perform(get("/shop").param("once", code)).andExpect(status().isUnauthorized());
+    mvc.perform(post("/api/tray/open").param("once", links.issue())).andExpect(status().isUnauthorized());
+  }
+
+  /** AC-24: in this headless JVM there is no tray: start declines, the API keeps answering and says so. */
+  @Test
+  void serverRunsWithoutATray() throws Exception {
+    assertThat(tray.start(() -> { })).isFalse();
+    mvc.perform(get("/api/tray/settings").header(TokenFilter.HEADER, token.value()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.active").value(false))
+        .andExpect(jsonPath("$.settings.quietFrom").isNotEmpty());
+  }
+
+  /** FR-66 */
+  @Test
+  void notificationSettingsAreSavedAndCheckedForBadTimes() throws Exception {
+    mvc.perform(put("/api/tray/settings").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"mutedKinds\":[\"SYNC\"],\"quietFrom\":\"21:00\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.settings.mutedKinds[0]").value("SYNC"))
+        .andExpect(jsonPath("$.settings.quietFrom").value("21:00"));
+    mvc.perform(put("/api/tray/settings").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"quietFrom\":\"never\"}"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(put("/api/tray/settings").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
+            .content("{}"))
+        .andExpect(status().isOk());
+  }
+
+  /** FR-65 */
+  @Test
+  void tabsReportWhatTheyShow() throws Exception {
+    mvc.perform(post("/api/tray/focus").header(TokenFilter.HEADER, token.value()).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"tab\":\"t1\",\"project\":\"shop\",\"ticket\":\"NYX-1\"}"))
+        .andExpect(status().isNoContent());
   }
 
   @Test

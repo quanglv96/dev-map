@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -17,6 +18,12 @@ public class ApiExceptionHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException e) {
     return error(HttpStatus.BAD_REQUEST, e);
+  }
+
+  /** Its cause is an IOException, so without this exact match a bad body would land in clientGone() and answer 200. */
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<Map<String, String>> unreadable(HttpMessageNotReadableException e) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Dữ liệu gửi lên không hợp lệ"));
   }
 
   @ExceptionHandler(PmoOnlyException.class)

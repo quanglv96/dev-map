@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.tray.LoginLinks;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -7,6 +8,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Set;
 import org.springframework.http.HttpHeaders;
@@ -26,9 +29,11 @@ public class TokenFilter extends OncePerRequestFilter {
   private static final Set<String> LOCAL_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]", "::1");
 
   private final ServerToken token;
+  private final LoginLinks links;
 
-  public TokenFilter(ServerToken token) {
+  public TokenFilter(ServerToken token, LoginLinks links) {
     this.token = token;
+    this.links = links;
   }
 
   @Override
@@ -46,6 +51,14 @@ public class TokenFilter extends OncePerRequestFilter {
       ResponseCookie cookie = ResponseCookie.from(COOKIE, token.value()).httpOnly(true).sameSite("Strict").path("/").build();
       res.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
       res.sendRedirect(req.getRequestURI());
+      return;
+    }
+    if ("GET".equals(req.getMethod()) && links.consume(req.getParameter("once"))) {
+      // a link from the tray: same login, and only the ticket survives the redirect
+      ResponseCookie cookie = ResponseCookie.from(COOKIE, token.value()).httpOnly(true).sameSite("Strict").path("/").build();
+      res.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+      String ticket = req.getParameter("ticket");
+      res.sendRedirect(req.getRequestURI() + (ticket == null ? "" : "?ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8)));
       return;
     }
     if (token.matches(req.getHeader(HEADER)) || token.matches(cookie(req))) {
