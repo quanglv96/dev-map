@@ -362,6 +362,7 @@ PMO yêu cầu: cấu hình đồng bộ riêng cho từng dự án, không chun
 - **Giao diện**: thanh đồng bộ ở trang dự án là của dự án đó; bật đồng bộ và auto push ở **Cấu hình dự án**; trang chủ hiện nhãn trạng thái cạnh từng dự án và form **Clone dự án từ repo dữ liệu** cho máy mới.
 - `ponytail:` repo gốc kiểu D-52 (đã init ở folder cha) không được migrate tự động: nó ngừng đồng bộ; bật lại từng dự án ở Cấu hình dự án (mỗi dự án một remote mới). Xoá `.git` của folder cha nếu không dùng nữa.
 - **Remote còn layout D-52** (dự án nằm ở `<tên>/` trong repo, task không hiện vì DevMap đọc `tasks/` ở gốc): sau mỗi pull và khi clone, `<tên>/` có `config.yml` của đúng dự án thì được chuyển lên gốc rồi commit, đẩy lại. File gốc đã có mà khác nội dung thì giữ bản gốc, bản lồng thành `*.conflict-<máy>.*` để PMO chọn ở giao diện xung đột. File không đồng bộ (`graph/`, `logs/`…) ở lại chỗ cũ. Máy khác đang giữ khoá thì không chuyển (chỉ xem không commit), chờ "Chiếm quyền". Repo D-52 chứa nhiều dự án: clone báo lỗi nêu tên các dự án.
+- **Xung đột ở file cấp dự án** (`config.yml`, `conventions.md`, `project.md`, không thuộc ticket nào): xử lý ở màn `#conflicts` của trang dự án, mở từ danh sách xung đột trong thanh đồng bộ. Bản ghép của file YAML phải đọc được và không trùng khoá, nếu không bị từ chối, vì `config.yml` hỏng thì dự án không mở được.
 - **Clone vào path khác trên máy đã có dự án**: đăng ký trỏ sang folder vừa clone (giữ `auto_push`), folder cũ không bị xoá và được nêu trong cảnh báo.
 
 ## D-54 Không hiện giao diện cũ sau khi cập nhật DevMap

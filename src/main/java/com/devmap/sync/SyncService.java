@@ -44,6 +44,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.error.YAMLException;
 
 /**
  * FR-46 → FR-54, FR-56, FR-57: each project's data folder is its own private git repo (own remote, lock and auto push, see
@@ -752,6 +754,7 @@ public class SyncService {
       if (original == null || !copy.startsWith(root) || !Files.isRegularFile(copy)) {
         throw new IllegalArgumentException("Không có file xung đột: " + conflictFile);
       }
+      requireValidYaml(original, content);
       try {
         Files.writeString(root.resolve(original), masker.mask(content == null ? "" : content, secrets(name)).text());
         Files.delete(copy);
@@ -761,6 +764,20 @@ public class SyncService {
       refresh();
       publishIfChanged(true);
       return status();
+    }
+
+    /** A broken merge of config.yml would stop the project from opening, and with it the page to repair the merge. */
+    private void requireValidYaml(String file, String content) {
+      if (!file.endsWith(".yml") && !file.endsWith(".yaml")) {
+        return;
+      }
+      LoaderOptions options = new LoaderOptions();
+      options.setAllowDuplicateKeys(false);
+      try {
+        new org.yaml.snakeyaml.Yaml(options).load(content == null ? "" : content); // the project's Yaml lets duplicate keys through
+      } catch (YAMLException e) {
+        throw new IllegalArgumentException("Bản ghép của " + file + " không phải YAML hợp lệ: " + e.getMessage(), e);
+      }
     }
 
     void refresh() {

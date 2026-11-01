@@ -195,6 +195,30 @@ class SyncServiceTest {
     assertThat(st.conflicts().get(0).conflictFile()).isEqualTo("config.conflict-machineB.yml");
   }
 
+  /** A conflict on a file of the project itself has no ticket; a merge that is not YAML is refused, keeping one version clears it. */
+  @Test
+  void projectFileConflictIsResolvedWithoutATicket() throws Exception {
+    Path repos = SampleRepos.create(tmp.resolve("machineB/code"));
+    Machine b = new Machine("machineB");
+    Files.createDirectories(b.data);
+    b.projects.create("shop", b.data, "#112233", List.of(new RepoInput(repos.resolve("order-service").toString(), "test")));
+    pushNestedProject(true);
+    b.sync.initSync("shop", remote);
+    b.identity();
+
+    SyncService.Conflict c = b.sync.syncNow("shop").conflicts().get(0);
+    assertThat(c.ticket()).isNull();
+
+    assertThatThrownBy(() -> b.sync.resolve("shop", c.conflictFile(), c.current() + "\n" + c.other()))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("YAML");
+    assertThat(b.file(c.conflictFile())).isEqualTo(c.other());
+
+    assertThat(b.sync.resolve("shop", c.conflictFile(), c.other()).conflicts()).isEmpty();
+    assertThat(b.file("config.yml")).isEqualTo(c.other());
+    assertThat(b.projects.get("shop").config().repos()).isNotEmpty();
+    assertThat(b.sync.syncNow("shop").state()).isEqualTo(State.SYNCED);
+  }
+
   /** Each machine picks its own folder: cloning a project known here under another path points it at the clone. */
   @Test
   void cloneIntoAnotherFolderRepointsAKnownProject() throws Exception {

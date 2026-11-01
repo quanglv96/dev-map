@@ -22,7 +22,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | AC-14 Đường dẫn khác máy | SYNC | Đạt (tự động) | `ProjectServiceTest.otherMachinePicksOrClonesMissingRepos`, `SyncServiceTest.ticketAndDocumentsTravelBothWays`, K-10 |
 | AC-15 Migrate | SYNC | Đạt (tự động) | `ProjectServiceTest.legacyConfigWithAbsolutePathsIsMigratedOnce` |
 | AC-16 Khoá mềm | SYNC | Đạt (tự động) | `SyncServiceTest.softLockWarnsTakesOverAndExpires`, `WebTest.viewOnlyRefusesWrites`, K-10 |
-| AC-17 Xung đột | SYNC | Đạt (tự động) | `SyncServiceTest.offlineEditsOfTheSameFileKeepBothVersions`, K-10 |
+| AC-17 Xung đột | SYNC | Đạt (tự động) | `SyncServiceTest.offlineEditsOfTheSameFileKeepBothVersions`, `SyncServiceTest.projectFileConflictIsResolvedWithoutATicket`, K-10 |
 | AC-18 Chuyển ticket | SYNC | Đạt (tự động) | `TicketGitServiceTest.handoffPushesWipAndOtherMachineContinuesOnTheSameCommit`, K-10 |
 | AC-19 Không đồng bộ thứ không cần | SYNC | Đạt (tự động) | `SyncServiceTest.rebuildableAndMachineFilesAreNotSynced` |
 | AC-20 Bí mật | SYNC | Đạt (tự động) | `SyncServiceTest.secretInAChangedFileBlocksTheCommit`, `SyncServiceTest.remoteUrlNeverCarriesAToken` |

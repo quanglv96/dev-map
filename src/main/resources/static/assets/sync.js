@@ -77,7 +77,8 @@ function render() {
         s.warning ? el("p", { class: "warn" }, s.warning) : null,
         s.blocked.length ? [el("p", { class: "error" }, t("sync.blocked")), el("ul", {}, s.blocked.map((b) => el("li", { class: "path" }, b)))] : null,
         s.conflicts.length ? [el("p", { class: "warn" }, t("sync.conflicts")), el("ul", {}, s.conflicts.map((c) => el("li", {},
-          c.ticket ? el("a", { href: `/${encodeURIComponent(c.project)}#task=${encodeURIComponent(c.ticket)}` }, `${c.project}/${c.ticket}`) : c.project,
+          c.ticket ? el("a", { href: `/${encodeURIComponent(c.project)}#task=${encodeURIComponent(c.ticket)}` }, `${c.project}/${c.ticket}`)
+            : el("a", { href: `/${encodeURIComponent(c.project)}#conflicts` }, c.project),
           " · ", el("span", { class: "path" }, c.file))))] : null,
         s.confirmPush ? el("div", { class: "confirm-card card" }, el("p", {}, t("sync.confirmPush", { n: s.ahead })),
           el("button", { type: "button", class: "primary", onclick: act("/push") }, t("sync.push"))) : null,
@@ -186,9 +187,9 @@ export function renderCloneForm(target, onDone) {
     error);
 }
 
-/** FR-54: both versions of each conflicting file of a ticket; the PMO keeps one or merges, then the copy is removed. */
+/** FR-54: both versions of each conflicting file of a ticket (null = files of the project itself); the PMO keeps one or merges, then the copy is removed. */
 export function renderConflicts(target, project, ticketId, onResolved) {
-  const list = (status?.conflicts ?? []).filter((c) => c.project === project && c.ticket === ticketId);
+  const list = (status?.conflicts ?? []).filter((c) => c.project === project && (c.ticket ?? null) === ticketId);
   if (list.length === 0) {
     target.replaceChildren();
     return;

@@ -5,7 +5,7 @@ import { WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError, workState 
 import { renderConfig } from "./views/config.js";
 import { onAgentEvent, tokens } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
-import { mountSync, onSync, onSyncEvent, syncStatus } from "./sync.js";
+import { mountSync, onSync, onSyncEvent, renderConflicts, syncStatus } from "./sync.js";
 import { renderLog } from "./views/log.js";
 import { renderRules } from "./views/rules.js";
 import { renderNewTask, renderTask } from "./views/task.js";
@@ -40,7 +40,7 @@ function route() {
   if (hash.startsWith("task=")) {
     return { view: "task", id: decodeURIComponent(hash.slice(5)) };
   }
-  return { view: ["config", "new", "graph", "rules", "log"].includes(hash) ? hash : "overview" };
+  return { view: ["config", "new", "graph", "rules", "log", "conflicts"].includes(hash) ? hash : "overview" };
 }
 
 function setHeader() {
@@ -295,7 +295,13 @@ async function render() {
     return;
   }
   renderProjectInfo();
-  if (r.view === "config") {
+  if (r.view === "conflicts" && syncStatus()?.conflicts.some((c) => !c.ticket)) {
+    renderConflicts(mid, name, null, async () => {
+      project = await api(api$); // config.yml may just have changed
+      setHeader();
+      await render();
+    });
+  } else if (r.view === "config") {
     renderConfig(mid, project, (saved) => {
       project = saved;
       setHeader();
