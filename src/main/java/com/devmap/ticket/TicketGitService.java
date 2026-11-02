@@ -244,15 +244,16 @@ public class TicketGitService {
     StringBuilder md = new StringBuilder("# Test và quality gate – " + id + "\n\n_Chạy lúc " + now() + "_\n");
     for (RepoWork w : current) {
       Path wt = Path.of(w.worktree());
-      List<QualityGate.Result> results = rules.runGate(project, w.repo(), wt, git.changedLines(wt, w.baseCommit()));
+      List<QualityGate.Result> results = new ArrayList<>(rules.runGate(project, w.repo(), wt, git.changedLines(wt, w.baseCommit())));
       List<String> dirty = git.uncommitted(wt);
-      boolean passed = results.stream().allMatch(QualityGate.Result::passed) && dirty.isEmpty();
+      if (!dirty.isEmpty()) { // a step, not a note in tests.md: the agent and the UI read the steps, so they see which files block the gate
+        results.add(new QualityGate.Result(w.repo(), List.of(new QualityGate.Step("uncommitted", "git status", false, 1, 0,
+            "Còn " + dirty.size() + " file chưa commit, gate chỉ tính khi đã commit hết:\n" + String.join("\n", dirty)))));
+      }
+      boolean passed = results.stream().allMatch(QualityGate.Result::passed);
       dev = dev.with(w.withGate(passed ? git.head(wt) : null));
       all.addAll(results);
       md.append("\n## ").append(w.repo()).append(" – ").append(passed ? "ĐẠT" : "KHÔNG ĐẠT").append("\n\n");
-      if (!dirty.isEmpty()) {
-        md.append("Còn ").append(dirty.size()).append(" file chưa commit: gate chỉ tính khi đã commit hết.\n\n");
-      }
       for (QualityGate.Result r : results) {
         md.append("### ").append(r.service()).append("\n\n| Bước | Lệnh | Kết quả | Thời gian |\n| --- | --- | --- | --- |\n");
         r.steps().forEach(st -> md.append("| ").append(st.name()).append(" | `").append(st.command()).append("` | ")

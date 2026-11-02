@@ -121,6 +121,12 @@ class TicketGitServiceTest {
     assertThat(results).filteredOn(r -> r.service().equals("order-service")).singleElement()
         .satisfies(r -> assertThat(r.passed()).isFalse());
     assertThat(tasks.readDoc("shop", id, "tests.md").content()).contains("RefundController → OrderRepository", "KHÔNG ĐẠT");
+    // uncommitted files are a failing step naming them, so the agent reading the steps sees what blocks the gate
+    Path stray = order.resolve("stray.txt");
+    Files.writeString(stray, "x");
+    assertThat(dev.gate("shop", id, Actor.DEV)).flatMap(QualityGate.Result::steps).filteredOn(st -> st.name().equals("uncommitted"))
+        .singleElement().satisfies(st -> assertThat(st.output()).contains("stray.txt"));
+    Files.delete(stray);
     Files.delete(refund);
     dev.commit("shop", id, "order-service", "route refund through service", Actor.DEV);
     // the violation already on the base branch (OrderReportController) is listed but does not block this ticket
