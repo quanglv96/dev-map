@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import java.awt.Color;
 import java.awt.EventQueue;
 import java.awt.image.BufferedImage;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -147,8 +148,12 @@ class TrayTest {
   void autostartWritesAndRemovesTheShortcut(@TempDir Path folder) throws Exception {
     StartupShortcut shortcut = new StartupShortcut(folder.resolve("Thư mục có dấu"));
     assertThat(shortcut.enabled()).isFalse();
-    shortcut.write("C:\\Dev Map\\devmap.jar", "C:\\Java\\bin\\javaw.exe", 7070);
+    String jar = "C:\\Thư mục\\devmap.jar";
+    shortcut.write(jar, "C:\\Java\\bin\\javaw.exe", 7070);
     assertThat(shortcut.enabled()).isTrue();
+    // Compare raw bytes: the .lnk keeps its strings in UTF-16 at offsets that need not be even.
+    String link = new String(Files.readAllBytes(folder.resolve("Thư mục có dấu").resolve("DevMap.lnk")), StandardCharsets.ISO_8859_1);
+    assertThat(link).contains(new String(jar.getBytes(StandardCharsets.UTF_16LE), StandardCharsets.ISO_8859_1));
     shortcut.set(false, 7070);
     assertThat(shortcut.enabled()).isFalse();
   }

@@ -2,8 +2,10 @@ package com.devmap.tray;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -12,15 +14,42 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * FR-70: DevMap.lnk in the current user's Startup folder, which needs neither the registry nor admin rights. WScript.Shell writes the
- * .lnk without a new library; the paths reach PowerShell as environment variables so no path can break the script.
+ * FR-70: DevMap.lnk in the current user's Startup folder, which needs neither the registry nor admin rights. IShellLinkW writes the
+ * .lnk without a new library: WScript.Shell squeezes paths into the ANSI code page and fails on Vietnamese ones. The paths reach
+ * PowerShell as environment variables so no path can break the script.
  */
 @Component
 public class StartupShortcut {
 
-  private static final String SCRIPT = "$l=(New-Object -ComObject WScript.Shell).CreateShortcut($env:DEVMAP_LNK);"
-      + "$l.TargetPath=$env:DEVMAP_TARGET;$l.Arguments=$env:DEVMAP_ARGS;$l.WorkingDirectory=$env:DEVMAP_DIR;"
-      + "$l.Description='DevMap';$l.Save()";
+  /** The empty methods only keep the COM vtable order; they are never called. */
+  private static final String SCRIPT = """
+      $ErrorActionPreference='Stop'
+      Add-Type -TypeDefinition '
+      using System.Runtime.InteropServices;
+      using System.Runtime.InteropServices.ComTypes;
+      [ComImport, Guid("00021401-0000-0000-C000-000000000046")] class ShellLink {}
+      [ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+      interface IShellLinkW {
+        void GetPath(); void GetIDList(); void SetIDList();
+        void GetDescription(); void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string value);
+        void GetWorkingDirectory(); void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string value);
+        void GetArguments(); void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string value);
+        void GetHotkey(); void SetHotkey(); void GetShowCmd(); void SetShowCmd();
+        void GetIconLocation(); void SetIconLocation(); void SetRelativePath(); void Resolve();
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string value);
+      }
+      public static class DevMapLink {
+        public static void Save(string link, string target, string arguments, string directory) {
+          IShellLinkW shell = (IShellLinkW) new ShellLink();
+          shell.SetPath(target);
+          shell.SetArguments(arguments);
+          shell.SetWorkingDirectory(directory);
+          shell.SetDescription("DevMap");
+          ((IPersistFile) shell).Save(link, true);
+        }
+      }'
+      [DevMapLink]::Save($env:DEVMAP_LNK,$env:DEVMAP_TARGET,$env:DEVMAP_ARGS,$env:DEVMAP_DIR)
+      """;
 
   private final Path folder;
 
@@ -70,7 +99,9 @@ public class StartupShortcut {
 
   void write(String jar, String javaw, int port) throws IOException {
     Files.createDirectories(folder);
-    ProcessBuilder pb = new ProcessBuilder(List.of("powershell", "-NoProfile", "-NonInteractive", "-Command", SCRIPT));
+    // Encoded because the script holds double quotes, which do not survive the Windows command line.
+    String encoded = Base64.getEncoder().encodeToString(SCRIPT.getBytes(StandardCharsets.UTF_16LE));
+    ProcessBuilder pb = new ProcessBuilder(List.of("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded));
     Map<String, String> env = pb.environment();
     env.put("DEVMAP_LNK", link().toString());
     env.put("DEVMAP_TARGET", javaw);
