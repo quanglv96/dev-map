@@ -289,7 +289,7 @@ class AgentServiceTest {
           "content", "package com.shop.order;\n\nclass Extra {\n}\n"));
       assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).startsWith("ERR").contains("gate"); // AIR-13
       assertThat(tool(c, "commit", Map.of("repo", "order-service", "message", "add note"))).contains("NYX-3: add note");
-      assertThat(tool(c, "run_quality_gate", Map.of())).contains("ĐẠT");
+      assertThat(tool(c, "run_quality_gate", Map.of())).contains("ĐẠT", "static (git status)");
       assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).contains("sa_verify");
       return "Xong, chuyển SA";
     });

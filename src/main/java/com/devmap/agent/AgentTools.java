@@ -404,8 +404,9 @@ class AgentTools {
     StringBuilder sb = new StringBuilder();
     for (QualityGate.Result r : dev.gate(s.project, s.taskId, s.role.actor)) {
       sb.append(r.service()).append(": ").append(r.passed() ? "ĐẠT" : "KHÔNG ĐẠT").append('\n');
-      r.steps().forEach(st -> sb.append("- ").append(st.name()).append(": ").append(st.passed() ? "đạt" : "không đạt\n" + st.output())
-          .append('\n'));
+      // the command too: otherwise the agent repeats the one an older summary.md names
+      r.steps().forEach(st -> sb.append("- ").append(st.name()).append(" (").append(st.command()).append("): ")
+          .append(st.passed() ? "đạt" : "không đạt\n" + st.output()).append('\n'));
     }
     return sb.append("Chi tiết trong tests.md").toString();
   }
