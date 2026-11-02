@@ -54,7 +54,7 @@ class AgentTools {
   private static final int MAX_TEXT = 40_000;
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final Pattern COMMIT = Pattern.compile("[0-9a-fA-F]{7,40}");
-  private static final Pattern DIFF_FILE = Pattern.compile("(?m)^diff --git a/(\\S+) b/");
+  private static final Pattern DIFF_FILE = Pattern.compile("(?m)^diff --git a/(.+?) b/");
   private static final Map<Role, List<String>> DOCS = Map.of(
       Role.SA, List.of("analysis.md", "plan.md", "summary.md", "verify.md"),
       Role.DEV, List.of("summary.md"));
@@ -88,7 +88,8 @@ class AgentTools {
           Set.of(Role.SA)),
       tool("git_diff", "Diff của branch ticket so với nhánh nền ở một repo (cả phần chưa commit); có commit thì là nội dung đúng "
           + "commit đó (ví dụ commit PMO hay commit mới của nhánh nền). Đã che bí mật.", Set.of(Role.SA, Role.DEV),
-          "repo:string:Tên repo", "commit?:string:Mã commit (7-40 ký tự hex)"),
+          "repo:string:Tên repo", "commit?:string:Mã commit (7-40 ký tự hex)",
+          "file?:string:Chỉ xem diff của file này (dùng khi diff dài bị cắt)"),
       tool("run_quality_gate", "Chạy quality gate (tách lớp, phân tích tĩnh, unit test) ở mọi repo của ticket, ghi tests.md.",
           Set.of(Role.DEV)),
       tool("commit", "Commit mọi thay đổi trong worktree của repo, message tự gắn mã ticket.", Set.of(Role.DEV),
@@ -144,7 +145,9 @@ class AgentTools {
       case "set_status" -> setStatus(s, text(args, "to"));
       case "set_repos" -> setRepos(s, args.path("repos"));
       case "verify_facts" -> facts(s).markdown();
-      case "git_diff" -> args.hasNonNull("commit") ? show(s, text(args, "repo"), text(args, "commit")) : diff(s, text(args, "repo"));
+      case "git_diff" -> narrowDiff(
+          args.hasNonNull("commit") ? show(s, text(args, "repo"), text(args, "commit")) : diff(s, text(args, "repo")),
+          args.hasNonNull("file") ? safePath(text(args, "file")) : null);
       case "run_quality_gate" -> gate(s);
       case "commit" -> commit(s, text(args, "repo"), text(args, "message"));
       case "write_file" -> writeFile(s, text(args, "repo"), text(args, "path"), text(args, "content"));
@@ -361,6 +364,26 @@ class AgentTools {
       throw new NoSuchElementException(repo + ": không có commit " + commit);
     }
     return withoutSecretFiles(o.output());
+  }
+
+  /** One file's blocks of a diff; with no file, a diff about to be cut starts with its file list, so the agent can ask for the rest. */
+  static String narrowDiff(String diff, String file) {
+    List<String> blocks = List.of(diff.split("(?m)(?=^diff --git )"));
+    if (file != null) {
+      String one = String.join("", blocks.stream().filter(b -> file.equals(diffFile(b))).toList());
+      return one.isEmpty() ? "Diff không có file " + file : one;
+    }
+    if (diff.length() <= MAX_TEXT) {
+      return diff;
+    }
+    List<String> files = blocks.stream().map(AgentTools::diffFile).filter(f -> f != null).distinct().toList();
+    return "Diff dài, chỉ hiện phần đầu. " + files.size() + " file trong diff (xem từng file bằng tham số file):\n"
+        + String.join("\n", files) + "\n\n" + diff;
+  }
+
+  private static String diffFile(String block) {
+    var m = DIFF_FILE.matcher(block);
+    return m.find() ? m.group(1) : null;
   }
 
   /** Drops whole file blocks of secret files from a diff before masking (FR-34). */

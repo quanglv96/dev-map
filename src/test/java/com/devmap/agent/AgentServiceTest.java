@@ -303,6 +303,9 @@ class AgentServiceTest {
           .orElseThrow().head();
       assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "commit", head.substring(0, 8)))).contains("add note", "String note");
       assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "commit", "--output=x"))).startsWith("ERR");
+      assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "file", "src/main/java/com/shop/order/Extra.java")))
+          .contains("class Extra").doesNotContain("String note");
+      assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "file", ".env"))).startsWith("ERR");
       assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).startsWith("ERR").contains("verify.md");
       // the approved plan cannot be rewritten to make the deviation look planned
       assertThat(tool(c, "write_ticket_doc", Map.of("name", "plan.md", "content", "- order-service: Extra.java\n")))
