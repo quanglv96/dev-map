@@ -15,6 +15,8 @@ import java.awt.event.ItemEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.InvocationTargetException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javax.swing.JDialog;
 import javax.swing.JOptionPane;
@@ -29,6 +31,7 @@ public class AwtTrayNotifier implements TrayNotifier {
 
   /** The icon's double-click arrives with mouse events, a click on the toast without any; that tells the two apart. */
   private static final long MOUSE_MILLIS = 1_000;
+  private static final long STOP_MILLIS = 2_000;
   private static final Logger LOG = LoggerFactory.getLogger(AwtTrayNotifier.class);
 
   private final BooleanSupplier supported;
@@ -190,23 +193,35 @@ public class AwtTrayNotifier implements TrayNotifier {
     });
   }
 
+  /**
+   * Bounded: Spring calls this from a shutdown hook, in parallel with AWT's own hook. Once AWT's native thread is gone,
+   * removing the icon never returns, and waiting for it would keep the JVM (and its lock on devmap.jar) alive forever.
+   */
   @Override
   public void stop() {
+    CountDownLatch done = new CountDownLatch(1);
     Runnable remove = () -> {
-      if (icon != null) {
-        SystemTray.getSystemTray().remove(icon);
-        icon = null;
+      try {
+        if (icon != null) {
+          SystemTray.getSystemTray().remove(icon);
+          icon = null;
+        }
+      } finally {
+        done.countDown();
       }
     };
     try {
       if (EventQueue.isDispatchThread()) {
         remove.run();
       } else {
-        EventQueue.invokeAndWait(remove);
+        EventQueue.invokeLater(remove);
+        if (!done.await(STOP_MILLIS, TimeUnit.MILLISECONDS)) {
+          LOG.debug("Không gỡ kịp biểu tượng khay: vẫn tắt.");
+        }
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-    } catch (InvocationTargetException | AWTError e) {
+    } catch (AWTError e) {
       LOG.debug("Gỡ biểu tượng khay: {}", e.toString());
     }
   }

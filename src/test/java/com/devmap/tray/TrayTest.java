@@ -1,11 +1,15 @@
 package com.devmap.tray;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.awt.Color;
+import java.awt.EventQueue;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -19,6 +23,24 @@ class TrayTest {
   void withoutATrayTheNotifierDeclinesQuietly() {
     AwtTrayNotifier notifier = new AwtTrayNotifier(() -> false);
     assertThat(notifier.start(null)).isFalse();
+  }
+
+  /** A hung AWT thread (AWT's own shutdown hook got there first) must not keep the JVM and its lock on devmap.jar alive. */
+  @Test
+  void stopReturnsWhenTheEventThreadIsStuck() throws Exception {
+    CountDownLatch release = new CountDownLatch(1);
+    EventQueue.invokeLater(() -> {
+      try {
+        release.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    try {
+      assertTimeoutPreemptively(Duration.ofSeconds(10), () -> new AwtTrayNotifier(() -> false).stop());
+    } finally {
+      release.countDown();
+    }
   }
 
   private static long differing(BufferedImage a, BufferedImage b) {
