@@ -39,7 +39,8 @@ public class QualityGate {
   private static final Pattern FILE_REF = Pattern.compile("[\\w.-]+\\.(java|kt|kts|groovy|ts|tsx|js|jsx|mjs|cjs|vue|py|go)\\b");
   // ponytail: known linters by name; a build/compile step is never scoped, an error it reports in an untouched file may be ours
   private static final Pattern LINE_NO = Pattern.compile("\\W{1,3}(?:line )?(\\d+)");
-  private static final Pattern LINTER = Pattern.compile("checkstyle|pmd|spotbugs|lint|ruff|flake8|sonar", Pattern.CASE_INSENSITIVE);
+  private static final Pattern LINTER = Pattern.compile("checkstyle|pmd|spotbugs|lint|ruff|flake8|sonar|check -x test",
+      Pattern.CASE_INSENSITIVE);
 
   private static String lines(List<LayerChecker.Violation> v) {
     return String.join("\n", v.stream().map(LayerChecker.Violation::toString).toList());

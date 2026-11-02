@@ -28,7 +28,8 @@ presets:
       integration_test_command: "mvn -q verify"
   gradle:
     quality:
-      static_commands: ["gradle -q checkstyleMain"]
+      # check without tests: runs whichever of Checkstyle/PMD/SpotBugs the repo declares; checkstyleMain fails on a repo without the plugin
+      static_commands: ["gradle -q check -x test"]
       unit_test_command: "gradle -q test"
       integration_test_command: "gradle -q check"
   node:
