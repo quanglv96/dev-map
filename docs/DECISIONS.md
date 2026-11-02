@@ -422,3 +422,10 @@ Theo `docs/PROMPT_TRAY.md`; tóm tắt để cập nhật SRS ở `docs/CHANGE-T
 - **Log khi chạy nền**: `~/.devmap/logs/devmap.log`, quá 5 MB thì đổi thành `devmap.log.1` lúc khởi động.
 - **Sửa thêm**: `ApiExceptionHandler.clientGone` bắt cả lỗi có nguyên nhân là `IOException`, nên JSON sai ở mọi API trả 200 rỗng. Giờ trả 400.
 - `ponytail:` `DevMap.cmd` là file `.cmd` nên vẫn loé cửa sổ console rất ngắn trước khi `javaw` chạy; shortcut Khởi động cùng Windows trỏ thẳng `javaw` nên không loé. Muốn hết loé hẳn thì tạo shortcut tới `javaw` hoặc đóng gói jpackage. Toast dùng `displayMessage` nên tiêu đề ứng dụng và icon do Windows quyết định.
+
+## D-62 Gate Gradle không đòi plugin, gate báo file chưa commit, git_diff xem được phần bị cắt
+Từ log Dev MAINT-001.
+- Preset Gradle đổi `checkstyleMain` thành `check -x test`: chạy công cụ phân tích tĩnh mà repo khai báo, repo không khai báo thì không lỗi. Bước này không còn tự biên dịch khi repo không có plugin; lỗi biên dịch do bước unit test bắt, nên tắt unit test thì gate Gradle không kiểm biên dịch.
+- File chưa commit thành bước `uncommitted` của gate, có danh sách file. Trước đây chỉ ghi số lượng vào tests.md, còn công cụ trả cho agent vẫn báo "ĐẠT".
+- `git_diff` có tham số `file`; diff dài hiện danh sách file ở đầu. Trước đây diff quá 40.000 ký tự bị cắt và không có cách xem tiếp.
+- `commit` của agent vẫn gom mọi file (FR-26), vì gate cũng cần cây sạch nên commit chọn file không gỡ được kẹt. Prompt Dev yêu cầu không commit khi có file không phải agent sửa; lớp chặn sau là SA kiểm chứng file lệch phạm vi và PMO xác nhận push.
