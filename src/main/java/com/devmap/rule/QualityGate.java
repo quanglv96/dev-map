@@ -1,5 +1,6 @@
 package com.devmap.rule;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -127,6 +128,25 @@ public class QualityGate {
     return command;
   }
 
+  private static final Pattern NPM_TEST = Pattern.compile("^npm (run )?test\\b.*");
+
+  /**
+   * Karma (ng test) ignores CI=true and watches forever; jest/vitest honour CI, and node --test would read a --watch=false after
+   * its paths as one more test file. So the flag goes in only when the test script is ng test without its own --watch.
+   */
+  static String noWatch(String command, Path dir) {
+    if (!NPM_TEST.matcher(command).matches() || command.contains("--watch")) {
+      return command;
+    }
+    try {
+      String script = new ObjectMapper().readTree(dir.resolve("package.json").toFile()).path("scripts").path("test").asText("");
+      return script.matches(".*\\bng test\\b.*") && !script.contains("--watch")
+          ? command + (command.contains(" -- ") ? " --watch=false" : " -- --watch=false") : command;
+    } catch (IOException e) {
+      return command; // no or broken package.json: npm reports it itself
+    }
+  }
+
   static Step command(String name, String configured, Path dir, int timeoutMinutes) {
     return command(name, configured, dir, timeoutMinutes, null);
   }
@@ -137,7 +157,7 @@ public class QualityGate {
    * file the ticket edits) are counted, not blocking.
    */
   static Step command(String name, String configured, Path dir, int timeoutMinutes, Map<String, Set<Integer>> changed) {
-    String command = withWrapper(configured, dir);
+    String command = noWatch(withWrapper(configured, dir), dir);
     long t0 = System.currentTimeMillis();
     Path log = null;
     try {

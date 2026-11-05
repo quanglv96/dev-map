@@ -36,7 +36,8 @@ presets:
     quality:
       # package.json scripts, not a bare eslint: a repo without an ESLint config still gets its build (compile) checked
       static_commands: ["npm run lint --if-present", "npm run build --if-present"]
-      unit_test_command: "npm run test --if-present -- --watch=false"
+      # no --watch=false here: node --test reads it as a file name; the gate adds it for ng test only (QualityGate.noWatch)
+      unit_test_command: "npm run test --if-present"
       integration_test_command: ""
   python:
     quality:

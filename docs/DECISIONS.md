@@ -429,3 +429,9 @@ Từ log Dev MAINT-001.
 - File chưa commit thành bước `uncommitted` của gate, có danh sách file. Trước đây chỉ ghi số lượng vào tests.md, còn công cụ trả cho agent vẫn báo "ĐẠT".
 - `git_diff` có tham số `file`; diff dài hiện danh sách file ở đầu. Trước đây diff quá 40.000 ký tự bị cắt và không có cách xem tiếp.
 - `commit` của agent vẫn gom mọi file (FR-26), vì gate cũng cần cây sạch nên commit chọn file không gỡ được kẹt. Prompt Dev yêu cầu không commit khi có file không phải agent sửa; lớp chặn sau là SA kiểm chứng file lệch phạm vi và PMO xác nhận push.
+
+## D-63 Gate chạy đúng service ticket sửa, không bỏ app gốc, test Node không bị cờ watch làm hỏng
+Từ log Dev FEAT-003: repo Node có thư mục Python `subswap/`, gate chỉ chạy ruff/pytest (máy chưa cài) và không chạy `npm test` của app, nên 19 test của ticket chưa được chạy lần nào.
+- Phát hiện service: thư mục chỉ bị coi là aggregator (bỏ, thay bằng module con) khi bên trong có service **cùng loại** (parent pom, npm workspaces). App Node có thư mục Python vẫn là một service. Dự án đã khai báo bấm "Phát hiện service" ở Cấu hình dự án để cập nhật.
+- Gate của ticket chỉ chạy service có file ticket sửa (file thuộc service sâu nhất chứa nó). Ticket chưa sửa file nào, hoặc `devmap rules check`, vẫn chạy mọi service. `ponytail:` một service dùng code của service khác cùng repo mà không có build chung sẽ không được gate lại; thêm khai báo phụ thuộc khi gặp.
+- Preset `node` bỏ `-- --watch=false`: `node --test test/ --watch=false` coi cờ này là tên file nên luôn lỗi. Jest/Vitest đã tắt watch nhờ `CI=true`; gate chỉ thêm `--watch=false` khi script `test` là `ng test` (Karma không đọc `CI`).

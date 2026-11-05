@@ -18,7 +18,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 /**
@@ -152,7 +154,12 @@ public class RuleService {
 
   /** changed: repo-relative files of a ticket → lines it changed (gate only blocks on those, see QualityGate); null = whole repo. */
   public List<QualityGate.Result> runGate(String project, String repoName, Path root, Map<String, Set<Integer>> changed) {
-    return units(project).stream().filter(u -> u.repo().equals(repoName))
+    List<Unit> units = units(project).stream().filter(u -> u.repo().equals(repoName)).toList();
+    // a ticket gates only the services owning a file it changed: a Python tool folder the ticket never touched no longer fails
+    // the gate of a Node app on a machine without ruff/pytest
+    Set<Unit> touched = changed == null ? Set.of() : changed.keySet().stream().map(f -> owner(units, f)).filter(Objects::nonNull)
+        .collect(Collectors.toSet());
+    return units.stream().filter(u -> touched.isEmpty() || touched.contains(u))
         .map(u -> gate.run(u.service(), u.path().isEmpty() ? root : root.resolve(u.path()), effective(project, u.service()).quality(),
             changed == null ? null : under(changed, u.path())))
         .toList();
@@ -202,7 +209,7 @@ public class RuleService {
     return u == null ? repoName : u.service();
   }
 
-  private static Unit owner(List<Unit> units, String path) {
+  static Unit owner(List<Unit> units, String path) {
     return units.stream().filter(u -> u.path().isEmpty() || path.startsWith(u.path() + "/"))
         .max((a, b) -> Integer.compare(a.path().length(), b.path().length())).orElse(null);
   }

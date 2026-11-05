@@ -37,8 +37,10 @@ public class ServiceDetector {
   public List<ServiceInfo> detect(Path repo) {
     List<ServiceInfo> found = new ArrayList<>();
     walk(repo, repo, 0, found);
-    // A folder holding other services is an aggregator (parent pom, monorepo root), not a service itself.
-    return found.stream().filter(a -> found.stream().noneMatch(b -> isAncestor(a.path(), b.path()))).toList();
+    // A folder holding services of its own kind is an aggregator (parent pom, npm workspaces), not a service itself. One holding
+    // only other kinds (a Node app with a Python tools/ folder) is still a service: dropping it left its tests out of the gate.
+    return found.stream().filter(a -> found.stream().noneMatch(b -> b.kind().equals(a.kind()) && isAncestor(a.path(), b.path())))
+        .toList();
   }
 
   private void walk(Path root, Path dir, int depth, List<ServiceInfo> out) {

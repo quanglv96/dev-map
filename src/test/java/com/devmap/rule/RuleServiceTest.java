@@ -129,6 +129,29 @@ class RuleServiceTest {
     assertThat(QualityGate.withWrapper("mvnx test", dir)).isEqualTo("mvnx test");
   }
 
+  /** --watch=false only for ng test: node --test would take it as a test file. */
+  @Test
+  void npmTestGetsNoWatchOnlyForKarma(@TempDir Path dir) throws Exception {
+    Files.writeString(dir.resolve("package.json"), "{\"scripts\":{\"test\":\"node --test test/\"}}");
+    assertThat(QualityGate.noWatch("npm run test --if-present", dir)).isEqualTo("npm run test --if-present");
+    Files.writeString(dir.resolve("package.json"), "{\"scripts\":{\"test\":\"ng test\"}}");
+    assertThat(QualityGate.noWatch("npm run test --if-present", dir)).isEqualTo("npm run test --if-present -- --watch=false");
+    assertThat(QualityGate.noWatch("npm test -- --ci", dir)).isEqualTo("npm test -- --ci --watch=false");
+    assertThat(QualityGate.noWatch("mvn -q test", dir)).isEqualTo("mvn -q test");
+  }
+
+  /** A changed file belongs to the deepest service holding it, so a ticket gates only the services it touched. */
+  @Test
+  void changedFileBelongsToDeepestService() {
+    RuleService.Unit app = new RuleService.Unit("ntt", "ntt", "", "node");
+    RuleService.Unit tool = new RuleService.Unit("ntt", "subswap", "subswap", "python");
+    List<RuleService.Unit> units = List.of(app, tool);
+    assertThat(RuleService.owner(units, "src/affLinks.js")).isEqualTo(app);
+    assertThat(RuleService.owner(units, "subswap/main.py")).isEqualTo(tool);
+    assertThat(RuleService.owner(units, "subswapper.js")).isEqualTo(app);
+    assertThat(RuleService.owner(List.of(tool), "src/a.js")).isNull();
+  }
+
   /** A fresh Node clone gets the install that keeps its lockfile; without a lockfile the failure says what is missing. */
   @Test
   void gateInstallsNodeDependenciesWhenMissing(@TempDir Path dir) throws Exception {

@@ -40,6 +40,15 @@ class ServiceDetectorTest {
   }
 
   @Test
+  void appWithFolderOfAnotherKindKeepsBoth() throws Exception {
+    touch("package.json");
+    touch("subswap/requirements.txt");
+    assertThat(new ServiceDetector().detect(repo)).containsExactly(
+        new ServiceInfo(repo.getFileName().toString(), "", "node"),
+        new ServiceInfo("subswap", "subswap", "python"));
+  }
+
+  @Test
   void noBuildFileMeansNoService() throws Exception {
     touch("docs/readme.md");
     assertThat(new ServiceDetector().detect(repo)).isEmpty();
