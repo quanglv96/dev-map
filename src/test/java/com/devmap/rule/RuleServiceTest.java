@@ -170,6 +170,15 @@ class RuleServiceTest {
     assertThat(QualityGate.command("static", "java -no-such-flag", dir, 1).output()).doesNotContain("node_modules");
   }
 
+  /** CI=true only for test steps: under CI electron-builder publishes a release from npm run build (D-64). */
+  @Test
+  void gateSetsCiOnlyForTests(@TempDir Path dir) {
+    String printCi = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win") ? "set CI" : "printenv CI";
+    assertThat(QualityGate.command("unit_test", printCi, dir, 1).passed()).isTrue();
+    assertThat(QualityGate.command("integration_test", printCi, dir, 1).passed()).isTrue();
+    assertThat(QualityGate.command("static", printCi, dir, 1).passed()).isFalse();
+  }
+
   /** A linter fails a ticket only on the files it touched; old violations elsewhere are counted, not blocking. */
   @Test
   void lintFailsOnlyOnTouchedFiles() {

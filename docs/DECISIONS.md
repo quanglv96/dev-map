@@ -435,3 +435,8 @@ Từ log Dev FEAT-003: repo Node có thư mục Python `subswap/`, gate chỉ ch
 - Phát hiện service: thư mục chỉ bị coi là aggregator (bỏ, thay bằng module con) khi bên trong có service **cùng loại** (parent pom, npm workspaces). App Node có thư mục Python vẫn là một service. Dự án đã khai báo bấm "Phát hiện service" ở Cấu hình dự án để cập nhật.
 - Gate của ticket chỉ chạy service có file ticket sửa (file thuộc service sâu nhất chứa nó). Ticket chưa sửa file nào, hoặc `devmap rules check`, vẫn chạy mọi service. `ponytail:` một service dùng code của service khác cùng repo mà không có build chung sẽ không được gate lại; thêm khai báo phụ thuộc khi gặp.
 - Preset `node` bỏ `-- --watch=false`: `node --test test/ --watch=false` coi cờ này là tên file nên luôn lỗi. Jest/Vitest đã tắt watch nhờ `CI=true`; gate chỉ thêm `--watch=false` khi script `test` là `ng test` (Karma không đọc `CI`).
+
+## D-64 Gate chỉ đặt `CI=true` cho bước test
+Từ log Dev FEAT-003: `npm run build` của app Electron trong gate gọi GitHub releases và nhận 401, còn PMO chạy tay thì đạt. Nguyên nhân: gate đặt `CI=true` cho mọi lệnh, electron-builder thấy CI nên tự publish (CRA cũng coi warning là lỗi khi có CI).
+- `CI=true` chỉ đặt cho `unit_test`, `integration_test` (để Jest/Vitest không watch). Bước khác (deps, static, build) bỏ hẳn biến `CI`, kể cả khi DevMap được chạy trong môi trường có sẵn `CI`, để chạy giống shell của PMO.
+- Không thêm lối PMO bỏ qua gate: gate là điều kiện in_dev → sa_verify. `ponytail:` thêm khi gặp lỗi môi trường không sửa được bằng cấu hình lệnh.

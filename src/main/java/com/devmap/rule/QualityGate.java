@@ -164,7 +164,13 @@ public class QualityGate {
       log = Files.createTempFile("devmap-gate", ".log");
       List<String> argv = WINDOWS ? List.of("cmd", "/c", command) : List.of("sh", "-c", command);
       ProcessBuilder pb = new ProcessBuilder(argv).directory(dir.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
-      pb.environment().put("CI", "true"); // jest/vitest/karma etc. run once instead of watching
+      // jest/vitest/karma run once instead of watching. Only tests: under CI electron-builder publishes a release and CRA
+      // fails a build on warnings, so a build or lint step runs as the PMO's own shell does (D-64)
+      if (name.endsWith("test")) {
+        pb.environment().put("CI", "true");
+      } else {
+        pb.environment().remove("CI");
+      }
       Process p = pb.start();
       if (!p.waitFor(timeoutMinutes, TimeUnit.MINUTES)) {
         p.descendants().forEach(ProcessHandle::destroyForcibly);
