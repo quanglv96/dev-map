@@ -422,9 +422,37 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
   // D-65: the gate fails outside the ticket (build environment) and the PMO checked it by hand; the reason goes to tests.md
   const waiveGate = () => {
     const area = el("textarea", { rows: 3, placeholder: t("waiveReason") });
+    // the waiver vouches for commits, so uncommitted work is committed here first, with the same checks as the Code tab
+    const dirty = dev.repos.filter((r) => r.uncommitted.length);
+    const message = dirty.length ? el("input", { placeholder: t("commitMessage", { code: task.id }) }) : null;
+    const pending = el("div");
+    let approved = false;
     const send = el("button", { type: "button", class: "primary", onclick: async () => {
       send.disabled = true;
       try {
+        if (dirty.length && !message.value.trim()) {
+          throw new Error(t("waiveNeedMessage"));
+        }
+        const scopes = await Promise.all(dirty.map((r) => api(`${base(project, task.id)}/dev/scope?repo=${encodeURIComponent(r.repo)}`)));
+        const secrets = scopes.flatMap((s) => s.secrets);
+        if (secrets.length) {
+          throw new Error(t("secretFiles", { files: secrets.join(", ") }));
+        }
+        const needs = dirty.map((r, i) => ({ repo: r.repo, files: scopes[i].needApproval })).filter((n) => n.files.length);
+        if (needs.length && !approved) {
+          approved = true; // second click = the PMO approved the listed files
+          pending.replaceChildren(el("div", { class: "warn" }, el("strong", {}, t("needApproval")),
+            el("ul", {}, needs.flatMap((n) => n.files.map((f) => el("li", {}, el("code", {}, `${n.repo}/${f}`)))))));
+          send.textContent = t("waiveApprove");
+          send.disabled = false;
+          return;
+        }
+        for (const n of needs) {
+          await api(`${base(project, task.id)}/dev/approve`, { method: "POST", body: n });
+        }
+        for (const r of dirty) {
+          await api(`${base(project, task.id)}/dev/commit`, { method: "POST", body: { repo: r.repo, message: message.value } });
+        }
         await api(`${base(project, task.id)}/dev/waive-gate`, { method: "POST", body: { reason: area.value } });
         reopenBox.replaceChildren();
         selectedTab.set(task.id, "chat");
@@ -433,8 +461,12 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
         send.disabled = false;
         showError(error, err);
       }
-    } }, t("waiveGate"));
+    } }, dirty.length ? t("waiveCommit") : t("waiveGate"));
     reopenBox.replaceChildren(el("strong", {}, t("waiveGate")), el("p", { class: "muted small" }, t("waiveHint")), area,
+      dirty.length ? [el("p", { class: "warn small" }, t("waiveDirty")),
+        el("ul", { class: "small" }, dirty.flatMap((r) => r.uncommitted.map((f) => el("li", {}, el("code", {}, `${r.repo}/${f}`))))),
+        message] : null,
+      pending,
       el("div", { class: "row" }, send,
         el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
     area.focus();
