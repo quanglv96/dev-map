@@ -300,8 +300,11 @@ public class TicketGitService {
       }
       requireCheckedOut(w);
       Path wt = Path.of(w.worktree());
-      if (!git.uncommitted(wt).isEmpty()) {
-        throw new IllegalArgumentException(name + ": còn thay đổi chưa commit, commit hết rồi mới bỏ qua gate");
+      List<String> dirty = git.uncommitted(wt);
+      if (!dirty.isEmpty()) { // name the files: build output missing from .gitignore looks "all committed" to the PMO
+        throw new IllegalArgumentException(name + ": còn " + dirty.size() + " file chưa commit, commit hết (hoặc thêm vào"
+            + " .gitignore) rồi mới bỏ qua gate:\n" + String.join("\n", dirty.subList(0, Math.min(dirty.size(), 20)))
+            + (dirty.size() > 20 ? "\n…" : ""));
       }
       String head = git.head(wt);
       dev = dev.with(w.withGate(head));
