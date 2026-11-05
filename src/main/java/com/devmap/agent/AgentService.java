@@ -578,7 +578,7 @@ public class AgentService {
     }
   }
 
-  /** FR-45 / AC-12: once the PMO signed off (Done) or cancelled the ticket, drop the session context of the ticket; only its documents remain. */
+  /** FR-45 / AC-12: once the ticket is Done or Cancelled, drop the session context of the ticket; only its documents remain. */
   @EventListener
   public void onTaskChanged(TaskChanged e) {
     if (e.taskId() == null) {
