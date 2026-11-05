@@ -158,7 +158,7 @@ public class TrayService implements TrayActions {
       }
       AgentService.Activity activity = agents.activity(p.name());
       for (Task t : tasks.list(p.name())) {
-        if (t.status() != TaskStatus.DONE) {
+        if (!t.status().isClosed()) {
           NoticeKind waiting = t.status() == TaskStatus.AWAITING_APPROVAL ? NoticeKind.DECISION
               : t.status() == TaskStatus.AWAITING_PUSH ? NoticeKind.PUSH : null;
           items.put(p.name() + "/" + t.id(), new TraySnapshot.Item(p.name(), t.id(), waiting,

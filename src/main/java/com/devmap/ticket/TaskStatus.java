@@ -6,7 +6,8 @@ import java.util.Set;
 
 /**
  * The 8 states of a ticket (SRS "Luồng một ticket", see DECISIONS D-13). Two transitions are PMO gates
- * that no agent may pass: approving the solution and confirming the push.
+ * that no agent may pass: approving the solution and confirming the push. Cancelled (D-66) is outside the flow: only
+ * {@code TaskService.cancel} enters it, and nothing leaves it.
  */
 public enum TaskStatus {
   @JsonProperty("new") NEW,
@@ -16,7 +17,8 @@ public enum TaskStatus {
   @JsonProperty("in_dev") IN_DEV,
   @JsonProperty("sa_verify") SA_VERIFY,
   @JsonProperty("awaiting_push") AWAITING_PUSH,
-  @JsonProperty("done") DONE;
+  @JsonProperty("done") DONE,
+  @JsonProperty("cancelled") CANCELLED;
 
   private static final Map<TaskStatus, Set<TaskStatus>> NEXT = Map.of(
       NEW, Set.of(SA_ANALYSIS),
@@ -26,7 +28,8 @@ public enum TaskStatus {
       IN_DEV, Set.of(SA_VERIFY),
       SA_VERIFY, Set.of(IN_DEV, AWAITING_PUSH),
       AWAITING_PUSH, Set.of(IN_DEV, DONE),
-      DONE, Set.of());
+      DONE, Set.of(),
+      CANCELLED, Set.of());
 
   public String code() {
     return name().toLowerCase();
@@ -44,6 +47,11 @@ public enum TaskStatus {
   /** Shown with a dot in the task list: the ticket is blocked until the PMO decides. */
   public boolean waitsForPmo() {
     return this == AWAITING_APPROVAL || this == AWAITING_PUSH;
+  }
+
+  /** Done or Cancelled: no more work, the session context is cleared (FR-45). */
+  public boolean isClosed() {
+    return this == DONE || this == CANCELLED;
   }
 
   public boolean isRunning() {

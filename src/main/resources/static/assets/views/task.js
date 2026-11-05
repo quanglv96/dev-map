@@ -315,7 +315,7 @@ function renderQuestions(box, project, detail, questions, onSent) {
 /** Ticket branch, or the PMO option to code and push straight on the base branch; fixed once a worktree exists. */
 function renderBranch(project, task, dev, error) {
   const name = el("div", { class: "path" }, dev.direct ? t("directBranch") : task.branch);
-  if (dev.repos.length || task.status === "done") {
+  if (dev.repos.length || task.status === "done" || task.status === "cancelled") {
     return name;
   }
   const box = el("input", { type: "checkbox", checked: dev.direct });
@@ -336,7 +336,7 @@ function renderBranch(project, task, dev, error) {
 
 function renderRepoPicker(project, detail, repoNames, error) {
   const task = detail.task;
-  if (task.status === "done") {
+  if (task.status === "done" || task.status === "cancelled") {
     return null;
   }
   const box = (n) => el("label", { class: "check" },
@@ -439,21 +439,21 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
         el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
     area.focus();
   };
-  // D-66: the ticket ends without a push (cancelled, nothing to change); the reason goes to history.md
-  const closeTask = () => {
-    const area = el("textarea", { rows: 3, placeholder: t("closeReason") });
+  // D-66: the ticket ends without a push (dropped, nothing to change); the reason goes to history.md
+  const cancelTask = () => {
+    const area = el("textarea", { rows: 3, placeholder: t("cancelReason") });
     const send = el("button", { type: "button", class: "primary", onclick: async () => {
       send.disabled = true;
       try {
-        await api(`${base(project, task.id)}/close`, { method: "POST", body: { reason: area.value } });
+        await api(`${base(project, task.id)}/cancel`, { method: "POST", body: { reason: area.value } });
         reopenBox.replaceChildren();
         rerender();
       } catch (err) {
         send.disabled = false;
         showError(error, err);
       }
-    } }, t("closeTask"));
-    reopenBox.replaceChildren(el("strong", {}, t("closeTask")), el("p", { class: "muted small" }, t("closeHint")), area,
+    } }, t("cancelTask"));
+    reopenBox.replaceChildren(el("strong", {}, t("cancelTask")), el("p", { class: "muted small" }, t("cancelHint")), area,
       el("div", { class: "row" }, send,
         el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
     area.focus();
@@ -493,11 +493,12 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null,
       el("dt", {}, t("tokens")), el("dd", {}, totals),
       dev.repos.length ? [el("dt", {}, t("gateRow")), el("dd", {}, gateSummary(dev, openCode))] : null),
-    gates.length || from === "done" || !running || (queued && from !== "in_dev") ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
+    from !== "cancelled" && (gates.length || from === "done" || !running || (queued && from !== "in_dev")) ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
     el("div", { class: "actions" }, gates.map((a) => el("button", {
       type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", title: implementNow(a) ? t("implementOne") : null, onclick: () => move(a.to, a.pmoGate)
     }, actionLabel(from, a.to))), from === "in_dev" ? null : pause,
-    from === "done" || running ? null : el("button", { type: "button", class: "secondary", onclick: closeTask }, t("closeTask"))),
+    from === "done" || from === "cancelled" || running ? null
+      : el("button", { type: "button", class: "secondary", onclick: cancelTask }, t("cancelTask"))),
     from === "done" ? el("div", { class: "actions" },
       el("button", { type: "button", class: "secondary", onclick: () => reopen("bug") }, t("reportBug")),
       el("button", { type: "button", class: "secondary", onclick: () => reopen("logic") }, t("addLogic"))) : null,

@@ -14,7 +14,7 @@ import { renderNewTask, renderTask } from "./views/task.js";
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
 
-const STATUSES = ["new", "sa_analysis", "awaiting_approval", "ready", "in_dev", "sa_verify", "awaiting_push", "done"];
+const STATUSES = ["new", "sa_analysis", "awaiting_approval", "ready", "in_dev", "sa_verify", "awaiting_push", "done", "cancelled"];
 const name = decodeURIComponent(location.pathname.split("/")[1]);
 const api$ = `/api/projects/${encodeURIComponent(name)}`;
 const mid = document.getElementById("mid");

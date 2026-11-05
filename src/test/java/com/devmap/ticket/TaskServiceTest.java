@@ -175,24 +175,26 @@ class TaskServiceTest {
     assertThat(Files.readString(folder(id).resolve("history.md"))).contains("Sửa analysis.md → v1", "→ v2, đã che 1");
   }
 
-  /** D-66: PMO closes a ticket without push, with a masked reason; it leaves the queue and can be reopened. */
+  /** D-66: PMO cancels a ticket with a masked reason; it leaves the queue, is final and gets no agent session. */
   @Test
-  void pmoClosesTicketWithReason() throws Exception {
+  void pmoCancelsTicketWithReason() throws Exception {
     String id = tasks.create("shop", "FEAT", "SHOP-9", "refund", "hoàn tiền").task().id();
     tasks.transition("shop", id, "sa_analysis", Actor.PMO);
     tasks.transition("shop", id, "awaiting_approval", Actor.PMO);
     tasks.writeDoc("shop", id, "plan.md", "p", Actor.PMO);
     tasks.transition("shop", id, "ready", Actor.PMO);
-    assertThatThrownBy(() -> tasks.close("shop", id, "x", Actor.SA)).isInstanceOf(PmoOnlyException.class);
-    assertThatThrownBy(() -> tasks.close("shop", id, " ", Actor.PMO)).hasMessageContaining("lý do");
+    assertThatThrownBy(() -> tasks.cancel("shop", id, "x", Actor.SA)).isInstanceOf(PmoOnlyException.class);
+    assertThatThrownBy(() -> tasks.cancel("shop", id, " ", Actor.PMO)).hasMessageContaining("lý do");
 
-    Task t = tasks.close("shop", id, "Huỷ yêu cầu, server 10.0.0.12", Actor.PMO);
-    assertThat(t.status()).isEqualTo(TaskStatus.DONE);
+    Task t = tasks.cancel("shop", id, "Khách bỏ yêu cầu, server 10.0.0.12", Actor.PMO);
+    assertThat(t.status()).isEqualTo(TaskStatus.CANCELLED);
     assertThat(tasks.queue("shop")).isEmpty();
+    assertThat(tasks.detail("shop", id).actions()).isEmpty();
     String log = Files.readString(folder(id).resolve("history.md"));
-    assertThat(log).contains("Đóng ticket từ ready, không push", "Huỷ yêu cầu").doesNotContain("10.0.0.12");
-    assertThatThrownBy(() -> tasks.close("shop", id, "x", Actor.PMO)).hasMessageContaining("đã Done");
-    assertThat(tasks.reopen("shop", id, "logic", "làm lại", Actor.PMO).status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(log).contains("Huỷ ticket từ ready", "Khách bỏ yêu cầu").doesNotContain("10.0.0.12");
+    assertThatThrownBy(() -> tasks.cancel("shop", id, "x", Actor.PMO)).hasMessageContaining("đã cancelled");
+    assertThatThrownBy(() -> tasks.reopen("shop", id, "logic", "làm lại", Actor.PMO)).hasMessageContaining("đã Done");
+    assertThatThrownBy(() -> tasks.transition("shop", id, "done", Actor.PMO)).hasMessageContaining("Không chuyển được");
   }
 
   /** FR-10 / AC-03 (manual part): reopening keeps the code, logs the bug in bugs/, rebuilds spec.json. */

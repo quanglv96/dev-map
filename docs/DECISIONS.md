@@ -447,7 +447,8 @@ Gate có thể lỗi vì môi trường máy chạy DevMap (token, công cụ, c
 - DevMap ghi commit hiện tại của từng repo như commit đã qua gate (`gateHead`), nên push sau này đẩy đúng commit PMO đã duyệt; commit thêm sau đó vẫn phải qua gate. Lý do ghi vào `tests.md` (SA đọc khi kiểm chứng) và nhật ký (NFR-10), rồi tự mở phiên SA kiểm chứng.
 - Prompt Dev: gate lỗi vì môi trường thì không sửa, báo PMO sửa lệnh gate hoặc bỏ qua gate.
 
-## D-66 PMO đóng task không qua push
-SRS chỉ có đường Done qua "Xác nhận push". Ticket bị huỷ hoặc SA kết luận không cần sửa code thì không có cách kết thúc.
-- Nút "Đóng task" ở mục quyết định của PMO, mọi trạng thái trừ Done, khi không có agent đang chạy cho ticket. Bắt buộc ghi lý do (đã che bí mật); chỉ PMO.
-- Ticket chuyển thẳng Done, bỏ kiểm tra push; ra khỏi hàng đợi; lý do ghi vào nhật ký (NFR-10). Ngữ cảnh phiên bị xoá như mọi lần Done (FR-45). Worktree và branch giữ nguyên, DevMap không xoá gì trên đĩa; mở lại bằng "Báo bug"/"Bổ sung logic" như ticket Done khác.
+## D-66 PMO huỷ task: trạng thái "Đã huỷ" (`cancelled`)
+SRS chỉ có đường Done qua "Xác nhận push". Ticket bị bỏ hoặc SA kết luận không cần sửa code thì không có cách kết thúc. Tách thành trạng thái riêng để không lẫn với ticket đã làm xong.
+- Trạng thái thứ 9 `cancelled`, nằm ngoài luồng 8 trạng thái: chỉ vào bằng nút "Huỷ task" (`POST …/tasks/{id}/cancel`), không có đường ra. Nhầm thì tạo ticket mới.
+- Nút ở mục quyết định của PMO, mọi trạng thái trừ Done và Đã huỷ, khi không có agent đang chạy cho ticket (server cũng từ chối). Bắt buộc ghi lý do (đã che bí mật); chỉ PMO.
+- Không kiểm tra push; ticket ra khỏi hàng đợi; lý do ghi vào nhật ký (NFR-10). Ngữ cảnh phiên bị xoá như Done (FR-45), không mở phiên agent mới, không đếm câu hỏi chờ, không hiện ở khay. Không "Báo bug"/"Bổ sung logic". Tài liệu, worktree và branch giữ nguyên, DevMap không xoá gì trên đĩa.

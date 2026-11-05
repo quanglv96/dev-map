@@ -32,7 +32,7 @@ public class TaskController {
   public record DocRequest(String content) {
   }
 
-  public record CloseRequest(String reason) {
+  public record CancelRequest(String reason) {
   }
 
   public record ReopenRequest(String kind, String description) {
@@ -76,9 +76,9 @@ public class TaskController {
     return tasks.transition(project, id, req.to(), Actor.PMO);
   }
 
-  @PostMapping("/projects/{project}/tasks/{id}/close")
-  public Task close(@PathVariable String project, @PathVariable String id, @RequestBody CloseRequest req) {
-    return agents.close(project, id, req.reason());
+  @PostMapping("/projects/{project}/tasks/{id}/cancel")
+  public Task cancel(@PathVariable String project, @PathVariable String id, @RequestBody CancelRequest req) {
+    return agents.cancel(project, id, req.reason());
   }
 
   @PostMapping("/projects/{project}/tasks/{id}/reopen")

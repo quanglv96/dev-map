@@ -188,12 +188,12 @@ public class AgentService {
     return reopened;
   }
 
-  /** D-66: no session may still be writing to a ticket the PMO closes; FR-45 purge then runs on the Done event. */
-  public Task close(String project, String id, String reason) {
+  /** D-66: no session may still be writing to a ticket the PMO cancels; FR-45 purge then runs on the change event. */
+  public Task cancel(String project, String id, String reason) {
     if (busy.contains(project + "/" + id)) {
       throw new IllegalArgumentException("Agent đang chạy cho " + id + "; dừng hoặc chờ phiên này xong");
     }
-    return tasks.close(project, id, reason, Actor.PMO);
+    return tasks.cancel(project, id, reason, Actor.PMO);
   }
 
   private ChatMessage submit(String project, String id, Role role, Mode mode, String question, boolean fullScan) {
@@ -462,7 +462,7 @@ public class AgentService {
       }
       chats.read(tasks.folder(project, t.id())).stream().filter(m -> !m.from().equals("PMO")).reduce((a, b) -> b)
           .filter(m -> m.state().equals("error")).ifPresent(m -> failed.add(t.id()));
-      int n = t.status() == TaskStatus.DONE ? 0 : openQuestions(project, t.id());
+      int n = t.status().isClosed() ? 0 : openQuestions(project, t.id());
       if (n > 0) {
         questions.put(t.id(), n);
       }
@@ -578,7 +578,7 @@ public class AgentService {
     }
   }
 
-  /** FR-45 / AC-12: once the PMO signed off (Done), drop the session context of the ticket; only its documents remain. */
+  /** FR-45 / AC-12: once the PMO signed off (Done) or cancelled the ticket, drop the session context of the ticket; only its documents remain. */
   @EventListener
   public void onTaskChanged(TaskChanged e) {
     if (e.taskId() == null) {
@@ -588,7 +588,7 @@ public class AgentService {
       nextInQueue(e.project());
     }
     try {
-      if (tasks.detail(e.project(), e.taskId()).task().status() == TaskStatus.DONE && !busy.contains(e.project() + "/" + e.taskId())) {
+      if (tasks.detail(e.project(), e.taskId()).task().status().isClosed() && !busy.contains(e.project() + "/" + e.taskId())) {
         live.values().removeIf(s -> s.project.equals(e.project()) && s.taskId.equals(e.taskId()));
         chats.deleteTree(sessions.resolve(e.project()).resolve(e.taskId()));
       }
@@ -608,6 +608,9 @@ public class AgentService {
   }
 
   private static Role role(String role, TaskStatus status) {
+    if (status == TaskStatus.CANCELLED) {
+      throw new IllegalArgumentException("Ticket đã huỷ, không mở phiên agent");
+    }
     boolean devTime = status == TaskStatus.READY || status == TaskStatus.IN_DEV;
     if (role == null || role.isBlank()) {
       return devTime ? Role.DEV : Role.SA;

@@ -232,24 +232,24 @@ public class TaskService {
     return updated;
   }
 
-  /** D-66: the PMO closes a ticket that will not go through push (cancelled, nothing to change); reopen still works. */
-  public synchronized Task close(String project, String id, String reason, Actor actor) {
+  /** D-66: the PMO cancels a ticket from any open state, with a reason; it is final, nothing is pushed. */
+  public synchronized Task cancel(String project, String id, String reason, Actor actor) {
     if (actor != Actor.PMO) {
-      throw new PmoOnlyException("Chỉ PMO được đóng ticket");
+      throw new PmoOnlyException("Chỉ PMO được huỷ ticket");
     }
     if (reason == null || reason.isBlank()) {
-      throw new IllegalArgumentException("Chưa ghi lý do đóng ticket");
+      throw new IllegalArgumentException("Chưa ghi lý do huỷ ticket");
     }
     Stored s = stored(project, id);
     TaskStatus from = s.task().status();
-    if (from == TaskStatus.DONE) {
-      throw new IllegalArgumentException("Ticket đã Done");
+    if (from.isClosed()) {
+      throw new IllegalArgumentException("Ticket đã " + from.code());
     }
     SecretMasker.Result why = masker.mask(reason.strip(), project(project).config().secrets());
-    Task updated = s.task().withStatus(TaskStatus.DONE, now());
+    Task updated = s.task().withStatus(TaskStatus.CANCELLED, now());
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
-    updateQueue(dir(project), id, TaskStatus.DONE);
-    history(s, actor, "Đóng ticket từ " + from.code() + ", không push, lý do: " + why.text());
+    updateQueue(dir(project), id, TaskStatus.CANCELLED);
+    history(s, actor, "Huỷ ticket từ " + from.code() + ", lý do: " + why.text());
     changed(project, id);
     return updated;
   }
@@ -257,8 +257,8 @@ public class TaskService {
   /** Repos the ticket touches; they get a worktree each when Dev starts. Fixed once the ticket is Done. */
   public synchronized Task setRepos(String project, String id, List<String> names, Actor actor) {
     Stored s = stored(project, id);
-    if (s.task().status() == TaskStatus.DONE) {
-      throw new IllegalArgumentException("Ticket đã Done");
+    if (s.task().status().isClosed()) {
+      throw new IllegalArgumentException("Ticket đã " + s.task().status().code());
     }
     List<String> known = project(project).config().repos().stream().map(RepoConfig::name).toList();
     List<String> wanted = names == null ? List.of() : names.stream().distinct().toList();
