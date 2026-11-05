@@ -419,6 +419,26 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
   } }, t("runGate"));
 
   const reopenBox = el("div", { class: "reopen" });
+  // D-65: the gate fails outside the ticket (build environment) and the PMO checked it by hand; the reason goes to tests.md
+  const waiveGate = () => {
+    const area = el("textarea", { rows: 3, placeholder: t("waiveReason") });
+    const send = el("button", { type: "button", class: "primary", onclick: async () => {
+      send.disabled = true;
+      try {
+        await api(`${base(project, task.id)}/dev/waive-gate`, { method: "POST", body: { reason: area.value } });
+        reopenBox.replaceChildren();
+        selectedTab.set(task.id, "chat");
+        rerender();
+      } catch (err) {
+        send.disabled = false;
+        showError(error, err);
+      }
+    } }, t("waiveGate"));
+    reopenBox.replaceChildren(el("strong", {}, t("waiveGate")), el("p", { class: "muted small" }, t("waiveHint")), area,
+      el("div", { class: "row" }, send,
+        el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
+    area.focus();
+  };
   const reopen = (kind) => {
     const area = el("textarea", { rows: 4, placeholder: t("describe") });
     const send = el("button", { type: "button", class: "primary", onclick: async () => {
@@ -468,7 +488,8 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       dev.repos.length ? gateButton : null,
       el("button", { type: "button", class: "secondary", onclick: () => call("/dev/start") }, t("pullBase")),
       dev.repos.length && !dev.direct && !running ? el("button", { type: "button", class: "secondary",
-        onclick: () => handoffReview(reviewBox, project, task, error) }, t("handoff")) : null),
+        onclick: () => handoffReview(reviewBox, project, task, error) }, t("handoff")) : null,
+      dev.repos.length && !running ? el("button", { type: "button", class: "secondary", onclick: waiveGate }, t("waiveGate")) : null),
     el("p", { class: "muted small" }, t("gateHint"))] : null,
     manual.length ? [el("h3", { class: "section" }, t("manualMoves")), el("p", { class: "muted small" }, t("manualHint")),
       el("div", { class: "actions" }, manual.map((a) => el("button", {

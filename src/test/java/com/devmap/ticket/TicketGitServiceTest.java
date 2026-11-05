@@ -151,6 +151,26 @@ class TicketGitServiceTest {
   }
 
   /** FR-30: a ticket branch matching a protected pattern can neither be worked on nor pushed; there is no force flag. */
+  /** D-65: only the PMO, only with a reason and everything committed; the waived commit then pushes like a passed one. */
+  @Test
+  void pmoWaivesGateWithReason() throws Exception {
+    String id = readyTicket();
+    TicketGitService.View v = dev.start("shop", id, Actor.DEV);
+    Path order = Path.of(v.repos().stream().filter(r -> r.repo().equals("order-service")).findFirst().orElseThrow().worktree());
+    Files.writeString(order.resolve("stray.txt"), "x");
+
+    assertThatThrownBy(() -> dev.waiveGate("shop", id, "build cần token", Actor.DEV)).isInstanceOf(PmoOnlyException.class);
+    assertThatThrownBy(() -> dev.waiveGate("shop", id, " ", Actor.PMO)).hasMessageContaining("lý do");
+    assertThatThrownBy(() -> dev.waiveGate("shop", id, "build cần token", Actor.PMO)).hasMessageContaining("chưa commit");
+    Files.delete(order.resolve("stray.txt"));
+
+    dev.waiveGate("shop", id, "build cần token GitHub, PMO build tay đạt", Actor.PMO);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.SA_VERIFY);
+    assertThat(tasks.readDoc("shop", id, "tests.md").content()).contains("PMO bỏ qua gate", "PMO build tay đạt");
+    assertThat(tasks.readDoc("shop", id, "history.md").content()).contains("PMO bỏ qua quality gate");
+    assertThatThrownBy(() -> dev.waiveGate("shop", id, "lần nữa", Actor.PMO)).hasMessageContaining("Dev triển khai");
+  }
+
   @Test
   void protectedBranchesAreRefused() {
     Rules def = rules.projectDefault("shop");

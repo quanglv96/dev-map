@@ -440,3 +440,9 @@ Từ log Dev FEAT-003: repo Node có thư mục Python `subswap/`, gate chỉ ch
 Từ log Dev FEAT-003: `npm run build` của app Electron trong gate gọi GitHub releases và nhận 401, còn PMO chạy tay thì đạt. Nguyên nhân: gate đặt `CI=true` cho mọi lệnh, electron-builder thấy CI nên tự publish (CRA cũng coi warning là lỗi khi có CI).
 - `CI=true` chỉ đặt cho `unit_test`, `integration_test` (để Jest/Vitest không watch). Bước khác (deps, static, build) bỏ hẳn biến `CI`, kể cả khi DevMap được chạy trong môi trường có sẵn `CI`, để chạy giống shell của PMO.
 - Không thêm lối PMO bỏ qua gate: gate là điều kiện in_dev → sa_verify. `ponytail:` thêm khi gặp lỗi môi trường không sửa được bằng cấu hình lệnh.
+
+## D-65 PMO bỏ qua quality gate có ghi lý do
+Gate có thể lỗi vì môi trường máy chạy DevMap (token, công cụ, cấu hình build) dù code của ticket đạt và PMO đã kiểm tay. Trước đây không có cách chuyển in_dev → sa_verify, kể cả PMO.
+- Nút "Bỏ qua gate" ở mục các bước Dev (ticket in_dev, Dev không đang chạy). Bắt buộc ghi lý do; chỉ PMO; mọi repo của ticket phải có worktree và đã commit hết.
+- DevMap ghi commit hiện tại của từng repo như commit đã qua gate (`gateHead`), nên push sau này đẩy đúng commit PMO đã duyệt; commit thêm sau đó vẫn phải qua gate. Lý do ghi vào `tests.md` (SA đọc khi kiểm chứng) và nhật ký (NFR-10), rồi tự mở phiên SA kiểm chứng.
+- Prompt Dev: gate lỗi vì môi trường thì không sửa, báo PMO sửa lệnh gate hoặc bỏ qua gate.

@@ -1,5 +1,6 @@
 package com.devmap.web;
 
+import com.devmap.agent.AgentService;
 import com.devmap.sync.SyncService;
 import com.devmap.rule.QualityGate;
 import com.devmap.ticket.Task;
@@ -31,14 +32,19 @@ public class DevController {
   public record DirectRequest(boolean direct) {
   }
 
+  public record WaiveRequest(String reason) {
+  }
+
   private final TicketGitService dev;
   private final TaskService tasks;
   private final SyncService sync;
+  private final AgentService agents;
 
-  public DevController(TicketGitService dev, TaskService tasks, SyncService sync) {
+  public DevController(TicketGitService dev, TaskService tasks, SyncService sync, AgentService agents) {
     this.dev = dev;
     this.tasks = tasks;
     this.sync = sync;
+    this.agents = agents;
   }
 
   @PutMapping("/repos")
@@ -84,6 +90,14 @@ public class DevController {
   @PostMapping("/dev/gate")
   public List<QualityGate.Result> gate(@PathVariable String project, @PathVariable String id) {
     return dev.gate(project, id, Actor.PMO);
+  }
+
+  /** D-65: PMO vouches for the current commits instead of the gate; SA verification starts as it does after Dev hands over. */
+  @PostMapping("/dev/waive-gate")
+  public void waiveGate(@PathVariable String project, @PathVariable String id, @RequestBody WaiveRequest req) {
+    dev.waiveGate(project, id, req.reason(), Actor.PMO);
+    agents.ask(project, id, "sa", "PMO đã bỏ qua quality gate, lý do: " + req.reason().strip()
+        + ". Kiểm chứng ticket; phần gate không chạy được thì đối chiếu với lý do này.", false);
   }
 
   @PostMapping("/dev/push")

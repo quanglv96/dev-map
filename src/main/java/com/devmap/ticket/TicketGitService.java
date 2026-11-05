@@ -276,6 +276,46 @@ public class TicketGitService {
   }
 
   /**
+   * D-65: the gate fails for a reason outside the ticket (build environment, token) and the PMO checked it by hand. The PMO
+   * vouches for the current commit of every repo instead of the gate, with a reason kept in tests.md and the audit log, and the
+   * ticket goes to SA verification. Everything is still committed, so push later sends exactly what the PMO waived.
+   */
+  public synchronized void waiveGate(String project, String id, String reason, Actor actor) {
+    if (actor != Actor.PMO) {
+      throw new PmoOnlyException("Chỉ PMO được bỏ qua quality gate");
+    }
+    if (reason == null || reason.isBlank()) {
+      throw new IllegalArgumentException("Ghi lý do bỏ qua quality gate");
+    }
+    Stored s = tasks.stored(project, id);
+    if (s.task().status() != TaskStatus.IN_DEV) {
+      throw new IllegalArgumentException("Chỉ bỏ qua gate khi ticket đang Dev triển khai");
+    }
+    DevState dev = tasks.devState(project, s);
+    StringBuilder heads = new StringBuilder();
+    for (String name : s.task().repos()) {
+      RepoWork w = dev.repo(name);
+      if (w == null) {
+        throw new IllegalArgumentException(name + ": chưa tạo worktree");
+      }
+      requireCheckedOut(w);
+      Path wt = Path.of(w.worktree());
+      if (!git.uncommitted(wt).isEmpty()) {
+        throw new IllegalArgumentException(name + ": còn thay đổi chưa commit, commit hết rồi mới bỏ qua gate");
+      }
+      String head = git.head(wt);
+      dev = dev.with(w.withGate(head));
+      heads.append(heads.isEmpty() ? "" : ", ").append(name).append('@').append(head, 0, 8);
+    }
+    repo.writeDevState(s.folder(), dev);
+    String note = "PMO bỏ qua quality gate (" + heads + "): " + reason.strip();
+    String tests = repo.readDoc(s.folder(), "tests.md").orElse("# Test và quality gate – " + id + "\n");
+    tasks.writeDoc(project, id, "tests.md", tests + "\n## PMO bỏ qua gate – " + now() + "\n\n" + note + "\n", Actor.DEVMAP);
+    tasks.history(s, actor, null, "quality gate, PMO duyệt ngoại lệ", note);
+    tasks.transition(project, id, TaskStatus.SA_VERIFY.code(), actor);
+  }
+
+  /**
    * FR-27 / FR-30 / AC-05: the PMO's confirmation is this call. Pushes the commit that passed the gate and SA verification to the
    * ticket branch of every changed repo (never a protected branch, never forced), then marks the ticket Done.
    */
