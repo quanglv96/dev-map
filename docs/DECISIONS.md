@@ -449,9 +449,9 @@ Gate có thể lỗi vì môi trường máy chạy DevMap (token, công cụ, c
 
 ## D-66 PMO huỷ task: trạng thái "Đã huỷ" (`cancelled`)
 SRS chỉ có đường Done qua "Xác nhận push". Ticket bị bỏ hoặc SA kết luận không cần sửa code thì không có cách kết thúc. Tách thành trạng thái riêng để không lẫn với ticket đã làm xong.
-- Trạng thái thứ 9 `cancelled`, nằm ngoài luồng 8 trạng thái: chỉ vào bằng nút "Huỷ task" (`POST …/tasks/{id}/cancel`), không có đường ra. Nhầm thì tạo ticket mới.
+- Trạng thái thứ 9 `cancelled`, nằm ngoài luồng 8 trạng thái: chỉ vào bằng nút "Huỷ task" (`POST …/tasks/{id}/cancel`); chỉ ra bằng "Mở lại ticket" của PMO, về Mới (cổng PMO, ghi nhật ký). Tài liệu và plan cũ giữ nguyên, PMO chạy lại "Bắt đầu phân tích".
 - Nút ở mục quyết định của PMO, mọi trạng thái trừ Done và Đã huỷ, khi không có agent đang chạy cho ticket (server cũng từ chối). Bắt buộc ghi lý do (đã che bí mật); chỉ PMO.
-- Không kiểm tra push; ticket ra khỏi hàng đợi; lý do ghi vào nhật ký (NFR-10). Ngữ cảnh phiên bị xoá như Done (FR-45), không mở phiên agent mới, không đếm câu hỏi chờ, không hiện ở khay. Không "Báo bug"/"Bổ sung logic". Tài liệu, worktree và branch giữ nguyên, DevMap không xoá gì trên đĩa.
+- Không kiểm tra push; ticket ra khỏi hàng đợi; lý do ghi vào nhật ký (NFR-10). Ngữ cảnh phiên bị xoá như Done (FR-45), không mở phiên agent mới, không đếm câu hỏi chờ, không hiện ở khay. Không "Báo bug"/"Bổ sung logic" (đó là cho ticket Done). Tài liệu, worktree và branch giữ nguyên, DevMap không xoá gì trên đĩa.
 
 ## D-67 Token chạy không còn trên URL
 PMO chỉ chạy DevMap trên máy mình, không cần link `?token=…`. Token chạy vẫn giữ (NFR-08): không có nó, mọi tiến trình hay trang web trên máy gọi được API chạy agent và push code.

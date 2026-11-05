@@ -128,7 +128,8 @@ public class TaskService {
       throw new IllegalArgumentException("Không chuyển được từ " + from.code() + " sang " + to.code());
     }
     if (from.isPmoGate(to) && actor != Actor.PMO) {
-      throw new PmoOnlyException("Chỉ PMO được " + (to == TaskStatus.READY ? "chốt giải pháp" : "xác nhận push"));
+      throw new PmoOnlyException("Chỉ PMO được " + (to == TaskStatus.READY ? "chốt giải pháp"
+          : from == TaskStatus.CANCELLED ? "mở lại ticket đã huỷ" : "xác nhận push"));
     }
     if (to == TaskStatus.READY && repo.readDoc(s.folder(), "plan.md").map(String::isBlank).orElse(true)) {
       throw new IllegalArgumentException("Chưa có plan.md, chưa chốt được giải pháp");

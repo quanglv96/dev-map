@@ -493,7 +493,7 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null,
       el("dt", {}, t("tokens")), el("dd", {}, totals),
       dev.repos.length ? [el("dt", {}, t("gateRow")), el("dd", {}, gateSummary(dev, openCode))] : null),
-    from !== "cancelled" && (gates.length || from === "done" || !running || (queued && from !== "in_dev")) ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
+    gates.length || from === "done" || !running || (queued && from !== "in_dev") ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
     el("div", { class: "actions" }, gates.map((a) => el("button", {
       type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", title: implementNow(a) ? t("implementOne") : null, onclick: () => move(a.to, a.pmoGate)
     }, actionLabel(from, a.to))), from === "in_dev" ? null : pause,

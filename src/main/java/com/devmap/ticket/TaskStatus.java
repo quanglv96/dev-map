@@ -7,7 +7,7 @@ import java.util.Set;
 /**
  * The 8 states of a ticket (SRS "Luồng một ticket", see DECISIONS D-13). Two transitions are PMO gates
  * that no agent may pass: approving the solution and confirming the push. Cancelled (D-66) is outside the flow: only
- * {@code TaskService.cancel} enters it, and nothing leaves it.
+ * {@code TaskService.cancel} enters it, and only the PMO takes it back to New.
  */
 public enum TaskStatus {
   @JsonProperty("new") NEW,
@@ -29,7 +29,7 @@ public enum TaskStatus {
       SA_VERIFY, Set.of(IN_DEV, AWAITING_PUSH),
       AWAITING_PUSH, Set.of(IN_DEV, DONE),
       DONE, Set.of(),
-      CANCELLED, Set.of());
+      CANCELLED, Set.of(NEW));
 
   public String code() {
     return name().toLowerCase();
@@ -41,7 +41,7 @@ public enum TaskStatus {
 
   /** True when moving from this state to {@code to} is a decision only the PMO may take. */
   public boolean isPmoGate(TaskStatus to) {
-    return this == AWAITING_APPROVAL && to == READY || this == AWAITING_PUSH && to == DONE;
+    return this == AWAITING_APPROVAL && to == READY || this == AWAITING_PUSH && to == DONE || this == CANCELLED;
   }
 
   /** Shown with a dot in the task list: the ticket is blocked until the PMO decides. */

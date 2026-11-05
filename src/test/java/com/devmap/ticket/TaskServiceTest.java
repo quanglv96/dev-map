@@ -175,7 +175,7 @@ class TaskServiceTest {
     assertThat(Files.readString(folder(id).resolve("history.md"))).contains("Sửa analysis.md → v1", "→ v2, đã che 1");
   }
 
-  /** D-66: PMO cancels a ticket with a masked reason; it leaves the queue, is final and gets no agent session. */
+  /** D-66: PMO cancels a ticket with a masked reason; it leaves the queue, and only the PMO brings it back to New. */
   @Test
   void pmoCancelsTicketWithReason() throws Exception {
     String id = tasks.create("shop", "FEAT", "SHOP-9", "refund", "hoàn tiền").task().id();
@@ -189,12 +189,15 @@ class TaskServiceTest {
     Task t = tasks.cancel("shop", id, "Khách bỏ yêu cầu, server 10.0.0.12", Actor.PMO);
     assertThat(t.status()).isEqualTo(TaskStatus.CANCELLED);
     assertThat(tasks.queue("shop")).isEmpty();
-    assertThat(tasks.detail("shop", id).actions()).isEmpty();
+    assertThat(tasks.detail("shop", id).actions()).containsExactly(new TaskService.Action("new", true));
     String log = Files.readString(folder(id).resolve("history.md"));
     assertThat(log).contains("Huỷ ticket từ ready", "Khách bỏ yêu cầu").doesNotContain("10.0.0.12");
     assertThatThrownBy(() -> tasks.cancel("shop", id, "x", Actor.PMO)).hasMessageContaining("đã cancelled");
     assertThatThrownBy(() -> tasks.reopen("shop", id, "logic", "làm lại", Actor.PMO)).hasMessageContaining("đã Done");
     assertThatThrownBy(() -> tasks.transition("shop", id, "done", Actor.PMO)).hasMessageContaining("Không chuyển được");
+    assertThatThrownBy(() -> tasks.transition("shop", id, "new", Actor.SA)).isInstanceOf(PmoOnlyException.class);
+    assertThat(tasks.transition("shop", id, "new", Actor.PMO).status()).isEqualTo(TaskStatus.NEW);
+    assertThat(Files.readString(folder(id).resolve("history.md"))).contains("cancelled → new");
   }
 
   /** FR-10 / AC-03 (manual part): reopening keeps the code, logs the bug in bugs/, rebuilds spec.json. */
