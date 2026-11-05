@@ -381,7 +381,7 @@ class AgentServiceTest {
         tool(c, "write_file", Map.of("repo", "order-service", "path", "src/main/java/com/shop/order/Maint" + n + ".java",
             "content", "package com.shop.order;\n\nclass Maint" + n + " {\n}\n"));
         tool(c, "commit", Map.of("repo", "order-service", "message", "maint " + n));
-        assertThat(tool(c, "run_quality_gate", Map.of())).contains("ĐẠT"); // regression: unit tests in the gate
+        assertThat(tool(c, "run_quality_gate", Map.of())).contains("ĐẠT").doesNotContain("KHÔNG ĐẠT"); // unit tests in the gate
         assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).contains("sa_verify");
         return "ok";
       });
