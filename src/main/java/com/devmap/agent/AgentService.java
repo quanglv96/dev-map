@@ -188,6 +188,14 @@ public class AgentService {
     return reopened;
   }
 
+  /** D-66: no session may still be writing to a ticket the PMO closes; FR-45 purge then runs on the Done event. */
+  public Task close(String project, String id, String reason) {
+    if (busy.contains(project + "/" + id)) {
+      throw new IllegalArgumentException("Agent đang chạy cho " + id + "; dừng hoặc chờ phiên này xong");
+    }
+    return tasks.close(project, id, reason, Actor.PMO);
+  }
+
   private ChatMessage submit(String project, String id, Role role, Mode mode, String question, boolean fullScan) {
     String key = project + "/" + id;
     if (!busy.add(key)) {

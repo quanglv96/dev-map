@@ -439,6 +439,25 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
         el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
     area.focus();
   };
+  // D-66: the ticket ends without a push (cancelled, nothing to change); the reason goes to history.md
+  const closeTask = () => {
+    const area = el("textarea", { rows: 3, placeholder: t("closeReason") });
+    const send = el("button", { type: "button", class: "primary", onclick: async () => {
+      send.disabled = true;
+      try {
+        await api(`${base(project, task.id)}/close`, { method: "POST", body: { reason: area.value } });
+        reopenBox.replaceChildren();
+        rerender();
+      } catch (err) {
+        send.disabled = false;
+        showError(error, err);
+      }
+    } }, t("closeTask"));
+    reopenBox.replaceChildren(el("strong", {}, t("closeTask")), el("p", { class: "muted small" }, t("closeHint")), area,
+      el("div", { class: "row" }, send,
+        el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
+    area.focus();
+  };
   const reopen = (kind) => {
     const area = el("textarea", { rows: 4, placeholder: t("describe") });
     const send = el("button", { type: "button", class: "primary", onclick: async () => {
@@ -474,10 +493,11 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null,
       el("dt", {}, t("tokens")), el("dd", {}, totals),
       dev.repos.length ? [el("dt", {}, t("gateRow")), el("dd", {}, gateSummary(dev, openCode))] : null),
-    gates.length || from === "done" || (queued && from !== "in_dev") ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
+    gates.length || from === "done" || !running || (queued && from !== "in_dev") ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
     el("div", { class: "actions" }, gates.map((a) => el("button", {
       type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", title: implementNow(a) ? t("implementOne") : null, onclick: () => move(a.to, a.pmoGate)
-    }, actionLabel(from, a.to))), from === "in_dev" ? null : pause),
+    }, actionLabel(from, a.to))), from === "in_dev" ? null : pause,
+    from === "done" || running ? null : el("button", { type: "button", class: "secondary", onclick: closeTask }, t("closeTask"))),
     from === "done" ? el("div", { class: "actions" },
       el("button", { type: "button", class: "secondary", onclick: () => reopen("bug") }, t("reportBug")),
       el("button", { type: "button", class: "secondary", onclick: () => reopen("logic") }, t("addLogic"))) : null,

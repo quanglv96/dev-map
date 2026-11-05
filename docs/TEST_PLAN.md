@@ -296,3 +296,4 @@ Hai "máy" giả lập trong thư mục tạm của test: `machineA/`, `machineB
 - [ ] **AC-29** Chạy `DevMap.cmd` lần hai: không có server thứ hai, trình duyệt mở ra.
 - [ ] **AC-30** Bật "Khởi động cùng Windows", đăng xuất rồi đăng nhập lại: DevMap tự chạy, biểu tượng hiện, không tự mở trình duyệt. Tắt mục này: shortcut trong `shell:startup` mất.
 - [ ] **D-65** Ticket in_dev có gate không đạt: bấm "Bỏ qua gate", để trống lý do → báo lỗi; ghi lý do → ticket sang "SA kiểm chứng", `tests.md` có mục "PMO bỏ qua gate" kèm lý do, tab chat mở phiên SA kiểm chứng. Test tự động: `TicketGitServiceTest.pmoWaivesGateWithReason`.
+- [ ] **D-66** Ticket chưa Done, agent không chạy: bấm "Đóng task", để trống lý do → báo lỗi; ghi lý do → ticket sang Done, ra khỏi hàng đợi, nhật ký có dòng "Đóng ticket … không push" kèm lý do đã che bí mật, tab chat trống; "Báo bug" vẫn mở lại được. Test tự động: `TaskServiceTest.pmoClosesTicketWithReason`.

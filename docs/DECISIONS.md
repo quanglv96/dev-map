@@ -446,3 +446,8 @@ Gate có thể lỗi vì môi trường máy chạy DevMap (token, công cụ, c
 - Nút "Bỏ qua gate" ở mục các bước Dev (ticket in_dev, Dev không đang chạy). Bắt buộc ghi lý do; chỉ PMO; mọi repo của ticket phải có worktree và đã commit hết.
 - DevMap ghi commit hiện tại của từng repo như commit đã qua gate (`gateHead`), nên push sau này đẩy đúng commit PMO đã duyệt; commit thêm sau đó vẫn phải qua gate. Lý do ghi vào `tests.md` (SA đọc khi kiểm chứng) và nhật ký (NFR-10), rồi tự mở phiên SA kiểm chứng.
 - Prompt Dev: gate lỗi vì môi trường thì không sửa, báo PMO sửa lệnh gate hoặc bỏ qua gate.
+
+## D-66 PMO đóng task không qua push
+SRS chỉ có đường Done qua "Xác nhận push". Ticket bị huỷ hoặc SA kết luận không cần sửa code thì không có cách kết thúc.
+- Nút "Đóng task" ở mục quyết định của PMO, mọi trạng thái trừ Done, khi không có agent đang chạy cho ticket. Bắt buộc ghi lý do (đã che bí mật); chỉ PMO.
+- Ticket chuyển thẳng Done, bỏ kiểm tra push; ra khỏi hàng đợi; lý do ghi vào nhật ký (NFR-10). Ngữ cảnh phiên bị xoá như mọi lần Done (FR-45). Worktree và branch giữ nguyên, DevMap không xoá gì trên đĩa; mở lại bằng "Báo bug"/"Bổ sung logic" như ticket Done khác.
