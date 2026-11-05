@@ -478,6 +478,7 @@ class AgentTools {
     if (!f.startsWith(root) || f.startsWith(root.resolve(".git"))) {
       throw new IllegalArgumentException("Đường dẫn phải nằm trong worktree của ticket");
     }
+    s.edited.computeIfAbsent(repo, k -> ConcurrentHashMap.newKeySet()).add(root.relativize(f).toString().replace('\\', '/'));
     return f;
   }
 

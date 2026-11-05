@@ -2,6 +2,7 @@ package com.devmap.agent;
 
 import com.devmap.ticket.TaskService.Actor;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -34,6 +35,8 @@ final class AgentSession {
   final Path log;
   /** Ticket documents the agent wrote in this session. */
   final Set<String> written = ConcurrentHashMap.newKeySet();
+  /** Code files Dev wrote, edited or deleted in this session, per repo (worktree-relative, forward slashes). */
+  final Map<String, Set<String>> edited = new ConcurrentHashMap<>();
 
   AgentSession(String token, String project, String taskId, Role role, Mode mode, int messageId, Path workDir, Path log) {
     this.token = token;

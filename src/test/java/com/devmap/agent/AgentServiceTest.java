@@ -31,6 +31,7 @@ import com.devmap.ticket.TaskService;
 import com.devmap.ticket.TaskService.Actor;
 import com.devmap.ticket.TaskStatus;
 import com.devmap.ticket.TicketGitService;
+import com.devmap.ticket.TicketGitService.RepoView;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
@@ -340,6 +341,20 @@ class AgentServiceTest {
     agents.ask("shop", id, "", "Sửa theo verify.md", false);
     assertThat(tasks.readDoc("shop", id, "changes.md").content()).contains("PMO sửa tay");
     assertThat(Path.of(dev.view("shop", id).repos().get(0).worktree()).resolve("src/main/java/com/shop/order/Extra.java")).doesNotExist();
+    // Dev left its delete uncommitted: DevMap commits it for Dev, the PMO never types a message for it
+    RepoView after = dev.view("shop", id).repos().get(0);
+    assertThat(after.uncommitted()).isEmpty();
+    assertThat(after.commits().get(0)).contains("NYX-3", "Extra.java");
+
+    // a PMO hand edit sits next to Dev's edit: nothing is committed for Dev, the PMO's file is never swept in
+    Files.writeString(wt.resolve("PMO2.md"), "sửa tay\n");
+    fake.scripts.add(c -> {
+      tool(c, "write_file", Map.of("repo", "order-service", "path", "src/main/java/com/shop/order/Extra2.java",
+          "content", "package com.shop.order;\n\nclass Extra2 {\n}\n"));
+      return "ok";
+    });
+    agents.ask("shop", id, "", "Thêm Extra2", false);
+    assertThat(dev.view("shop", id).repos().get(0).uncommitted()).contains("PMO2.md", "src/main/java/com/shop/order/Extra2.java");
   }
 
   /** AC-04, FR-07, NFR-10: "Dev triển khai" – Dev works Ready MAINT tickets one by one in the PMO's order; every step is logged. */

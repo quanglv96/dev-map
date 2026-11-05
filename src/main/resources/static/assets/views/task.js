@@ -424,15 +424,11 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     const area = el("textarea", { rows: 3, placeholder: t("waiveReason") });
     // the waiver vouches for commits, so uncommitted work is committed here first, with the same checks as the Code tab
     const dirty = dev.repos.filter((r) => r.uncommitted.length);
-    const message = dirty.length ? el("input", { placeholder: t("commitMessage", { code: task.id }) }) : null;
     const pending = el("div");
     let approved = false;
     const send = el("button", { type: "button", class: "primary", onclick: async () => {
       send.disabled = true;
       try {
-        if (dirty.length && !message.value.trim()) {
-          throw new Error(t("waiveNeedMessage"));
-        }
         const scopes = await Promise.all(dirty.map((r) => api(`${base(project, task.id)}/dev/scope?repo=${encodeURIComponent(r.repo)}`)));
         const secrets = scopes.flatMap((s) => s.secrets);
         if (secrets.length) {
@@ -451,7 +447,7 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
           await api(`${base(project, task.id)}/dev/approve`, { method: "POST", body: n });
         }
         for (const r of dirty) {
-          await api(`${base(project, task.id)}/dev/commit`, { method: "POST", body: { repo: r.repo, message: message.value } });
+          await api(`${base(project, task.id)}/dev/commit`, { method: "POST", body: { repo: r.repo, message: t("waiveCommitMessage", { files: r.uncommitted.join(", ") }) } });
         }
         await api(`${base(project, task.id)}/dev/waive-gate`, { method: "POST", body: { reason: area.value } });
         reopenBox.replaceChildren();
@@ -464,8 +460,7 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     } }, dirty.length ? t("waiveCommit") : t("waiveGate"));
     reopenBox.replaceChildren(el("strong", {}, t("waiveGate")), el("p", { class: "muted small" }, t("waiveHint")), area,
       dirty.length ? [el("p", { class: "warn small" }, t("waiveDirty")),
-        el("ul", { class: "small" }, dirty.flatMap((r) => r.uncommitted.map((f) => el("li", {}, el("code", {}, `${r.repo}/${f}`))))),
-        message] : null,
+        el("ul", { class: "small" }, dirty.flatMap((r) => r.uncommitted.map((f) => el("li", {}, el("code", {}, `${r.repo}/${f}`)))))] : null,
       pending,
       el("div", { class: "row" }, send,
         el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));

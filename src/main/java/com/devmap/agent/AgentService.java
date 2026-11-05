@@ -271,6 +271,9 @@ public class AgentService {
         step(project, id, no, new Step("note", "Chưa xoá được thư mục tạm " + s.workDir + " (file đang bị khoá); sẽ dọn khi ticket xong"));
       }
     }
+    if (role == Role.DEV) {
+      commitLeftovers(s);
+    }
     String answer = masker.mask(result.text(), projects.get(project).config().secrets()).text();
     if (!s.written.contains("summary.md")) {
       fallbackSummary(project, id, no, question, answer);
@@ -383,6 +386,36 @@ public class AgentService {
           (pmo ? "Phát hiện commit PMO tự làm" : "Worktree còn file chưa commit") + ", đã ghi changes.md");
     }
     return out;
+  }
+
+  /**
+   * FR-26: Dev commits its own work. Files this session changed but left uncommitted are committed for it with a generated
+   * message; a repo that also holds files Dev did not touch (PMO's hand edits) is left for the PMO, as are secrets/approvals.
+   */
+  private void commitLeftovers(AgentSession s) {
+    try {
+      for (RepoView r : dev.view(s.project, s.taskId).repos()) {
+        Set<String> mine = s.edited.getOrDefault(r.repo(), Set.of());
+        if (r.uncommitted().isEmpty() || mine.isEmpty()) {
+          continue;
+        }
+        List<String> others = r.uncommitted().stream().filter(f -> !mine.contains(f)).toList();
+        if (!others.isEmpty()) {
+          step(s.project, s.taskId, s.messageId, new Step("note", r.repo() + ": không tự commit vì còn file Dev không sửa: " + others));
+          continue;
+        }
+        try {
+          dev.commit(s.project, s.taskId, r.repo(), "Dev phiên #" + s.messageId + " sửa " + clip(String.join(", ", r.uncommitted()), 200),
+              Actor.DEV);
+          step(s.project, s.taskId, s.messageId, new Step("note", r.repo() + ": DevMap tự commit " + r.uncommitted().size()
+              + " file Dev đã sửa nhưng chưa commit"));
+        } catch (RuntimeException e) {
+          step(s.project, s.taskId, s.messageId, new Step("note", r.repo() + ": không tự commit được: " + e.getMessage()));
+        }
+      }
+    } catch (RuntimeException e) {
+      step(s.project, s.taskId, s.messageId, new Step("note", "Không kiểm được file chưa commit: " + e.getMessage()));
+    }
   }
 
   /** AIR-03: Dev handed over → SA verifies before anything reaches the PMO. */
