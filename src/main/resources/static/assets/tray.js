@@ -78,6 +78,7 @@ export async function renderTraySettings(box) {
     to.addEventListener("change", () => save({ quietTo: to.value }));
     fill(box,
       view.active ? null : el("p", { class: "muted" }, t("tray.inactive")),
+      view.silenced ? el("p", { class: "warn" }, t("tray.silenced")) : null,
       el("small", { class: "muted" }, t("tray.kinds")),
       el("div", {}, muteList(KINDS, settings.mutedKinds, (k) => t(`tray.kind.${k}`), toggle("mutedKinds"))),
       projects.length ? el("small", { class: "muted" }, t("tray.projects")) : null,

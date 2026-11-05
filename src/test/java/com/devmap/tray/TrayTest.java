@@ -26,6 +26,16 @@ class TrayTest {
     assertThat(notifier.start(null)).isFalse();
   }
 
+  /** Windows turned off in Settings → Notifications drops every toast without an error; reg query is how we find out. */
+  @Test
+  void readsTheWindowsNotificationSwitch() {
+    String head = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications\r\n"
+        + "    ToastEnabled    REG_DWORD    ";
+    assertThat(AwtTrayNotifier.toastsOff(head + "0x0\r\n\r\n")).isTrue();
+    assertThat(AwtTrayNotifier.toastsOff(head + "0x1\r\n\r\n")).isFalse();
+    assertThat(AwtTrayNotifier.toastsOff("ERROR: The system was unable to find the specified registry key or value.\r\n")).isFalse();
+  }
+
   /** A hung AWT thread (AWT's own shutdown hook got there first) must not keep the JVM and its lock on devmap.jar alive. */
   @Test
   void stopReturnsWhenTheEventThreadIsStuck() throws Exception {

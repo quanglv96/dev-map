@@ -14,7 +14,11 @@ import java.awt.TrayIcon;
 import java.awt.event.ItemEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -73,6 +77,9 @@ public class AwtTrayNotifier implements TrayNotifier {
       Thread.currentThread().interrupt();
     } catch (InvocationTargetException | AWTError e) {
       LOG.warn("Không tạo được biểu tượng khay: {}", e.toString());
+    }
+    if (added[0] && silenced()) {
+      LOG.warn("Windows đang tắt thông báo (Cài đặt → Hệ thống → Thông báo): DevMap chỉ cập nhật biểu tượng khay, không có popup.");
     }
     return added[0];
   }
@@ -191,6 +198,36 @@ public class AwtTrayNotifier implements TrayNotifier {
         icon.displayMessage(popup.title(), popup.text(), TrayIcon.MessageType.INFO);
       }
     });
+  }
+
+  /**
+   * displayMessage succeeds even when Windows throws the toast away, so ask the switch behind Settings → Notifications. Focus / Do not
+   * disturb is not readable this way: it may still hide pop-ups while this says false.
+   */
+  @Override
+  public boolean silenced() {
+    if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows")) {
+      return false;
+    }
+    try {
+      Process p = new ProcessBuilder("reg", "query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications", "/v",
+          "ToastEnabled").redirectErrorStream(true).start();
+      String out;
+      try (InputStream in = p.getInputStream()) {
+        out = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+      }
+      return p.waitFor(3, TimeUnit.SECONDS) && toastsOff(out);
+    } catch (IOException e) {
+      return false;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+  }
+
+  /** reg query prints "ToastEnabled    REG_DWORD    0x0"; a missing value means on. */
+  static boolean toastsOff(String regOutput) {
+    return regOutput.matches("(?s).*ToastEnabled\\s+REG_DWORD\\s+0x0\\b.*");
   }
 
   /**

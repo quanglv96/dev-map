@@ -41,7 +41,8 @@ import org.springframework.stereotype.Service;
 public class TrayService implements TrayActions {
 
   /** For the settings card. active = this run has a tray icon; autostart is the shortcut itself, not a setting. */
-  public record SettingsView(boolean active, NotificationSettings settings, boolean snoozed, boolean autostart, boolean canAutostart) {
+  public record SettingsView(boolean active, NotificationSettings settings, boolean snoozed, boolean autostart, boolean canAutostart,
+      boolean silenced) {
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(TrayService.class);
@@ -230,7 +231,8 @@ public class TrayService implements TrayActions {
 
   public SettingsView settingsView() {
     NotificationSettings s = settings.read();
-    return new SettingsView(active, s, NotificationPolicy.snoozed(s, LocalDateTime.now()), shortcut.enabled(), shortcut.supported());
+    return new SettingsView(active, s, NotificationPolicy.snoozed(s, LocalDateTime.now()), shortcut.enabled(), shortcut.supported(),
+        active && notifier.silenced());
   }
 
   public SettingsView saveSettings(NotificationSettings changed) {

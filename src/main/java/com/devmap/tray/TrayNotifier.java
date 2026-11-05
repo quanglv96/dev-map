@@ -15,4 +15,9 @@ public interface TrayNotifier {
   void notify(Popup popup);
 
   void stop();
+
+  /** True when the OS itself drops our pop-ups (Windows: Settings → Notifications is off); the settings card says so. */
+  default boolean silenced() {
+    return false;
+  }
 }
