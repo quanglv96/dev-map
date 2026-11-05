@@ -9,9 +9,13 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 
 /** snake_case YAML (config.yml, workspaces.yml, task.md front matter), written atomically so a crash never leaves a half-written config. */
 public final class Yaml {
@@ -82,14 +86,21 @@ public final class Yaml {
   /**
    * Own temp file per call (two writers never share one), then an atomic replace. Windows refuses to replace a file while anyone
    * has it open (the UI reading chat.json during a session, antivirus, an editor): retried briefly, then the content is written
-   * in place, which open readers allow. Losing an agent's answer is worse than a non-atomic write.
+   * in place, which open readers allow. Losing an agent's answer is worse than a non-atomic write. The temp file is flushed to
+   * disk before the rename: without it a power cut can keep the rename but not the bytes, leaving a file of NULs (seen on dev.json).
    */
   public static void writeText(Path file, String text) {
     Path tmp = null;
     try {
       Files.createDirectories(file.getParent());
       tmp = Files.createTempFile(file.getParent(), file.getFileName() + ".", ".tmp");
-      Files.writeString(tmp, text);
+      try (FileChannel ch = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
+        ByteBuffer buf = ByteBuffer.wrap(text.getBytes(StandardCharsets.UTF_8));
+        while (buf.hasRemaining()) {
+          ch.write(buf);
+        }
+        ch.force(true);
+      }
       for (int attempt = 1; ; attempt++) {
         try {
           Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
