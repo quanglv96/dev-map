@@ -39,7 +39,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | `ProjectServiceTest.scanReposFindsRepoChildrenOrTheFolderItself` | folder dự án: tìm repo con (bỏ folder không phải git) hoặc chính folder; nhánh nền = nhánh đang checkout; không ghi gì |
 | `ServiceDetectorTest` | FR-03: repo một service, monorepo/parent pom, bỏ `node_modules`, `src`, thư mục ẩn |
 | `WebTest.rejectsRequestsWithoutToken` | NFR-08: thiếu/sai token → 401, kể cả trang HTML |
-| `WebTest.tokenLinkSetsStrictHttpOnlyCookie` | link có token → cookie HttpOnly SameSite=Strict; `/shop` trả trang dự án |
+| `WebTest.oneTimeLinkSetsStrictHttpOnlyCookie` | `?token=` bị từ chối (D-67); mã một lần `?once=` → cookie HttpOnly SameSite=Strict; `/shop` trả trang dự án |
 | `WebTest.rejectsNonLocalClientsEvenWithToken` | NFR-08: IP ngoài máy, Host lạ → 403 |
 | `WebTest.projectLifecycleOverApi` | API tạo/xem/sửa/bỏ đăng ký dự án, phát hiện service, lỗi 400/404 |
 | `CliTest.initListDoctorRemove` | FR-42: `init`, `workspace add/list/remove`, `doctor` |
@@ -50,7 +50,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 
 1. `sh samples/shop/init-repos.sh`
 2. `java -jar target/devmap.jar init shop --data <folder> --repo samples/shop/repos/order-service@test --repo samples/shop/repos/payment-service@main --repo samples/shop/repos/notification-service@main`
-3. `java -jar target/devmap.jar serve`, mở link có token.
+3. `java -jar target/devmap.jar serve`: trình duyệt tự mở và đã đăng nhập; terminal chỉ in link không token (D-67).
 4. Trang chủ có dự án `shop`, 3 repo, 3 service. Bấm vào → `localhost:7070/shop`: tab trình duyệt có tên và màu dự án, cột giữa liệt kê 3 service theo repo, cột phải có folder dữ liệu và nhánh nền.
 5. "Cấu hình dự án": đổi nhánh nền payment-service thành `nope` → báo lỗi, không lưu; đổi lại `main`, thêm môi trường `staging` → "Đã lưu"; `config.yml` cập nhật.
 6. Trên trang chủ thêm dự án thứ hai qua form → mở được ở URL riêng.

@@ -452,3 +452,9 @@ SRS chỉ có đường Done qua "Xác nhận push". Ticket bị bỏ hoặc SA 
 - Trạng thái thứ 9 `cancelled`, nằm ngoài luồng 8 trạng thái: chỉ vào bằng nút "Huỷ task" (`POST …/tasks/{id}/cancel`), không có đường ra. Nhầm thì tạo ticket mới.
 - Nút ở mục quyết định của PMO, mọi trạng thái trừ Done và Đã huỷ, khi không có agent đang chạy cho ticket (server cũng từ chối). Bắt buộc ghi lý do (đã che bí mật); chỉ PMO.
 - Không kiểm tra push; ticket ra khỏi hàng đợi; lý do ghi vào nhật ký (NFR-10). Ngữ cảnh phiên bị xoá như Done (FR-45), không mở phiên agent mới, không đếm câu hỏi chờ, không hiện ở khay. Không "Báo bug"/"Bổ sung logic". Tài liệu, worktree và branch giữ nguyên, DevMap không xoá gì trên đĩa.
+
+## D-67 Token chạy không còn trên URL
+PMO chỉ chạy DevMap trên máy mình, không cần link `?token=…`. Token chạy vẫn giữ (NFR-08): không có nó, mọi tiến trình hay trang web trên máy gọi được API chạy agent và push code.
+- Server không nhận `?token=` nữa (thay D-03). Trình duyệt chỉ đăng nhập bằng mã một lần `?once=` mà DevMap tự mở (lúc khởi động, `devmap` lần hai, menu khay; D-61), đổi thành cookie như cũ. CLI vẫn dùng header `X-DevMap-Token`.
+- Terminal chỉ in `http://localhost:<cổng>/`. Token chỉ nằm trong `~/.devmap/serve.url` để `devmap` lần hai nhờ server đang chạy mở trang; không gọi được thì mở link không token, vẫn vào được nếu trình duyệt còn cookie của lần chạy này.
+- `--no-open`: không có link để dán; chạy `devmap` (không `--no-open`) hoặc dùng menu khay để mở trang.

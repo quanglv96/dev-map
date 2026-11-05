@@ -112,8 +112,10 @@ class WebTest {
   }
 
   @Test
-  void tokenLinkSetsStrictHttpOnlyCookie() throws Exception {
-    String setCookie = mvc.perform(get("/shop").param("token", token.value()))
+  void oneTimeLinkSetsStrictHttpOnlyCookie() throws Exception {
+    // D-67: the token is never taken from a URL
+    mvc.perform(get("/shop").param("token", token.value())).andExpect(status().isUnauthorized());
+    String setCookie = mvc.perform(get("/shop").param("once", links.issue()))
         .andExpect(status().isFound())
         .andExpect(redirectedUrl("/shop"))
         .andExpect(cookie().httpOnly(TokenFilter.COOKIE, true))

@@ -94,16 +94,18 @@ class ServeCommand implements Callable<Integer> {
       tell("DevMap không khởi động được ở cổng " + port + ": " + e.getMessage());
       throw e;
     }
-    String url = "http://localhost:" + port + "/?token=" + ctx.getBean(ServerToken.class).value();
+    String url = "http://localhost:" + port + "/";
     Files.createDirectories(urlFile.getParent());
-    Files.writeString(urlFile, url + "\n" + build() + "\n", StandardCharsets.UTF_8);
+    // the token stays in serve.url only, for the next `devmap` to ask this server to open the page (D-67)
+    Files.writeString(urlFile, url + "?token=" + ctx.getBean(ServerToken.class).value() + "\n" + build() + "\n",
+        StandardCharsets.UTF_8);
     Runtime.getRuntime().addShutdownHook(new Thread(() -> urlFile.toFile().delete()));
     ctx.getBean(SyncService.class).start(); // FR-48: pull, lock, auto-commit in the background; the UI is already up
     TrayService tray = ctx.getBean(TrayService.class);
     boolean hasTray = !noTray && tray.start(() -> System.exit(0));
     boolean stopsWithTabs = !keepRunning && !hasTray; // D-61: with an icon DevMap must still notify after the browser is closed
     System.out.println();
-    System.out.println("DevMap: " + (background ? "http://localhost:" + port : url)); // a log file must not keep the token
+    System.out.println("DevMap: " + url);
     System.out.println(hasTray ? "Ctrl+C or the tray menu to stop."
         : stopsWithTabs ? "Ctrl+C to stop, or close every DevMap tab." : "Ctrl+C to stop.");
     if (!noOpen) {
@@ -126,9 +128,9 @@ class ServeCommand implements Callable<Integer> {
           + "\nTắt DevMap đó (menu khay hoặc Ctrl+C) rồi chạy lại `devmap` để dùng bản " + build());
       return 1;
     }
-    System.out.println("DevMap đang chạy: " + (background ? url.replaceAll("[?].*", "") : url));
+    System.out.println("DevMap đang chạy: " + url.replaceAll("[?].*", ""));
     if (!noOpen && !askToOpen(url)) {
-      BrowserOpener.open(url);
+      BrowserOpener.open(url.replaceAll("[?].*", "")); // works while the browser still holds this run's cookie
     }
     return 0;
   }

@@ -36,7 +36,7 @@ devmap                  # = devmap serve: chạy server và tự mở trình duy
 devmap serve --port 7071 --no-open
 ```
 
-Trình duyệt tự mở đúng link có `?token=…` (token đổi mỗi lần chạy). Gõ `devmap` lần nữa khi server đang chạy thì chỉ mở lại trang. Mỗi dự án một tab: `localhost:7070/nyxhub`, `localhost:7070/lendbiz`.
+Trình duyệt tự mở và đăng nhập sẵn (token đổi mỗi lần chạy, không hiện trên URL). Trang báo chưa đăng nhập thì chạy lại `devmap` hoặc bấm menu khay. Gõ `devmap` lần nữa khi server đang chạy thì chỉ mở lại trang. Mỗi dự án một tab: `localhost:7070/nyxhub`, `localhost:7070/lendbiz`.
 
 - Tiêu đề tab: `(số việc chờ PMO) tên dự án · trạng thái`. Biểu tượng có chấm xanh (agent đang chạy), vàng (chờ PMO), đỏ (lỗi).
 - Bấm "Bật thông báo" một lần để nhận thông báo trình duyệt khi agent cần PMO quyết, chạy xong hoặc lỗi; bấm thông báo để mở đúng ticket.

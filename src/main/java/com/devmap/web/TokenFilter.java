@@ -19,7 +19,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * NFR-08: only loopback clients addressing localhost (blocks DNS rebinding), and only with the run token.
- * The link printed by `devmap serve` carries ?token=; it is swapped for an HttpOnly SameSite=Strict cookie.
+ * The token is never in a URL (D-67): the browser logs in with a one-time ?once= code that DevMap opens itself, swapped for an
+ * HttpOnly SameSite=Strict cookie holding the token. CLI clients send it in the header.
  */
 @Component
 public class TokenFilter extends OncePerRequestFilter {
@@ -47,14 +48,8 @@ public class TokenFilter extends OncePerRequestFilter {
       chain.doFilter(req, res); // agent MCP calls: McpController checks the session token
       return;
     }
-    if ("GET".equals(req.getMethod()) && token.matches(req.getParameter("token"))) {
-      ResponseCookie cookie = ResponseCookie.from(COOKIE, token.value()).httpOnly(true).sameSite("Strict").path("/").build();
-      res.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-      res.sendRedirect(req.getRequestURI());
-      return;
-    }
     if ("GET".equals(req.getMethod()) && links.consume(req.getParameter("once"))) {
-      // a link from the tray: same login, and only the ticket survives the redirect
+      // a link DevMap opened (start, second `devmap`, tray): only the ticket survives the redirect
       ResponseCookie cookie = ResponseCookie.from(COOKIE, token.value()).httpOnly(true).sameSite("Strict").path("/").build();
       res.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
       String ticket = req.getParameter("ticket");
@@ -65,7 +60,7 @@ public class TokenFilter extends OncePerRequestFilter {
       chain.doFilter(req, res);
       return;
     }
-    deny(res, HttpServletResponse.SC_UNAUTHORIZED, "DevMap: mở bằng đường dẫn có token được in ra khi chạy `devmap serve`.");
+    deny(res, HttpServletResponse.SC_UNAUTHORIZED, "DevMap: chạy lại `devmap` (hoặc dùng menu khay) để mở trang đã đăng nhập.");
   }
 
   private static String cookie(HttpServletRequest req) {
