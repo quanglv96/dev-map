@@ -87,6 +87,8 @@ public class AgentService {
   static final String AUTO_ANALYZE = "Ticket mới: phân tích yêu cầu, đánh giá ảnh hưởng và đề xuất hướng xử lý cho PMO duyệt.";
   static final String REANALYZE = "PMO yêu cầu phân tích lại: plan.md đã chốt không còn khớp với các quyết định mới. Đọc analysis.md, "
       + "summary.md, plan.md và code đã commit, ghi plan.md bản mới chỉ gồm phần còn phải làm, rồi set_status awaiting_approval.";
+  static final String REVISE = "PMO yêu cầu phân tích lại: phương án chưa được chốt. Đọc spec.json, summary.md, analysis.md, plan.md, "
+      + "xem lại phương án, sửa analysis.md và plan.md nếu cần, rồi set_status awaiting_approval.";
   static final String IMPLEMENT = "Triển khai theo plan.md đã chốt";
   private static final Pattern QUESTIONS = Pattern.compile("(?imu)^#{1,6}\\s*(câu hỏi chờ pmo|questions for (the )?pmo).*$");
   private static final Pattern ITEM = Pattern.compile("^\\s*(?:\\d+[.)]|[-*])\\s+(.+)");
@@ -197,17 +199,18 @@ public class AgentService {
   }
 
   /**
-   * PMO moves a ticket by hand. Sending it back to SA (D-68) must not pull the plan from under a running Dev or SA, and SA starts
-   * on the new plan right away.
+   * PMO moves a ticket by hand. Any move back to SA analysis starts SA right away, so the ticket never sits in "SA phân tích" with no
+   * session; after approval (D-68) SA writes a new plan. It must not pull the plan from under a running Dev or SA.
    */
   public Task transition(String project, String id, String to) {
-    boolean reanalysis = tasks.detail(project, id).task().status().isReanalysis(TaskStatus.parse(to));
-    if (reanalysis) {
+    TaskStatus from = tasks.detail(project, id).task().status();
+    boolean toSa = from != TaskStatus.NEW && TaskStatus.parse(to) == TaskStatus.SA_ANALYSIS;
+    if (toSa) {
       requireIdle(project, id);
     }
     Task moved = tasks.transition(project, id, to, Actor.PMO);
-    if (reanalysis) {
-      submit(project, id, Role.SA, Mode.ASK, REANALYZE, false);
+    if (toSa) {
+      submit(project, id, Role.SA, Mode.ASK, from.isReanalysis(TaskStatus.SA_ANALYSIS) ? REANALYZE : REVISE, false);
     }
     return moved;
   }

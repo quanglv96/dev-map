@@ -462,4 +462,5 @@ PMO chỉ chạy DevMap trên máy mình, không cần link `?token=…`. Token 
 ## D-68 PMO yêu cầu phân tích lại sau khi đã chốt
 D-13 chỉ cho `awaiting_approval → sa_analysis`. Khi PMO chốt thêm quyết định lúc Dev đang làm (analysis.md mới, plan.md cũ đã khoá), Dev đúng là không được tự mở rộng phạm vi và SA không được sửa plan.md đã chốt, nên ticket kẹt: không có nút nào đưa về SA.
 - Thêm `in_dev → sa_analysis` và `awaiting_push → sa_analysis`, nút "Yêu cầu phân tích lại (đổi plan)" ở mục quyết định của PMO. Cổng chỉ PMO (có hỏi xác nhận), server từ chối khi agent đang chạy cho ticket. Bấm xong SA tự chạy ngay (như "Báo bug"), giao diện chuyển sang tab chat.
+- Mọi lần PMO đưa ticket về `sa_analysis` (kể cả "Yêu cầu phân tích lại" từ `awaiting_approval`) đều mở phiên SA ngay. Trước đó nút ở `awaiting_approval` chỉ đổi trạng thái, ticket nằm ở "SA phân tích" mà không có SA nào chạy (FEAT-005).
 - Branch, worktree và commit đã có giữ nguyên; SA ghi plan.md bản mới, PMO chốt lại, Dev làm tiếp trên branch cũ (pull nhánh nền merge vào branch hiện có) rồi qua gate như thường.

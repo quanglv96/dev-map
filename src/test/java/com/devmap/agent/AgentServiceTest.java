@@ -562,6 +562,22 @@ class AgentServiceTest {
     assertThat(agents.chat("shop", id).messages()).last().satisfies(m -> assertThat(m.from()).isEqualTo("SA"));
   }
 
+  /** FEAT-005: "Yêu cầu phân tích lại" before approval used to only flip the status; SA now runs on it too. */
+  @Test
+  void reanalysisBeforeApprovalStartsSa() {
+    String id = ticket("NYX-8", "Trigger");
+    tasks.transition("shop", id, "sa_analysis", Actor.SA);
+    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    int before = fake.calls.size();
+    fake.scripts.add(c -> {
+      assertThat(c.prompt()).contains("phương án chưa được chốt");
+      return "Đang xem lại";
+    });
+    assertThat(agents.transition("shop", id, "sa_analysis").status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(fake.calls).hasSize(before + 1);
+    assertThat(agents.chat("shop", id).messages()).last().satisfies(m -> assertThat(m.text()).isEqualTo("Đang xem lại"));
+  }
+
   @Test
   void unknownSessionTokenIsRejected() {
     JsonNode req = JSON.valueToTree(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list"));
