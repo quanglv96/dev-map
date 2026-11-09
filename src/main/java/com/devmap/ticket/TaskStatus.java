@@ -25,9 +25,9 @@ public enum TaskStatus {
       SA_ANALYSIS, Set.of(AWAITING_APPROVAL),
       AWAITING_APPROVAL, Set.of(SA_ANALYSIS, READY),
       READY, Set.of(IN_DEV),
-      IN_DEV, Set.of(SA_VERIFY),
+      IN_DEV, Set.of(SA_ANALYSIS, SA_VERIFY),
       SA_VERIFY, Set.of(IN_DEV, AWAITING_PUSH),
-      AWAITING_PUSH, Set.of(IN_DEV, DONE),
+      AWAITING_PUSH, Set.of(SA_ANALYSIS, IN_DEV, DONE),
       DONE, Set.of(),
       CANCELLED, Set.of(NEW));
 
@@ -41,7 +41,13 @@ public enum TaskStatus {
 
   /** True when moving from this state to {@code to} is a decision only the PMO may take. */
   public boolean isPmoGate(TaskStatus to) {
-    return this == AWAITING_APPROVAL && to == READY || this == AWAITING_PUSH && to == DONE || this == CANCELLED;
+    return this == AWAITING_APPROVAL && to == READY || this == AWAITING_PUSH && to == DONE || this == CANCELLED
+        || isReanalysis(to);
+  }
+
+  /** D-68: the approved plan no longer fits (new decision, wider scope); only the PMO sends the ticket back to SA. */
+  public boolean isReanalysis(TaskStatus to) {
+    return to == SA_ANALYSIS && (this == IN_DEV || this == AWAITING_PUSH);
   }
 
   /** Shown with a dot in the task list: the ticket is blocked until the PMO decides. */

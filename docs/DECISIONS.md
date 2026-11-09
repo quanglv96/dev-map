@@ -458,3 +458,8 @@ PMO chỉ chạy DevMap trên máy mình, không cần link `?token=…`. Token 
 - Server không nhận `?token=` nữa (thay D-03). Trình duyệt chỉ đăng nhập bằng mã một lần `?once=` mà DevMap tự mở (lúc khởi động, `devmap` lần hai, menu khay; D-61), đổi thành cookie như cũ. CLI vẫn dùng header `X-DevMap-Token`.
 - Terminal chỉ in `http://localhost:<cổng>/`. Token chỉ nằm trong `~/.devmap/serve.url` để `devmap` lần hai nhờ server đang chạy mở trang; không gọi được thì mở link không token, vẫn vào được nếu trình duyệt còn cookie của lần chạy này.
 - `--no-open`: không có link để dán; chạy `devmap` (không `--no-open`) hoặc dùng menu khay để mở trang.
+
+## D-68 PMO yêu cầu phân tích lại sau khi đã chốt
+D-13 chỉ cho `awaiting_approval → sa_analysis`. Khi PMO chốt thêm quyết định lúc Dev đang làm (analysis.md mới, plan.md cũ đã khoá), Dev đúng là không được tự mở rộng phạm vi và SA không được sửa plan.md đã chốt, nên ticket kẹt: không có nút nào đưa về SA.
+- Thêm `in_dev → sa_analysis` và `awaiting_push → sa_analysis`, nút "Yêu cầu phân tích lại (đổi plan)" ở mục quyết định của PMO. Cổng chỉ PMO (có hỏi xác nhận), server từ chối khi agent đang chạy cho ticket.
+- Branch, worktree và commit đã có giữ nguyên; SA ghi plan.md bản mới, PMO chốt lại, Dev làm tiếp trên branch cũ (pull nhánh nền merge vào branch hiện có) rồi qua gate như thường.

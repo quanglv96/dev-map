@@ -190,10 +190,22 @@ public class AgentService {
 
   /** D-66: no session may still be writing to a ticket the PMO cancels; FR-45 purge then runs on the change event. */
   public Task cancel(String project, String id, String reason) {
+    requireIdle(project, id);
+    return tasks.cancel(project, id, reason, Actor.PMO);
+  }
+
+  /** PMO moves a ticket by hand; sending it back to SA (D-68) must not pull the plan from under a running Dev or SA. */
+  public Task transition(String project, String id, String to) {
+    if (tasks.detail(project, id).task().status().isReanalysis(TaskStatus.parse(to))) {
+      requireIdle(project, id);
+    }
+    return tasks.transition(project, id, to, Actor.PMO);
+  }
+
+  private void requireIdle(String project, String id) {
     if (busy.contains(project + "/" + id)) {
       throw new IllegalArgumentException("Agent đang chạy cho " + id + "; dừng hoặc chờ phiên này xong");
     }
-    return tasks.cancel(project, id, reason, Actor.PMO);
   }
 
   private ChatMessage submit(String project, String id, Role role, Mode mode, String question, boolean fullScan) {

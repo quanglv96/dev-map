@@ -73,7 +73,7 @@ public class TaskController {
 
   @PostMapping("/projects/{project}/tasks/{id}/transition")
   public Task transition(@PathVariable String project, @PathVariable String id, @RequestBody TransitionRequest req) {
-    return tasks.transition(project, id, req.to(), Actor.PMO);
+    return agents.transition(project, id, req.to());
   }
 
   @PostMapping("/projects/{project}/tasks/{id}/cancel")

@@ -154,6 +154,22 @@ class TaskServiceTest {
     assertThat(tasks.detail("shop", b).actions()).isEmpty();
   }
 
+  /** D-68: a new decision after approval goes back to SA through the PMO, from in_dev or awaiting_push; SA can then write plan.md again. */
+  @Test
+  void pmoSendsApprovedTicketBackToAnalysis() {
+    String id = tasks.create("shop", "MAINT", null, "outbox", "x").task().id();
+    tasks.transition("shop", id, "sa_analysis", Actor.SA);
+    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.writeDoc("shop", id, "plan.md", "# Plan", Actor.PMO);
+    tasks.transition("shop", id, "ready", Actor.PMO);
+    tasks.transition("shop", id, "in_dev", Actor.DEV);
+
+    assertThat(tasks.detail("shop", id).actions()).contains(new TaskService.Action("sa_analysis", true));
+    assertThatThrownBy(() -> tasks.transition("shop", id, "sa_analysis", Actor.DEV)).isInstanceOf(PmoOnlyException.class)
+        .hasMessageContaining("phân tích lại");
+    assertThat(tasks.transition("shop", id, "sa_analysis", Actor.PMO).status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+  }
+
   /** FR-09: every save of analysis.md / plan.md is a version with a diff. */
   @Test
   void versionsAndDiff() throws Exception {
