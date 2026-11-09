@@ -536,6 +536,32 @@ class AgentServiceTest {
     assertThat(chat.get(chat.size() - 1).text()).isEqualTo("Đang phân tích");
   }
 
+  /** D-68: PMO sends an in_dev ticket back to SA; SA starts by itself on a new plan, refused while an agent runs. */
+  @Test
+  void reanalysisAfterApprovalStartsSa() {
+    String id = ticket("NYX-7", "Outbox");
+    tasks.setRepos("shop", id, List.of(), Actor.PMO);
+    tasks.transition("shop", id, "sa_analysis", Actor.SA);
+    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.writeDoc("shop", id, "plan.md", "# Plan v1", Actor.SA);
+    tasks.transition("shop", id, "ready", Actor.PMO);
+    tasks.transition("shop", id, "in_dev", Actor.DEV);
+    fake.scripts.add(c -> {
+      assertThatThrownBy(() -> agents.transition("shop", id, "sa_analysis")).hasMessageContaining("đang chạy");
+      return "ok";
+    });
+    agents.ask("shop", id, "sa", "Còn việc gì?", false);
+    int before = fake.calls.size();
+
+    fake.scripts.add(c -> {
+      assertThat(c.prompt()).contains("PMO yêu cầu phân tích lại", "ghi plan.md bản mới");
+      return "Đang ghi plan mới";
+    });
+    assertThat(agents.transition("shop", id, "sa_analysis").status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(fake.calls).hasSize(before + 1);
+    assertThat(agents.chat("shop", id).messages()).last().satisfies(m -> assertThat(m.from()).isEqualTo("SA"));
+  }
+
   @Test
   void unknownSessionTokenIsRejected() {
     JsonNode req = JSON.valueToTree(Map.of("jsonrpc", "2.0", "id", 1, "method", "tools/list"));

@@ -396,6 +396,9 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     }
     try {
       await api(`${base(project, task.id)}/transition`, { method: "POST", body: { to } });
+      if (to === "sa_analysis" && from !== "awaiting_approval") {
+        selectedTab.set(task.id, "chat"); // re-analysis after approval starts SA at once (D-68)
+      }
       rerender();
     } catch (err) {
       showError(error, err);
