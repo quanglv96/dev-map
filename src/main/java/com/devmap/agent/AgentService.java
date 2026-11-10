@@ -430,8 +430,8 @@ public class AgentService {
           continue;
         }
         try {
-          dev.commit(s.project, s.taskId, r.repo(), "Dev phiên #" + s.messageId + " sửa " + clip(String.join(", ", r.uncommitted()), 200),
-              Actor.DEV);
+          dev.commit(s.project, s.taskId, r.repo(),
+              "Dev session #" + s.messageId + ": update " + clip(String.join(", ", r.uncommitted()), 200), Actor.DEV);
           step(s.project, s.taskId, s.messageId, new Step("note", r.repo() + ": DevMap tự commit " + r.uncommitted().size()
               + " file Dev đã sửa nhưng chưa commit"));
         } catch (RuntimeException e) {

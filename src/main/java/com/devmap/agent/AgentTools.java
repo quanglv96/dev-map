@@ -83,7 +83,8 @@ class AgentTools {
           + "(kiểm chứng đạt). Dev: sa_verify (xong, gate đạt). Không chốt giải pháp hay push thay PMO được.",
           Set.of(Role.SA, Role.DEV), "to:string:Trạng thái đích"),
       tool("set_repos", "Ghi danh sách repo/service bị ảnh hưởng vào ticket (hiện cho PMO, Dev mở worktree ở các repo này). "
-          + "Chỉ khi đang phân tích, trước khi PMO chốt.", Set.of(Role.SA), "repos:array:Tên repo thuộc dự án"),
+          + "Chỉ khi đang phân tích, trước khi PMO chốt.", Set.of(Role.SA), "repos:array:Tên repo thuộc dự án",
+          "branch?:string:Tên branch tiếng Anh ngắn gọn, 2-4 từ (ví dụ cancel-order-refund); DevMap thêm tiền tố loại và mã ticket"),
       tool("verify_facts", "Dữ kiện kiểm chứng DevMap tính từ git diff và graph: file lệch phạm vi, chữ ký/API bị đổi và nơi gọi.",
           Set.of(Role.SA)),
       tool("git_diff", "Diff của branch ticket so với nhánh nền ở một repo (cả phần chưa commit); có commit thì là nội dung đúng "
@@ -143,7 +144,7 @@ class AgentTools {
       case "get_snippet" -> snippet(s, args);
       case "write_ticket_doc" -> writeDoc(s, text(args, "name"), text(args, "content"));
       case "set_status" -> setStatus(s, text(args, "to"));
-      case "set_repos" -> setRepos(s, args.path("repos"));
+      case "set_repos" -> setRepos(s, args.path("repos"), args.path("branch").asText(""));
       case "verify_facts" -> facts(s).markdown();
       case "git_diff" -> narrowDiff(
           args.hasNonNull("commit") ? show(s, text(args, "repo"), text(args, "commit")) : diff(s, text(args, "repo")),
@@ -295,7 +296,7 @@ class AgentTools {
   }
 
   /** FR-14: the SA's impacted services land on the ticket; once the PMO approved, only the PMO changes them. */
-  private String setRepos(AgentSession s, JsonNode repos) {
+  private String setRepos(AgentSession s, JsonNode repos, String branch) {
     TaskStatus st = tasks.detail(s.project, s.taskId).task().status();
     if (st != TaskStatus.SA_ANALYSIS && st != TaskStatus.AWAITING_APPROVAL) {
       throw new IllegalArgumentException("Chỉ ghi repo khi đang phân tích; ticket ở " + st.code() + ", PMO tự đổi nếu cần");
@@ -305,7 +306,8 @@ class AgentTools {
     }
     List<String> names = new ArrayList<>();
     repos.forEach(r -> names.add(r.asText()));
-    return "Repo của ticket: " + tasks.setRepos(s.project, s.taskId, names, s.role.actor).repos();
+    String out = "Repo của ticket: " + tasks.setRepos(s.project, s.taskId, names, s.role.actor).repos();
+    return branch.isBlank() ? out : out + "; branch: " + tasks.setBranch(s.project, s.taskId, branch, s.role.actor).branch();
   }
 
   private String setStatus(AgentSession s, String to) {

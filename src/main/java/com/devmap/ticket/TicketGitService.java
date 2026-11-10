@@ -68,7 +68,8 @@ public class TicketGitService {
   }
 
   /**
-   * FR-24: fetch, check out the ticket branch in every service repo and merge the newest base branch into it, then
+   * FR-24: fetch, check out and fast-forward the base branch, check out the ticket branch in every service repo and merge the
+   * newest base branch into it, then
    * Ready → In dev. Refuses a protected ticket branch and a repo with uncommitted changes.
    */
   // ponytail: one lock for all git work; per-ticket locks when parallel agents (NFR-12) make it a bottleneck
@@ -97,6 +98,9 @@ public class TicketGitService {
       String target = dev.direct() ? rc.baseBranch() : t.branch();
       RepoWork w = dev.repo(name);
       String moved = dropOldWorktree(id, name, main, w);
+      // always from the main branch: check it out and pull it first, then (create and) switch to the ticket branch
+      checkoutInRepo(project, id, name, main, rc.baseBranch(), base);
+      git.fastForward(main, base);
       checkoutInRepo(project, id, name, main, target, base);
       git.merge(main, base); // no-op for a new branch; brings an existing ticket branch up to date
       String path = main.toString().replace('\\', '/');
@@ -110,7 +114,7 @@ public class TicketGitService {
             + " vào repo service (stash " + moved.substring(0, 8) + ")");
       }
       tasks.history(s, actor, name, "pull nhánh nền trước khi làm (AIR-04)",
-          name + ": pull nhánh nền " + rc.baseBranch() + " @" + base.substring(0, 8)
+          name + ": checkout và pull nhánh nền " + rc.baseBranch() + " @" + base.substring(0, 8) + ", rồi chuyển sang " + target
           + (fetchError == null ? "" : " (fetch lỗi, dùng dữ liệu đã có: " + fetchError + ")"));
     }
     repo.writeDevState(s.folder(), dev);
@@ -391,7 +395,7 @@ public class TicketGitService {
     for (RepoWork w : dev.repos()) {
       requireCheckedOut(w);
       if (!git.uncommitted(Path.of(w.worktree())).isEmpty()) {
-        commit(project, id, w.repo(), "WIP: chuyển sang máy khác", actor);
+        commit(project, id, w.repo(), "WIP: hand off to another machine", actor);
       }
     }
     List<Task.Handoff.Repo> pushed = new ArrayList<>();

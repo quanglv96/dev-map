@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -270,6 +271,27 @@ public class TaskService {
     Task updated = t.withRepos(wanted, now());
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
     history(s, actor, "Repo của ticket: " + wanted);
+    changed(project, id);
+    return updated;
+  }
+
+  /**
+   * SA names the branch in short English ("order-cancel-refund") once it understands the ticket: the default slug comes from the
+   * Vietnamese title. Only before the branch exists in any repo, so a renamed branch never orphans commits.
+   */
+  public synchronized Task setBranch(String project, String id, String english, Actor actor) {
+    Stored s = stored(project, id);
+    if (!devState(project, s).repos().isEmpty()) {
+      throw new IllegalArgumentException("Branch " + s.task().branch() + " đã được tạo, không đổi tên được nữa");
+    }
+    String words = String.join("-", Arrays.stream(RequestCleaner.slug(english).split("-")).limit(4).toList());
+    String branch = project(project).config().branchPatterns().get(s.task().type()).replace("{code}", id).replace("{slug}", words);
+    if (branch.equals(s.task().branch())) {
+      return s.task();
+    }
+    Task updated = s.task().withBranch(branch, now());
+    repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
+    history(s, actor, "Branch của ticket: " + branch);
     changed(project, id);
     return updated;
   }

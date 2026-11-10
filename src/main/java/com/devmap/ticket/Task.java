@@ -41,6 +41,10 @@ public record Task(
     return new Task(id, type, title, status, repos, branch, v, reopened, created, now, handoff);
   }
 
+  Task withBranch(String b, String now) {
+    return new Task(id, type, title, status, repos, b, version, reopened, created, now, handoff);
+  }
+
   Task withRepos(List<String> r, String now) {
     return new Task(id, type, title, status, r, branch, version, reopened, created, now, handoff);
   }

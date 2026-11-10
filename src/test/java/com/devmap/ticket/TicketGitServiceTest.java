@@ -152,6 +152,24 @@ class TicketGitServiceTest {
 
   /** FR-30: a ticket branch matching a protected pattern can neither be worked on nor pushed; there is no force flag. */
   /** D-65: only the PMO, only with a reason and everything committed; the waived commit then pushes like a passed one. */
+  /** Start checks out the main branch and pulls it, then branches off under the short English name SA gave. */
+  @Test
+  void startPullsTheMainBranchThenUsesTheEnglishBranchName() throws Exception {
+    Path order = repos.resolve("order-service");
+    SampleRepos.commit(order, "test", Map.of("NEWS.md", "new on test\n"));
+    git.run(order, "push", "-q", "origin", "test");
+    git.run(order, "branch", "-f", "test", "test~1"); // local main branch is behind origin
+    String id = readyTicket();
+    assertThat(tasks.setBranch("shop", id, "Refund on cancelled order now", Actor.SA).branch())
+        .isEqualTo("feature/NYX-7-refund-on-cancelled-order");
+
+    dev.start("shop", id, Actor.DEV);
+    assertThat(git.run(order, "branch", "--show-current").output()).isEqualTo("feature/NYX-7-refund-on-cancelled-order");
+    assertThat(git.run(order, "rev-parse", "test").output()).isEqualTo(git.run(order, "rev-parse", "origin/test").output());
+    assertThat(order.resolve("NEWS.md")).exists();
+    assertThatThrownBy(() -> tasks.setBranch("shop", id, "other name", Actor.SA)).hasMessageContaining("không đổi tên");
+  }
+
   @Test
   void pmoWaivesGateWithReason() throws Exception {
     String id = readyTicket();
@@ -321,7 +339,7 @@ class TicketGitServiceTest {
 
     List<Task.Handoff.Repo> pushed = dev.handoff("shop", id, "may-a", Actor.PMO);
     Task.Handoff.Repo o = pushed.stream().filter(r -> r.repo().equals("order-service")).findFirst().orElseThrow();
-    assertThat(git.run(order, "log", "-1", "--format=%s").output()).isEqualTo("NYX-7: WIP: chuyển sang máy khác");
+    assertThat(git.run(order, "log", "-1", "--format=%s").output()).isEqualTo("NYX-7: WIP: hand off to another machine");
     assertThat(git.run(bare, "rev-parse", "feature/NYX-7-hoan-tien").output()).isEqualTo(o.commit());
     assertThat(tasks.detail("shop", id).task().handoff().machine()).isEqualTo("may-a");
 

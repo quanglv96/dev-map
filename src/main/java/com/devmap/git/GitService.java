@@ -204,6 +204,14 @@ public class GitService {
     }
   }
 
+  /** Pull of the checked-out base branch after fetch: fast-forward only, a diverged local base branch is reported, never merged. */
+  public void fastForward(Path dir, String ref) {
+    Out o = run(dir, "merge", "--ff-only", "-q", ref);
+    if (!o.ok()) {
+      throw new IllegalStateException("Không pull được nhánh nền ở " + dir + " (nhánh local lệch origin?): " + o.output());
+    }
+  }
+
   public void commitAll(Path dir, String message) {
     must(dir, "add", "-A");
     must(dir, "commit", "-q", "-m", message);
