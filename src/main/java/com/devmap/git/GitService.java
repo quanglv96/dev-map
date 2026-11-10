@@ -51,6 +51,15 @@ public class GitService {
     return resolveBranch(repo, branch) != null;
   }
 
+  /** False for a fresh `git init` (HEAD points at a branch with no commit yet). */
+  public boolean hasCommits(Path repo) {
+    try (Git git = Git.open(repo.toFile())) {
+      return git.getRepository().resolve("HEAD") != null;
+    } catch (IOException e) {
+      return false;
+    }
+  }
+
   /** Newest commit of the base branch: origin/branch when present (after fetch it is the shared truth), else local. */
   public String resolveBranch(Path repo, String branch) {
     try (Git git = Git.open(repo.toFile())) {

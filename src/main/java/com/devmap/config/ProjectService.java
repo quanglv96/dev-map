@@ -334,6 +334,9 @@ public class ProjectService {
         out.add("Repo " + repo.name() + ": " + repo.path() + " không phải git repo");
       } else if (repo.baseBranch() == null || repo.baseBranch().isBlank()) {
         out.add("Repo " + repo.name() + ": chưa khai báo nhánh nền");
+      } else if (!git.hasCommits(path)) {
+        out.add("Repo " + repo.name() + ": chưa có commit nào. DevMap đọc code từ commit nên cần một commit đầu tiên (không cần"
+            + " remote): git add -A && git commit -m \"init\" (thêm --allow-empty nếu folder rỗng), nhánh nền là nhánh vừa commit");
       } else if (!git.branchExists(path, repo.baseBranch())) {
         out.add("Repo " + repo.name() + ": không có nhánh nền '" + repo.baseBranch() + "' (local hoặc origin)");
       }

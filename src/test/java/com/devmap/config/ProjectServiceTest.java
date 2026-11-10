@@ -79,6 +79,14 @@ class ProjectServiceTest {
   }
 
   @Test
+  void freshGitInitAsksForFirstCommit() throws Exception {
+    Path fresh = Files.createDirectories(tmp.resolve("sbok-web"));
+    org.eclipse.jgit.api.Git.init().setDirectory(fresh.toFile()).setInitialBranch("main").call().close();
+    assertThatThrownBy(() -> service.create("x", dataRoot, "#ff8800", List.of(new RepoInput(fresh.toString(), "main"))))
+        .hasMessageContaining("chưa có commit nào");
+  }
+
+  @Test
   void removeKeepsDataAndCopiedFolderCanBeRegisteredAgain() {
     service.create("shop", dataRoot, "#ff8800", shopRepos());
     assertThatThrownBy(() -> service.create("shop", dataRoot, "#ff8800", List.of())).hasMessageContaining("đã tồn tại");
