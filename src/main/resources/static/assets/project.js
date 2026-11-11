@@ -1,7 +1,7 @@
 // Project workspace (localhost:7070/<project>): task list | task content | details and PMO decisions.
 // Routes: #  overview · #config · #rules · #graph · #log · #new · #task=<id>
 import { applyI18n, mountLangSwitch, t } from "./i18n.js";
-import { WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError, workState } from "./lib.js";
+import { STATUSES, WAITS_FOR_PMO, api, el, fill, notify, setFavicon, showError, workState } from "./lib.js";
 import { renderConfig } from "./views/config.js";
 import { onAgentEvent, tokens } from "./views/chat.js";
 import { renderGraph } from "./views/graph.js";
@@ -14,7 +14,6 @@ import { renderNewTask, renderTask } from "./views/task.js";
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
 
-const STATUSES = ["new", "sa_analysis", "awaiting_approval", "ready", "in_dev", "sa_verify", "awaiting_push", "done", "cancelled"];
 const name = decodeURIComponent(location.pathname.split("/")[1]);
 const api$ = `/api/projects/${encodeURIComponent(name)}`;
 const mid = document.getElementById("mid");

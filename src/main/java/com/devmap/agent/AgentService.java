@@ -198,6 +198,12 @@ public class AgentService {
     return tasks.cancel(project, id, reason, Actor.PMO);
   }
 
+  /** D-72: no agent is started; the PMO resumes with the usual buttons (chat, Dev triển khai) once the status is right. */
+  public Task forceStatus(String project, String id, String to, String reason) {
+    requireIdle(project, id);
+    return tasks.forceStatus(project, id, to, reason, Actor.PMO);
+  }
+
   /**
    * PMO moves a ticket by hand. Any move back to SA analysis starts SA right away, so the ticket never sits in "SA phân tích" with no
    * session; after approval (D-68) SA writes a new plan. It must not pull the plan from under a running Dev or SA.

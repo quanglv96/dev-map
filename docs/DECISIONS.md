@@ -484,3 +484,10 @@ FR-34 chặn mọi `.env*`, kể cả `.env.example`, nên Dev không tạo đư
 - `.env.example`, `.env.sample`, `.env.template`, `.env.dist` và dạng `.env.<tên>.example` (ví dụ `.env.infra.example`) không còn là file bí mật: đọc, ghi, commit, lập chỉ mục được. Nội dung vẫn qua lớp che bí mật như mọi file khác, giá trị lỡ ghi thật vẫn bị che.
 - `.env`, `.env.local`, `.env.prod`… vẫn bị chặn như cũ.
 - Prompt Dev: thêm/đổi/đọc biến môi trường thì bắt buộc cập nhật `.env.example` ở gốc service, mỗi biến có chú thích (ý nghĩa, bắt buộc/tuỳ chọn, mặc định), ghi danh sách vào summary.md mục `## Biến môi trường`.
+
+## D-72 PMO đổi trạng thái ticket bằng tay
+Luồng 9 trạng thái chỉ cho đi theo `TaskStatus.next()` và các kiểm tra gate/push, nên khi một bước hỏng (SA phân tích không có phiên, Ready không đi tiếp được, gate/push không qua được vì môi trường, đã push tay ngoài DevMap) ticket bị kẹt và phải sửa file. Giống "đổi status" của Jira:
+- Nút "Đổi trạng thái" ở cột phải ticket, chỉ PMO, chọn trạng thái bất kỳ khác hiện tại, **bắt buộc ghi lý do** (qua lớp che bí mật, ghi vào history.md: `Đổi trạng thái bằng tay A → B, lý do: …`).
+- Bỏ qua `next()`, `requireGatePassed`, `requirePushed` có chủ đích; hàng đợi cập nhật như chuyển thường (vào Ready thì vào queue, rời Ready thì ra).
+- Từ chối khi agent đang chạy cho ticket (dừng phiên trước). Không tự chạy agent; chuyển xong PMO dùng các nút như thường.
+- API: `POST /api/projects/{p}/tasks/{id}/status` body `{to, reason}`.

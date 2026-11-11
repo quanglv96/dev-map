@@ -1,6 +1,6 @@
 // A ticket: create form, Documents tab (versions + diff), right column with status and PMO decisions.
 import { t } from "../i18n.js";
-import { api, diffView, el, fill, markdown, showError, workState } from "../lib.js";
+import { STATUSES, api, diffView, el, fill, markdown, showError, workState } from "../lib.js";
 import { askAgent, placeChat, renderChat, renderProgress } from "./chat.js";
 import { renderConflicts, syncStatus } from "../sync.js";
 
@@ -488,6 +488,26 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
         el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
     area.focus();
   };
+  // D-72: way out of a stuck ticket; any status, reason required, no agent started
+  const forceStatus = () => {
+    const pick = el("select", {}, STATUSES.filter((s) => s !== from).map((s) => el("option", { value: s }, t(`status.${s}`))));
+    const area = el("textarea", { rows: 3, placeholder: t("forceReason") });
+    const send = el("button", { type: "button", class: "primary", onclick: async () => {
+      send.disabled = true;
+      try {
+        await api(`${base(project, task.id)}/status`, { method: "POST", body: { to: pick.value, reason: area.value } });
+        reopenBox.replaceChildren();
+        rerender();
+      } catch (err) {
+        send.disabled = false;
+        showError(error, err);
+      }
+    } }, t("forceStatus"));
+    reopenBox.replaceChildren(el("strong", {}, t("forceStatus")), el("p", { class: "muted small" }, t("forceHint")), pick, area,
+      el("div", { class: "row" }, send,
+        el("button", { type: "button", class: "link", onclick: () => reopenBox.replaceChildren() }, t("cancel"))));
+    pick.focus();
+  };
   const reopen = (kind) => {
     const area = el("textarea", { rows: 4, placeholder: t("describe") });
     const send = el("button", { type: "button", class: "primary", onclick: async () => {
@@ -528,7 +548,8 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", title: implementNow(a) ? t("implementOne") : null, onclick: () => move(a.to, a.pmoGate)
     }, actionLabel(from, a.to))), from === "in_dev" ? null : pause,
     from === "done" || from === "cancelled" || running ? null
-      : el("button", { type: "button", class: "secondary", onclick: cancelTask }, t("cancelTask"))),
+      : el("button", { type: "button", class: "secondary", onclick: cancelTask }, t("cancelTask")),
+    running ? null : el("button", { type: "button", class: "link", onclick: forceStatus }, t("forceStatus"))),
     from === "done" ? el("div", { class: "actions" },
       el("button", { type: "button", class: "secondary", onclick: () => reopen("bug") }, t("reportBug")),
       el("button", { type: "button", class: "secondary", onclick: () => reopen("logic") }, t("addLogic"))) : null,

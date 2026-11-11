@@ -16,6 +16,7 @@ export function diffView(text) {
   }, line + "\n")));
 }
 
+export const STATUSES = ["new", "sa_analysis", "awaiting_approval", "ready", "in_dev", "sa_verify", "awaiting_push", "done", "cancelled"];
 export const WAITS_FOR_PMO = ["awaiting_approval", "awaiting_push"];
 
 export async function api(path, { method = "GET", body } = {}) {

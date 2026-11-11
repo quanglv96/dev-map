@@ -216,6 +216,22 @@ class TaskServiceTest {
     assertThat(Files.readString(folder(id).resolve("history.md"))).contains("cancelled → new");
   }
 
+  /** D-72: a stuck ticket is moved by hand to any status, skipping next() and the gate/push checks; PMO only, with a reason. */
+  @Test
+  void pmoForcesStatusWithReason() throws Exception {
+    String id = tasks.create("shop", "FEAT", "SHOP-8", "refund", "hoàn tiền").task().id();
+    assertThatThrownBy(() -> tasks.forceStatus("shop", id, "in_dev", "x", Actor.SA)).isInstanceOf(PmoOnlyException.class);
+    assertThatThrownBy(() -> tasks.forceStatus("shop", id, "in_dev", " ", Actor.PMO)).hasMessageContaining("lý do");
+    assertThatThrownBy(() -> tasks.forceStatus("shop", id, "new", "x", Actor.PMO)).hasMessageContaining("đã ở new");
+
+    assertThat(tasks.forceStatus("shop", id, "ready", "kẹt, token 10.0.0.12", Actor.PMO).status()).isEqualTo(TaskStatus.READY);
+    assertThat(tasks.queue("shop")).extracting(Task::id).containsExactly(id);
+    assertThat(tasks.forceStatus("shop", id, "done", "đã push tay", Actor.PMO).status()).isEqualTo(TaskStatus.DONE);
+    assertThat(tasks.queue("shop")).isEmpty();
+    String log = Files.readString(folder(id).resolve("history.md"));
+    assertThat(log).contains("Đổi trạng thái bằng tay new → ready", "ready → done, lý do: đã push tay").doesNotContain("10.0.0.12");
+  }
+
   /** FR-10 / AC-03 (manual part): reopening keeps the code, logs the bug in bugs/, rebuilds spec.json. */
   @Test
   void reopenKeepsCode() throws Exception {

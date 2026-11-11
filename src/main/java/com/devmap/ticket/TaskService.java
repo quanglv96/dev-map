@@ -256,6 +256,32 @@ public class TaskService {
     return updated;
   }
 
+  /**
+   * D-72: the PMO sets any status by hand, with a reason, when the normal flow cannot move the ticket (stuck state, gate or push
+   * check that cannot pass). Skips next() and the gate/push checks on purpose; the reason goes to history.md.
+   */
+  public synchronized Task forceStatus(String project, String id, String toCode, String reason, Actor actor) {
+    if (actor != Actor.PMO) {
+      throw new PmoOnlyException("Chỉ PMO được đổi trạng thái bằng tay");
+    }
+    if (reason == null || reason.isBlank()) {
+      throw new IllegalArgumentException("Chưa ghi lý do đổi trạng thái");
+    }
+    Stored s = stored(project, id);
+    TaskStatus from = s.task().status();
+    TaskStatus to = TaskStatus.parse(toCode);
+    if (from == to) {
+      throw new IllegalArgumentException("Ticket đã ở " + to.code());
+    }
+    SecretMasker.Result why = masker.mask(reason.strip(), project(project).config().secrets());
+    Task updated = s.task().withStatus(to, now());
+    repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
+    updateQueue(dir(project), id, to);
+    history(s, actor, "Đổi trạng thái bằng tay " + from.code() + " → " + to.code() + ", lý do: " + why.text());
+    changed(project, id);
+    return updated;
+  }
+
   /** Repos the ticket touches; they get a worktree each when Dev starts. Fixed once the ticket is Done. */
   public synchronized Task setRepos(String project, String id, List<String> names, Actor actor) {
     Stored s = stored(project, id);

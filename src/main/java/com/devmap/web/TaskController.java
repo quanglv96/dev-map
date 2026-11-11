@@ -35,6 +35,9 @@ public class TaskController {
   public record CancelRequest(String reason) {
   }
 
+  public record ForceStatusRequest(String to, String reason) {
+  }
+
   public record ReopenRequest(String kind, String description) {
   }
 
@@ -79,6 +82,11 @@ public class TaskController {
   @PostMapping("/projects/{project}/tasks/{id}/cancel")
   public Task cancel(@PathVariable String project, @PathVariable String id, @RequestBody CancelRequest req) {
     return agents.cancel(project, id, req.reason());
+  }
+
+  @PostMapping("/projects/{project}/tasks/{id}/status")
+  public Task forceStatus(@PathVariable String project, @PathVariable String id, @RequestBody ForceStatusRequest req) {
+    return agents.forceStatus(project, id, req.to(), req.reason());
   }
 
   @PostMapping("/projects/{project}/tasks/{id}/reopen")
