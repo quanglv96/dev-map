@@ -399,7 +399,10 @@ public class AgentService {
         continue;
       }
       String before = last.get(r.repo());
-      List<String> commits = before == null || before.equals(r.head()) ? List.of() : git.log(Path.of(r.worktree()), before, r.head());
+      Path wt = Path.of(r.worktree());
+      // a head from before a history rewrite is gone: nothing to compare against
+      List<String> commits = before == null || before.equals(r.head()) || !git.hasCommit(wt, before) ? List.of()
+          : git.log(wt, before, r.head());
       // commits after the last Dev session are the PMO's; an uncommitted file may also be left by that session itself
       if (!commits.isEmpty()) {
         out.add("Commit PMO tự làm ở " + r.repo() + ": " + commits + ". Đọc lại trước khi sửa tiếp.");

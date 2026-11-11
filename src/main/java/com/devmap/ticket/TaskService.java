@@ -461,13 +461,28 @@ public class TaskService {
   DevState devState(String project, Stored s) {
     DevState dev = repo.readDevState(s.folder());
     List<RepoConfig> known = project(project).config().repos();
-    return new DevState(dev.repos().stream().map(w -> {
-      if (Files.exists(Path.of(w.worktree()))) {
-        return w;
-      }
-      return known.stream().filter(r -> r.name().equals(w.repo()) && r.path() != null && !r.path().isBlank()).findFirst()
-          .map(r -> w.withWorktree(r.dir().toString().replace('\\', '/'))).orElse(w);
-    }).toList(), dev.approved(), dev.direct());
+    return new DevState(dev.repos().stream().map(w -> Files.exists(Path.of(w.worktree())) ? w
+        : known.stream().filter(r -> r.name().equals(w.repo()) && r.path() != null && !r.path().isBlank()).findFirst()
+            .map(r -> w.withWorktree(r.dir().toString().replace('\\', '/'))).orElse(w)).map(this::healBase).toList(),
+        dev.approved(), dev.direct());
+  }
+
+  /**
+   * The recorded base commit is gone when the repo's history was rewritten: fall back to where the ticket branch leaves the
+   * base branch now (or the base tip), so log/diff/gate keep working instead of "Invalid revision range".
+   */
+  private DevState.RepoWork healBase(DevState.RepoWork w) {
+    Path wt = Path.of(w.worktree());
+    if (w.baseCommit() == null || !Files.exists(wt) || git.hasCommit(wt, w.baseCommit())) {
+      return w;
+    }
+    String base = git.resolveBranch(wt, w.baseBranch());
+    if (base == null) {
+      return w;
+    }
+    String fork = git.mergeBase(wt, base, git.tip(wt, w.branch()));
+    return new DevState.RepoWork(w.repo(), w.worktree(), w.branch(), w.baseBranch(), fork == null ? base : fork, w.gateHead(),
+        w.pushedHead(), w.pulledAt());
   }
 
   Stored stored(String project, String id) {

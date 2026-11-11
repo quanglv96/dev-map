@@ -60,6 +60,17 @@ public class GitService {
     }
   }
 
+  /** False once history was rewritten (re-init, force push, re-clone) and the commit is gone from this repo. */
+  public boolean hasCommit(Path repo, String sha) {
+    return sha != null && run(repo, "cat-file", "-e", sha + "^{commit}").ok();
+  }
+
+  /** Common ancestor of a and b, or null when they share none. */
+  public String mergeBase(Path repo, String a, String b) {
+    Out o = run(repo, "merge-base", a, b);
+    return o.ok() ? o.output().strip() : null;
+  }
+
   /** Newest commit of the base branch: origin/branch when present (after fetch it is the shared truth), else local. */
   public String resolveBranch(Path repo, String branch) {
     try (Git git = Git.open(repo.toFile())) {

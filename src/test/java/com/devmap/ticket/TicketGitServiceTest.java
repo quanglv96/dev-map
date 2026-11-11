@@ -277,6 +277,27 @@ class TicketGitServiceTest {
     assertThat(git.run(tmp.resolve("origin/payment-service.git"), "rev-parse", "refs/heads/main").output()).isEqualTo(pushed);
   }
 
+  /** The repo's history was rewritten after start: the recorded base commit is gone, the view falls back to the base branch. */
+  @Test
+  void baseCommitGoneAfterHistoryRewrite() throws Exception {
+    String id = readyTicket();
+    dev.start("shop", id, Actor.PMO);
+    Path folder = tasks.stored("shop", id).folder();
+    TaskRepository taskRepo = new TaskRepository();
+    DevState state = taskRepo.readDevState(folder);
+    DevState.RepoWork w = state.repo("payment-service");
+    String gone = "1a1cfcdf51f8bfd9c89b0400062e3d8a73a04ab1";
+    taskRepo.writeDevState(folder, state.with(new DevState.RepoWork(w.repo(), w.worktree(), w.branch(), w.baseBranch(), gone,
+        w.gateHead(), w.pushedHead(), w.pulledAt())));
+
+    assertThat(dev.view("shop", id).repos()).filteredOn(r -> r.repo().equals("payment-service")).singleElement()
+        .satisfies(r -> {
+          assertThat(r.baseCommit()).isNotEqualTo(gone).isEqualTo(git.resolveBranch(Path.of(r.worktree()), r.baseBranch()));
+          assertThat(r.commits()).isEmpty();
+        });
+    assertThat(dev.diff("shop", id, "payment-service")).isNotNull();
+  }
+
   /** A ticket begun in an old detached worktree: pulling the base moves its uncommitted code into the service repo, losing none. */
   @Test
   void oldWorktreeChangesMoveIntoTheServiceRepo() throws Exception {
