@@ -478,3 +478,9 @@ Agent chỉ đọc được repo của dự án, nên khi ticket cần học the
 - Công cụ cho cả SA và Dev: `list_reference` (danh sách thư mục, liệt kê file tối đa 300, `contains` để tìm chuỗi và trả số dòng) và `read_reference` (tối đa 80 dòng mỗi lần). Kết quả qua lớp che bí mật như mọi công cụ khác. Không có công cụ ghi.
 - Không bao giờ mở: file bí mật (FR-34), file/thư mục ẩn (`.git`, `.env`…), `node_modules`, `target`, `build`, `dist`, `out`, `vendor`, `__pycache__`. Đường dẫn có `..`, đường dẫn tuyệt đối và symlink trỏ ra ngoài thư mục bị từ chối.
 - System prompt liệt kê tên các thư mục tham khảo, nên agent biết mà không phải đoán.
+
+## D-71 File mẫu biến môi trường được mở, Dev bắt buộc cập nhật
+FR-34 chặn mọi `.env*`, kể cả `.env.example`, nên Dev không tạo được file mẫu khi code dùng biến môi trường mới. File mẫu chỉ chứa tên biến và giá trị giả:
+- `.env.example`, `.env.sample`, `.env.template`, `.env.dist` và dạng `.env.<tên>.example` (ví dụ `.env.infra.example`) không còn là file bí mật: đọc, ghi, commit, lập chỉ mục được. Nội dung vẫn qua lớp che bí mật như mọi file khác, giá trị lỡ ghi thật vẫn bị che.
+- `.env`, `.env.local`, `.env.prod`… vẫn bị chặn như cũ.
+- Prompt Dev: thêm/đổi/đọc biến môi trường thì bắt buộc cập nhật `.env.example` ở gốc service, mỗi biến có chú thích (ý nghĩa, bắt buộc/tuỳ chọn, mặc định), ghi danh sách vào summary.md mục `## Biến môi trường`.
