@@ -491,3 +491,9 @@ Luồng 9 trạng thái chỉ cho đi theo `TaskStatus.next()` và các kiểm t
 - Bỏ qua `next()`, `requireGatePassed`, `requirePushed` có chủ đích; hàng đợi cập nhật như chuyển thường (vào Ready thì vào queue, rời Ready thì ra).
 - Từ chối khi agent đang chạy cho ticket (dừng phiên trước). Không tự chạy agent; chuyển xong PMO dùng các nút như thường.
 - API: `POST /api/projects/{p}/tasks/{id}/status` body `{to, reason}`.
+
+## D-73 Launcher chạy bản sao của devmap.jar
+Lỗi "Thiếu prompts/execution.md … does not exist" giữa lúc chạy ticket: launcher chạy thẳng `target/devmap.jar`, PMO build lại (`mvn package`/`setup.cmd`) khi DevMap đang chạy, jar bị thay dưới JVM nên mọi resource chưa đọc biến mất.
+- `bin/devmap.cmd` và `bin/devmap` chép jar vào thư mục tạm, chạy bản sao, xoá khi thoát; truyền jar gốc qua `-Ddevmap.jar`.
+- `serve.url` (D-54, kiểm "bản khác đang chạy") và shortcut khởi động dùng jar gốc (`StartupShortcut.jar()`), thời điểm build lấy từ bản sao (giữ nguyên mtime).
+- Shortcut khởi động (javaw) vẫn chạy jar gốc: build lại khi bản nền đó đang chạy thì cần tắt DevMap trước.

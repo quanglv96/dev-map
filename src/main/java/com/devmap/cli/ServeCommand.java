@@ -5,6 +5,7 @@ import com.devmap.agent.AgentService;
 import com.devmap.graph.GraphService;
 import com.devmap.sync.SyncService;
 import com.devmap.tray.BrowserOpener;
+import com.devmap.tray.StartupShortcut;
 import com.devmap.tray.TrayService;
 import com.devmap.web.EventController;
 import com.devmap.web.ServerToken;
@@ -224,13 +225,13 @@ class ServeCommand implements Callable<Integer> {
     }, TAB_CHECK_SECONDS, TAB_CHECK_SECONDS, TimeUnit.SECONDS);
   }
 
-  /** This build: the jar (first class path entry) and its modification time. */
+  /** This build: the launched jar and the modification time of the copy actually running (the launcher keeps it, D-73). */
   static String build() {
-    Path jar = Path.of(System.getProperty("java.class.path").split(File.pathSeparator)[0]).toAbsolutePath();
+    Path running = Path.of(System.getProperty("java.class.path").split(File.pathSeparator)[0]).toAbsolutePath();
     try {
-      return jar + "@" + Files.getLastModifiedTime(jar).toInstant();
+      return StartupShortcut.jar() + "@" + Files.getLastModifiedTime(running).toInstant();
     } catch (IOException e) {
-      return jar.toString();
+      return StartupShortcut.jar().toString();
     }
   }
 

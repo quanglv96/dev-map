@@ -77,6 +77,12 @@ public class StartupShortcut {
     return folder != null && Files.exists(link());
   }
 
+  /** The devmap.jar the PMO launched; the launcher runs a temp copy of it and passes the original as -Ddevmap.jar (D-73). */
+  public static Path jar() {
+    String launched = System.getProperty("devmap.jar", System.getProperty("java.class.path").split(File.pathSeparator)[0]);
+    return Path.of(launched).toAbsolutePath().normalize();
+  }
+
   /** Starts in the background and without opening a browser: after logging in the PMO gets the icon, not a tab. */
   static String arguments(String jar, int port) {
     return "-jar \"" + jar + "\" serve --background --no-open --port " + port;
@@ -90,7 +96,7 @@ public class StartupShortcut {
       Files.deleteIfExists(link());
       return;
     }
-    String jar = Path.of(System.getProperty("java.class.path").split(File.pathSeparator)[0]).toAbsolutePath().toString();
+    String jar = jar().toString();
     if (!jar.endsWith(".jar")) {
       throw new IOException("DevMap không chạy từ devmap.jar nên không tạo được shortcut");
     }

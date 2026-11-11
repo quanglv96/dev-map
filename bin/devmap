@@ -4,4 +4,7 @@ dir=$(dirname "$0")
 # in a source checkout the freshly built target/devmap.jar wins over a copied bin/devmap.jar (which may be old)
 jar="$dir/../target/devmap.jar"
 [ -f "$jar" ] || jar="$dir/devmap.jar"
-exec java $DEVMAP_OPTS -jar "$jar" "$@"
+# run a private copy: rebuilding target/devmap.jar under a running JVM makes its not-yet-read resources vanish (D-73)
+run=$(mktemp "${TMPDIR:-/tmp}/devmap-XXXXXX") && cp -p "$jar" "$run" || run="$jar"
+[ "$run" = "$jar" ] || trap 'rm -f "$run"' EXIT INT TERM
+java $DEVMAP_OPTS "-Ddevmap.jar=$jar" -jar "$run" "$@"

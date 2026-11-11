@@ -3,6 +3,7 @@ package com.devmap.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.devmap.SampleRepos;
+import com.devmap.tray.StartupShortcut;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.ServerSocket;
@@ -77,6 +78,22 @@ class CliTest {
       // written by an older build: never open its stale UI
       Files.writeString(tmp.resolve("serve.url"), "http://localhost:1/?token=abc");
       assertThat(run(1, "serve", "--no-open", "--port", port)).contains("DevMap khác bản này đang chạy", "Ctrl+C");
+    }
+  }
+
+  @Test
+  void runningFromTheLauncherCopyReportsTheLaunchedJar() {
+    String old = System.getProperty("devmap.jar");
+    try {
+      System.setProperty("devmap.jar", tmp.resolve("devmap.jar").toString());
+      assertThat(StartupShortcut.jar()).isEqualTo(tmp.resolve("devmap.jar").toAbsolutePath());
+      assertThat(ServeCommand.build()).startsWith(tmp.resolve("devmap.jar").toAbsolutePath() + "@");
+    } finally {
+      if (old == null) {
+        System.clearProperty("devmap.jar");
+      } else {
+        System.setProperty("devmap.jar", old);
+      }
     }
   }
 }
