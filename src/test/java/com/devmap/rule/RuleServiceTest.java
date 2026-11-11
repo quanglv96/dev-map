@@ -73,6 +73,19 @@ class RuleServiceTest {
     assertThat(rules.commitMessage("shop", "NYX-1", "add refund")).isEqualTo("[NYX-1] add refund");
   }
 
+  /** A repo added while empty was saved with no service: its build file found later still picks the preset and gate commands. */
+  @Test
+  void repoSavedWithoutServicesIsDetectedAgain() throws Exception {
+    Path cfg = data.resolve("config.yml");
+    String yml = Files.readString(cfg);
+    String noServices = yml.replaceAll("services:\\R  - name: order-service\\R    path: \"\"\\R    kind: maven", "services: []");
+    assertThat(noServices).isNotEqualTo(yml);
+    Files.writeString(cfg, noServices);
+    Rules order = rules.effective("shop", "order-service");
+    assertThat(order.preset()).isEqualTo("maven");
+    assertThat(order.quality().unitTestCommand()).isEqualTo("mvn -q test");
+  }
+
   /** FR-30: base branches are always protected, on top of the configured list. */
   @Test
   void protectedBranchesAlwaysIncludeBaseBranches() {

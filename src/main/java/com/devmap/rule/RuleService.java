@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -69,10 +70,13 @@ public class RuleService {
   public List<Unit> units(String project) {
     List<Unit> out = new ArrayList<>();
     for (RepoConfig r : project(project).config().repos()) {
-      if (r.services().isEmpty()) {
+      // a repo added while still empty was saved with no service; its code came later, so detect again or it stays on preset none
+      List<ServiceInfo> services = r.services().isEmpty() && r.path() != null && Files.isDirectory(Path.of(r.path()))
+          ? projects.detectServices(r.path()) : r.services();
+      if (services.isEmpty()) {
         out.add(new Unit(r.name(), r.name(), "", null));
       }
-      for (ServiceInfo s : r.services()) {
+      for (ServiceInfo s : services) {
         out.add(new Unit(r.name(), s.name(), s.path(), s.kind()));
       }
     }
