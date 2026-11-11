@@ -129,6 +129,21 @@ class RuleServiceTest {
     assertThat(QualityGate.withWrapper("mvnx test", dir)).isEqualTo("mvnx test");
   }
 
+  /** Maven checkstyle:check runs only when the repo declares Checkstyle, else sun_checks fails every old line. */
+  @Test
+  void checkstyleRunsOnlyWhenRepoDeclaresIt(@TempDir Path dir) throws Exception {
+    String c = "mvn -q -DskipTests checkstyle:check";
+    assertThat(QualityGate.checkstyle("mvn -q test", dir)).isEqualTo("mvn -q test");
+    assertThat(QualityGate.checkstyle(c, dir)).isNull();
+    Files.writeString(dir.resolve("pom.xml"), "<project></project>");
+    assertThat(QualityGate.checkstyle(c, dir)).isNull();
+    Files.createDirectories(dir.resolve("config/checkstyle"));
+    Files.writeString(dir.resolve("config/checkstyle/checkstyle.xml"), "<module name=\"Checker\"/>");
+    assertThat(QualityGate.checkstyle(c, dir)).isEqualTo(c + " -Dcheckstyle.config.location=config/checkstyle/checkstyle.xml");
+    Files.writeString(dir.resolve("pom.xml"), "<plugin><artifactId>maven-checkstyle-plugin</artifactId></plugin>");
+    assertThat(QualityGate.checkstyle(c, dir)).isEqualTo(c);
+  }
+
   /** --watch=false only for ng test: node --test would take it as a test file. */
   @Test
   void npmTestGetsNoWatchOnlyForKarma(@TempDir Path dir) throws Exception {

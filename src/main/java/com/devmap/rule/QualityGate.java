@@ -78,7 +78,11 @@ public class QualityGate {
       if (q.staticCommands().isEmpty()) {
         steps.add(missing("static"));
       }
-      q.staticCommands().forEach(c -> steps.add(command("static", c, dir, q.timeoutMinutes(), LINTER.matcher(c).find() ? changed : null)));
+      q.staticCommands().forEach(c -> {
+        String cmd = checkstyle(c, dir);
+        steps.add(cmd == null ? new Step("static", c, true, 0, 0, NO_CHECKSTYLE)
+            : command("static", cmd, dir, q.timeoutMinutes(), LINTER.matcher(cmd).find() ? changed : null));
+      });
     }
     if (q.unitTest()) {
       steps.add(blank(q.unitTestCommand()) ? missing("unit_test") : command("unit_test", q.unitTestCommand(), dir, q.timeoutMinutes()));
@@ -92,6 +96,33 @@ public class QualityGate {
 
   private static Step missing(String name) {
     return new Step(name, "", false, -1, 0, "Rule bật bước này nhưng chưa cấu hình lệnh chạy");
+  }
+
+  static final String NO_CHECKSTYLE = "Bỏ qua: repo không khai báo Checkstyle (không có maven-checkstyle-plugin trong pom.xml, "
+      + "không có file checkstyle*.xml). Thêm file cấu hình vào repo để bật bước này";
+  private static final List<String> CHECKSTYLE_FILES = List.of("checkstyle.xml", "config/checkstyle/checkstyle.xml",
+      ".checkstyle.xml", "checkstyle/checkstyle.xml");
+
+  // ponytail: looks in the service folder only, a parent pom of a multi-module repo is not read
+  /**
+   * mvn checkstyle:check on a repo that never chose Checkstyle runs sun_checks and fails on thousands of old lines. So, like the
+   * Gradle preset, it runs only what the repo declares: the plugin in pom.xml as is, a checkstyle*.xml file as its config.
+   * null = skip the step. Other commands are returned unchanged.
+   */
+  static String checkstyle(String command, Path dir) {
+    if (!command.contains("checkstyle:check") || command.contains("checkstyle.config.location")) {
+      return command;
+    }
+    try {
+      Path pom = dir.resolve("pom.xml");
+      if (Files.exists(pom) && Files.readString(pom).contains("maven-checkstyle-plugin")) {
+        return command;
+      }
+    } catch (IOException e) {
+      return command; // unreadable pom: Maven reports it itself
+    }
+    return CHECKSTYLE_FILES.stream().filter(f -> Files.isRegularFile(dir.resolve(f))).findFirst()
+        .map(f -> command + " -Dcheckstyle.config.location=" + f).orElse(null);
   }
 
   private static boolean depsMissing(Path dir) {

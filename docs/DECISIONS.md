@@ -464,3 +464,10 @@ D-13 chỉ cho `awaiting_approval → sa_analysis`. Khi PMO chốt thêm quyết
 - Thêm `in_dev → sa_analysis` và `awaiting_push → sa_analysis`, nút "Yêu cầu phân tích lại (đổi plan)" ở mục quyết định của PMO. Cổng chỉ PMO (có hỏi xác nhận), server từ chối khi agent đang chạy cho ticket. Bấm xong SA tự chạy ngay (như "Báo bug"), giao diện chuyển sang tab chat.
 - Mọi lần PMO đưa ticket về `sa_analysis` (kể cả "Yêu cầu phân tích lại" từ `awaiting_approval`) đều mở phiên SA ngay. Trước đó nút ở `awaiting_approval` chỉ đổi trạng thái, ticket nằm ở "SA phân tích" mà không có SA nào chạy (FEAT-005).
 - Branch, worktree và commit đã có giữ nguyên; SA ghi plan.md bản mới, PMO chốt lại, Dev làm tiếp trên branch cũ (pull nhánh nền merge vào branch hiện có) rồi qua gate như thường.
+
+## D-69 Gate Maven chỉ chạy Checkstyle khi repo khai báo
+Preset Maven chạy `mvn checkstyle:check`. Repo chưa có cấu hình Checkstyle thì plugin dùng mặc định `sun_checks.xml`, báo hàng nghìn lỗi ở code cũ, gate đỏ dù ticket không sai gì. Giống preset Gradle (`check -x test`, chỉ chạy công cụ repo khai báo):
+- pom.xml của service có `maven-checkstyle-plugin`: chạy lệnh như cấu hình.
+- Không có plugin nhưng có file `checkstyle.xml`, `config/checkstyle/checkstyle.xml`, `.checkstyle.xml` hoặc `checkstyle/checkstyle.xml`: chạy với `-Dcheckstyle.config.location=<file>`.
+- Không có cả hai: bước đạt, ghi "Bỏ qua: repo không khai báo Checkstyle". Muốn bật thì thêm file cấu hình Checkstyle của dự án vào repo.
+- Lệnh PMO tự ghi `-Dcheckstyle.config.location` thì giữ nguyên. `ponytail:` chỉ xem folder service, không đọc pom cha của repo nhiều module.
