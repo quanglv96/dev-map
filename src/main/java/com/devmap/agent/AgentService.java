@@ -342,6 +342,11 @@ public class AgentService {
             .map(r -> r.repo() + "@" + (r.baseCommit() == null ? "-" : r.baseCommit().substring(0, 8))).toList());
         notes.addAll(baseUpdates(repos, seen));
       } catch (IllegalArgumentException | IllegalStateException e) {
+        if (tasks.detail(project, id).task().status() == TaskStatus.READY) {
+          // still Ready: every edit and commit would be refused, so do not spend a Dev session on it
+          throw new IllegalStateException("Chưa bắt đầu triển khai được (ticket vẫn Sẵn sàng): " + e.getMessage()
+              + ". PMO xử lý repo rồi bấm Triển khai lại");
+        }
         notes.add("Không pull được nhánh nền: " + e.getMessage());
       }
     }
@@ -489,7 +494,9 @@ public class AgentService {
         return;
       }
       List<Task> q = tasks.queue(project);
-      if (q.isEmpty() || !current.isEmpty() && tasks.detail(project, current).task().status() == TaskStatus.IN_DEV) {
+      // still In dev (failed) or still Ready (could not start): stop the line for the PMO, never retry the same ticket
+      TaskStatus st = current.isEmpty() ? null : tasks.detail(project, current).task().status();
+      if (q.isEmpty() || st == TaskStatus.IN_DEV || st == TaskStatus.READY) {
         queueRuns.remove(project);
         return;
       }
