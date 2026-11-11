@@ -71,6 +71,7 @@ class AgentServiceTest {
   GraphService graphs;
   AgentService agents;
   McpServer mcp;
+  ProjectService projects;
 
   /** Runs one queued script per session and records what each session received. */
   static final class FakeAgent implements AgentProvider {
@@ -95,7 +96,7 @@ class AgentServiceTest {
       git.run(repos.resolve(svc), "config", "user.name", "devmap-test");
       git.run(repos.resolve(svc), "config", "user.email", "devmap@example.invalid");
     }
-    ProjectService projects = new ProjectService(new WorkspaceRepository(home), new ProjectRepository(), new ServiceDetector(), git);
+    projects = new ProjectService(new WorkspaceRepository(home), new ProjectRepository(), new ServiceDetector(), git);
     projects.create("shop", tmp.resolve("data"), "#ff8800", List.of(
         new RepoInput(repos.resolve("order-service").toString(), "test"),
         new RepoInput(repos.resolve("payment-service").toString(), "main"),
@@ -217,6 +218,36 @@ class AgentServiceTest {
     String log = inputLog(id, 2);
     assertThat(log).contains("System prompt", "### get_spec", "### set_status").doesNotContain("ghp_", "Chào em");
     assertThat(Files.readString(tasks.folder("shop", id).resolve("history.md"))).contains("Hỏi SA", "Trả lời câu #2");
+  }
+
+  /** D-70: a PMO-named folder outside the project is readable (search, ≤80 lines, masked), never its secret/hidden files. */
+  @Test
+  void referenceFolderIsReadOnlyAndMasked() throws Exception {
+    Path ref = Files.createDirectories(tmp.resolve("fb-crawler/src"));
+    Files.writeString(ref.resolve("tunnel.js"), "const quick = startQuickTunnel();\nreport('ghp_abcdefghijklmnopqrstuvwxyz0123456789');\n");
+    Files.writeString(ref.getParent().resolve(".env"), "TOKEN=x\n");
+    Files.createDirectories(ref.getParent().resolve("node_modules/x"));
+    Files.writeString(ref.getParent().resolve("node_modules/x/tunnel.js"), "quick");
+    assertThatThrownBy(() -> projects.setReferences("shop", List.of("relative/path"))).isInstanceOf(IllegalArgumentException.class);
+    projects.setReferences("shop", List.of(ref.getParent().toString()));
+
+    String id = ticket("NYX-30", "Đổi cách đăng ký tunnel theo fb-crawler");
+    fake.scripts.add(c -> {
+      assertThat(c.systemPrompt()).contains("Thư mục tham khảo", "fb-crawler");
+      assertThat(tool(c, "list_reference", Map.of())).contains("fb-crawler");
+      assertThat(tool(c, "list_reference", Map.of("ref", "fb-crawler"))).contains("src/tunnel.js")
+          .doesNotContain(".env", "node_modules");
+      assertThat(tool(c, "list_reference", Map.of("ref", "fb-crawler", "contains", "QUICK"))).contains("src/tunnel.js: dòng [1]")
+          .doesNotContain("node_modules");
+      assertThat(tool(c, "read_reference", Map.of("ref", "fb-crawler", "file", "src/tunnel.js")))
+          .contains("1: const quick", "[MASKED_TOKEN]").doesNotContain("ghp_");
+      assertThat(tool(c, "read_reference", Map.of("ref", "fb-crawler", "file", ".env"))).startsWith("ERR");
+      assertThat(tool(c, "read_reference", Map.of("ref", "fb-crawler", "file", "../repos/order-service/pom.xml"))).startsWith("ERR");
+      assertThat(tool(c, "read_reference", Map.of("ref", "other", "file", "a.js"))).startsWith("ERR").contains("Thư mục tham khảo");
+      return "ok";
+    });
+    agents.ask("shop", id, "", "fb-crawler đăng ký tunnel thế nào?", false);
+    assertThat(fake.calls).hasSize(1);
   }
 
   /** AC-06, AC-09, AC-10, FR-34/35: secrets refused by path and masked in content; snippets only; full scan once per question. */

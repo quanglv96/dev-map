@@ -88,12 +88,20 @@ public class WorkspaceRepository {
   }
 
   public synchronized void setAutoPush(String project, boolean on) {
-    saveAll(findAll().stream().map(w -> w.name().equals(project) ? new Workspace(w.name(), w.dataDir(), on) : w).toList());
+    saveAll(findAll().stream().map(w -> w.name().equals(project) ? w.withAutoPush(on) : w).toList());
   }
 
   /** The project's data folder is now dir on this machine; its other settings stay. */
   public synchronized void moveProject(String project, String dir) {
-    saveAll(findAll().stream().map(w -> w.name().equals(project) ? new Workspace(w.name(), dir, w.autoPush()) : w).toList());
+    saveAll(findAll().stream().map(w -> w.name().equals(project) ? w.withDataDir(dir) : w).toList());
+  }
+
+  public List<String> references(String project) {
+    return findAll().stream().filter(w -> w.name().equals(project)).findFirst().map(Workspace::references).orElse(List.of());
+  }
+
+  public synchronized void setReferences(String project, List<String> refs) {
+    saveAll(findAll().stream().map(w -> w.name().equals(project) ? w.withReferences(refs) : w).toList());
   }
 
   public String repoPath(String key) {

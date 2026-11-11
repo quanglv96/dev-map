@@ -68,7 +68,9 @@ class ContextBuilder {
         .append("- Mẫu commit: `").append(rules.projectDefault(project).git().commitTemplate()).append("`; mọi commit mang mã ticket.\n")
         .append("- Không push, không force-push; branch được bảo vệ: ").append(rules.protectedBranches(project)).append(".\n")
         .append("- Repo của dự án: ").append(projects.get(project).config().repos().stream().map(r -> r.name() + "@" + r.baseBranch())
-            .toList()).append(".\n\n# Coding convention (conventions.md)\n\n");
+            .toList()).append(".\n")
+        .append("- Thư mục tham khảo (chỉ đọc, ngoài repo dự án; list_reference/read_reference): ")
+        .append(projects.references(project).keySet()).append(".\n\n# Coding convention (conventions.md)\n\n");
     String conv = conventions.view(project).content();
     sb.append(conv == null || conv.isBlank() ? "(chưa có; theo phong cách code xung quanh)" : conv);
     return masker.mask(sb.toString(), projects.get(project).config().secrets()).text();

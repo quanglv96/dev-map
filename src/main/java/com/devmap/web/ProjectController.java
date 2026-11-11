@@ -96,6 +96,20 @@ public class ProjectController {
     return service.cloneRepo(name, repo, req.path());
   }
 
+  public record References(List<String> paths) {
+  }
+
+  /** D-70: folders outside the project's repos that agents may read, on this machine. */
+  @GetMapping("/projects/{name}/references")
+  public References references(@PathVariable String name) {
+    return new References(service.references(name).values().stream().map(p -> p.toString().replace('\\', '/')).toList());
+  }
+
+  @PutMapping("/projects/{name}/references")
+  public References setReferences(@PathVariable String name, @RequestBody References req) {
+    return new References(service.setReferences(name, req.paths() == null ? List.of() : req.paths()));
+  }
+
   /** NFR-10: the audit log of the project, newest first; ticket filters to one ticket. */
   @GetMapping("/projects/{name}/audit")
   public List<AuditLog.Entry> audit(@PathVariable String name, @RequestParam(required = false) String ticket,

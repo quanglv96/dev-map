@@ -27,15 +27,19 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Component;
 
 /**
@@ -51,6 +55,8 @@ class AgentTools {
   }
 
   static final int SNIPPET_LINES = 80;
+  static final int REF_FILES = 300;
+  private static final Set<String> SKIP_DIRS = Set.of("node_modules", "target", "build", "dist", "out", "vendor", "__pycache__");
   private static final int MAX_TEXT = 40_000;
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final Pattern COMMIT = Pattern.compile("[0-9a-fA-F]{7,40}");
@@ -76,6 +82,12 @@ class AgentTools {
       tool("get_snippet", "Đoạn code của một method (node fn:...) hoặc một khoảng dòng tối đa " + SNIPPET_LINES
           + " dòng; đã che bí mật. Không trả nguyên file.", Set.of(Role.SA, Role.DEV),
           "node?:string:Id node fn:...", "repo?:string:Tên repo", "file?:string:Đường dẫn trong repo",
+          "from?:integer:Dòng đầu", "to?:integer:Dòng cuối"),
+      tool("list_reference", "Thư mục tham khảo PMO chỉ định (ngoài repo dự án, chỉ đọc). Không tham số: danh sách thư mục; có ref: "
+          + "liệt kê file (tối đa " + REF_FILES + "); có contains: chỉ file chứa chuỗi đó kèm số dòng khớp.", Set.of(Role.SA, Role.DEV),
+          "ref?:string:Tên thư mục tham khảo", "dir?:string:Thư mục con", "contains?:string:Chuỗi cần tìm (không phân biệt hoa thường)"),
+      tool("read_reference", "Đọc tối đa " + SNIPPET_LINES + " dòng của một file trong thư mục tham khảo; đã che bí mật. Chỉ đọc, "
+          + "không sửa được.", Set.of(Role.SA, Role.DEV), "ref:string:Tên thư mục tham khảo", "file:string:Đường dẫn trong thư mục",
           "from?:integer:Dòng đầu", "to?:integer:Dòng cuối"),
       tool("write_ticket_doc", "Ghi tài liệu của ticket (SA: analysis.md, plan.md, summary.md, verify.md; Dev: summary.md). Bí mật bị che.",
           Set.of(Role.SA, Role.DEV), "name:string:Tên tài liệu", "content:string:Nội dung Markdown đầy đủ"),
@@ -142,6 +154,10 @@ class AgentTools {
       case "search_graph" -> search(s, text(args, "query"), args.path("depth").asInt(1), args.path("direction").asText("both"));
       case "get_signatures" -> signatures(s, args);
       case "get_snippet" -> snippet(s, args);
+      case "list_reference" -> listReference(s, args.path("ref").asText(""), args.path("dir").asText(""),
+          args.path("contains").asText(""));
+      case "read_reference" -> readReference(s, text(args, "ref"), text(args, "file"), args.path("from").asInt(1),
+          args.path("to").asInt(args.path("from").asInt(1) + SNIPPET_LINES - 1));
       case "write_ticket_doc" -> writeDoc(s, text(args, "name"), text(args, "content"));
       case "set_status" -> setStatus(s, text(args, "to"));
       case "set_repos" -> setRepos(s, args.path("repos"), args.path("branch").asText(""));
@@ -278,6 +294,113 @@ class AgentTools {
     RepoConfig rc = repoConfig(s, repo);
     String head = git.resolveBranch(rc.dir(), rc.baseBranch());
     return head == null ? null : git.show(rc.dir(), head, path);
+  }
+
+  /** D-70: files of a PMO-named reference folder; hidden, build and secret files never show up. */
+  private String listReference(AgentSession s, String ref, String dir, String contains) {
+    Map<String, Path> refs = projects.references(s.project);
+    if (ref.isBlank()) {
+      return refs.isEmpty() ? "PMO chưa chỉ định thư mục tham khảo nào (Cấu hình dự án → Thư mục tham khảo)"
+          : "Thư mục tham khảo: " + String.join(", ", refs.keySet());
+    }
+    Path root = referenceRoot(refs, ref);
+    Path start = dir.isBlank() ? root : inside(root, dir);
+    String needle = contains.toLowerCase(Locale.ROOT);
+    StringBuilder sb = new StringBuilder();
+    int count = 0;
+    try (Stream<Path> walk = Files.walk(start)) {
+      for (Path f : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
+        String rel = root.relativize(f).toString().replace('\\', '/');
+        if (skipped(rel)) {
+          continue;
+        }
+        if (count >= REF_FILES) {
+          return sb.append("…(đã cắt ở ").append(REF_FILES).append(" file, thu hẹp bằng dir/contains)\n").toString();
+        }
+        if (needle.isEmpty()) {
+          sb.append(rel).append('\n');
+          count++;
+          continue;
+        }
+        List<Integer> hits = matchingLines(f, needle);
+        if (!hits.isEmpty()) {
+          sb.append(rel).append(": dòng ").append(hits.subList(0, Math.min(10, hits.size()))).append('\n');
+          count++;
+        }
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    return sb.length() == 0 ? "Không có file nào" + (needle.isEmpty() ? "" : " chứa \"" + contains + "\"") : sb.toString();
+  }
+
+  private String readReference(AgentSession s, String ref, String file, int from, int to) {
+    if (to < from || to - from >= SNIPPET_LINES) {
+      throw new IllegalArgumentException("Tối đa " + SNIPPET_LINES + " dòng mỗi lần");
+    }
+    Path root = referenceRoot(projects.references(s.project), ref);
+    String rel = safePath(file);
+    if (skipped(rel)) {
+      throw new IllegalArgumentException("Không đọc file ẩn/build/bí mật: " + file);
+    }
+    String[] lines;
+    try {
+      lines = Files.readString(inside(root, rel)).replace("\r\n", "\n").split("\n", -1);
+    } catch (NoSuchFileException e) {
+      throw new NoSuchElementException(ref + ":" + rel + " không tồn tại");
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    StringBuilder sb = new StringBuilder(ref + ":" + rel + " dòng " + from + "-" + Math.min(to, lines.length) + " (tham khảo, chỉ đọc)\n");
+    for (int i = Math.max(1, from); i <= Math.min(to, lines.length); i++) {
+      sb.append(i).append(": ").append(lines[i - 1]).append('\n');
+    }
+    return sb.toString();
+  }
+
+  private static Path referenceRoot(Map<String, Path> refs, String ref) {
+    Path root = refs.get(ref);
+    if (root == null) {
+      throw new NoSuchElementException("Không có thư mục tham khảo " + ref + "; có: " + refs.keySet()
+          + ". Thư mục khác thì nhờ PMO thêm ở Cấu hình dự án → Thư mục tham khảo");
+    }
+    return root;
+  }
+
+  /** A path under root even after following links, so a symlink cannot lead the agent out of the folder the PMO named. */
+  static Path inside(Path root, String rel) {
+    try {
+      Path f = root.resolve(safePath(rel)).normalize();
+      if (Files.exists(f) && !f.toRealPath().startsWith(root.toRealPath())) {
+        throw new IllegalArgumentException("Đường dẫn phải nằm trong thư mục tham khảo");
+      }
+      return f;
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /** Hidden (.git, .env…), build output and secret files of a reference folder. */
+  static boolean skipped(String rel) {
+    return SecretFiles.isSecret(rel) || Stream.of(rel.split("/")).anyMatch(p -> p.startsWith(".") || SKIP_DIRS.contains(p));
+  }
+
+  private static List<Integer> matchingLines(Path f, String needle) {
+    try {
+      if (Files.size(f) > 1_000_000) {
+        return List.of();
+      }
+      String[] lines = new String(Files.readAllBytes(f), StandardCharsets.UTF_8).split("\n", -1);
+      List<Integer> out = new ArrayList<>();
+      for (int i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase(Locale.ROOT).contains(needle)) {
+          out.add(i + 1);
+        }
+      }
+      return out;
+    } catch (IOException e) {
+      return List.of(); // unreadable file: not a match
+    }
   }
 
   private String writeDoc(AgentSession s, String name, String content) {
@@ -530,7 +653,8 @@ class AgentTools {
   private RepoConfig repoConfig(AgentSession s, String repo) {
     Project p = projects.get(s.project);
     return p.config().repos().stream().filter(r -> r.name().equals(repo)).findFirst()
-        .orElseThrow(() -> new NoSuchElementException("Dự án không có repo " + repo));
+        .orElseThrow(() -> new NoSuchElementException("Dự án không có repo " + repo
+            + "; code ngoài dự án thì đọc bằng list_reference/read_reference nếu PMO đã thêm vào Thư mục tham khảo"));
   }
 
   private String doc(AgentSession s, String name) {

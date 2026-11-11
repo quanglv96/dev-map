@@ -471,3 +471,10 @@ Preset Maven chạy `mvn checkstyle:check`. Repo chưa có cấu hình Checkstyl
 - Không có plugin nhưng có file `checkstyle.xml`, `config/checkstyle/checkstyle.xml`, `.checkstyle.xml` hoặc `checkstyle/checkstyle.xml`: chạy với `-Dcheckstyle.config.location=<file>`.
 - Không có cả hai: bước đạt, ghi "Bỏ qua: repo không khai báo Checkstyle". Muốn bật thì thêm file cấu hình Checkstyle của dự án vào repo.
 - Lệnh PMO tự ghi `-Dcheckstyle.config.location` thì giữ nguyên. `ponytail:` chỉ xem folder service, không đọc pom cha của repo nhiều module.
+
+## D-70 Thư mục tham khảo chỉ đọc do PMO chỉ định
+Agent chỉ đọc được repo của dự án, nên khi ticket cần học theo code ở nơi khác (ví dụ một project cũ không thuộc dự án) thì Dev báo "Dự án không có repo …" và dừng. PMO chỉ định thư mục tham khảo ở Cấu hình dự án → Thư mục tham khảo:
+- Lưu theo máy trong `~/.devmap/workspaces.yml` (`projects[].references`), không đồng bộ, vì là đường dẫn tuyệt đối. Agent gọi thư mục theo tên folder; tên không được trùng.
+- Công cụ cho cả SA và Dev: `list_reference` (danh sách thư mục, liệt kê file tối đa 300, `contains` để tìm chuỗi và trả số dòng) và `read_reference` (tối đa 80 dòng mỗi lần). Kết quả qua lớp che bí mật như mọi công cụ khác. Không có công cụ ghi.
+- Không bao giờ mở: file bí mật (FR-34), file/thư mục ẩn (`.git`, `.env`…), `node_modules`, `target`, `build`, `dist`, `out`, `vendor`, `__pycache__`. Đường dẫn có `..`, đường dẫn tuyệt đối và symlink trỏ ra ngoài thư mục bị từ chối.
+- System prompt liệt kê tên các thư mục tham khảo, nên agent biết mà không phải đoán.

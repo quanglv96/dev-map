@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -144,6 +145,37 @@ public class ProjectService {
     git.cloneRepo(rc.remote(), target);
     rememberPaths(project, List.of(rc.withPath(slash(target))));
     return get(project);
+  }
+
+  /** D-70: read-only reference folders of the project on this machine, keyed by folder name (the name agents use). */
+  public Map<String, Path> references(String project) {
+    workspace(project);
+    Map<String, Path> out = new LinkedHashMap<>();
+    workspaces.references(project).forEach(r -> out.put(Path.of(r).getFileName().toString(), Path.of(r)));
+    return out;
+  }
+
+  /** D-70: the PMO names folders outside the project's repos that agents may read (never write); machine-local, not synced. */
+  public synchronized List<String> setReferences(String project, List<String> paths) {
+    workspace(project);
+    List<String> out = new ArrayList<>();
+    Set<String> names = new HashSet<>();
+    for (String raw : paths) {
+      if (raw == null || raw.isBlank()) {
+        continue;
+      }
+      Path dir = Path.of(raw.strip());
+      if (!dir.isAbsolute() || !Files.isDirectory(dir)) {
+        throw new IllegalArgumentException("Thư mục tham khảo phải là đường dẫn tuyệt đối tới thư mục có sẵn: " + raw);
+      }
+      dir = dir.normalize();
+      if (dir.getFileName() == null || !names.add(dir.getFileName().toString())) {
+        throw new IllegalArgumentException("Tên thư mục tham khảo trống hoặc trùng (agent gọi theo tên thư mục): " + raw);
+      }
+      out.add(slash(dir));
+    }
+    workspaces.setReferences(project, out);
+    return out;
   }
 
   /** Registers every project folder under dataRoot (config.yml inside) not registered yet, e.g. created on another machine. */

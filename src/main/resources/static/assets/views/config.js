@@ -58,6 +58,35 @@ function readRepo(card) {
 
 const lines = (text) => text.split("\n").map((s) => s.trim()).filter(Boolean);
 
+/** D-70: folders outside the project's repos the agents may read (never write), kept on this machine only. */
+async function renderReferences(target, name) {
+  const url = `/api/projects/${encodeURIComponent(name)}/references`;
+  const area = el("textarea", { rows: 3, value: (await api(url)).paths.join("\n"), placeholder: "D:/projects/fb-crawler" });
+  const status = el("div");
+  const pick = async () => {
+    try {
+      const picked = (await api("/api/folders/pick", { method: "POST" })).path;
+      if (picked) area.value = [...lines(area.value), picked].join("\n");
+    } catch (err) {
+      showError(status, err);
+    }
+  };
+  const save = async () => {
+    try {
+      area.value = (await api(url, { method: "PUT", body: { paths: lines(area.value) } })).paths.join("\n");
+      status.replaceChildren(el("p", { class: "ok" }, t("saved")));
+    } catch (err) {
+      showError(status, err);
+    }
+  };
+  target.replaceChildren(el("fieldset", { class: "form" }, el("legend", {}, t("references")),
+    el("small", { class: "muted" }, t("referencesHint")), area,
+    el("div", { class: "row" },
+      el("button", { type: "button", class: "link", onclick: pick }, t("browse")),
+      el("button", { type: "button", class: "primary", onclick: save }, t("save"))),
+    status));
+}
+
 /** Renders the form into target; onSaved(project) is called with the saved project. */
 export function renderConfig(target, project, onSaved) {
   const c = project.config;
@@ -107,8 +136,10 @@ export function renderConfig(target, project, onSaved) {
     }
   });
   const sync = el("div");
-  target.replaceChildren(el("h2", {}, t("projectConfig")), form, sync,
+  const refs = el("div");
+  target.replaceChildren(el("h2", {}, t("projectConfig")), form, refs, sync,
     el("p", {}, el("a", { href: `/api/projects/${encodeURIComponent(project.name)}/export`, download: `devmap-${project.name}.zip` },
       t("sync.export")), " ", el("small", { class: "muted" }, t("sync.exportHint"))));
   renderSyncSettings(sync, project.name).catch((err) => showError(sync, err));
+  renderReferences(refs, project.name).catch((err) => showError(refs, err));
 }
