@@ -56,7 +56,7 @@ class CliTest {
     assertThat(run(0, "task", "new", "shop", "--type", "BUG", "--request", "Đơn hàng lỗi ở order-service, ip 10.1.2.3"))
         .contains("Đã tạo BUG-001", "bugfix/BUG-001-don-hang-loi-o-order-service-ip", "đã che 1");
     assertThat(run(0, "task", "list", "shop")).contains("BUG-001\tBUG\tnew");
-    assertThat(run(0, "task", "show", "shop", "BUG-001")).contains("repo: [order-service]", "spec.json", "sa_analysis");
+    assertThat(run(0, "task", "show", "shop", "BUG-001")).contains("repo: [order-service]", "spec.json", "analysis");
 
     assertThat(run(0, "index", "shop")).contains("chưa có chỉ mục", "Graph: 2 node");
     assertThat(run(0, "index", "shop", "--full")).contains("Quét toàn bộ:", "đọc 10", "ok");

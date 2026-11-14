@@ -184,7 +184,7 @@ class WebTest {
         .andExpect(jsonPath("$.task.id").value("FEAT-001"))
         .andExpect(jsonPath("$.maskedCount").value(1));
     mvc.perform(post("/api/projects/webshop/tasks/FEAT-001/transition").header(TokenFilter.HEADER, h)
-        .contentType(MediaType.APPLICATION_JSON).content("{\"to\":\"sa_analysis\"}")).andExpect(status().isOk());
+        .contentType(MediaType.APPLICATION_JSON).content("{\"to\":\"analysis\"}")).andExpect(status().isOk());
     mvc.perform(post("/api/projects/webshop/tasks/FEAT-001/transition").header(TokenFilter.HEADER, h)
         .contentType(MediaType.APPLICATION_JSON).content("{\"to\":\"ready\"}")).andExpect(status().isBadRequest());
     for (String content : new String[] {"v1", "v2"}) {
@@ -197,7 +197,7 @@ class WebTest {
     mvc.perform(get("/api/projects/webshop/tasks/FEAT-001/doc").param("name", "spec.json").header(TokenFilter.HEADER, h))
         .andExpect(jsonPath("$.content").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("sk_live"))));
     mvc.perform(get("/api/projects/webshop/tasks/FEAT-001").header(TokenFilter.HEADER, h))
-        .andExpect(jsonPath("$.actions[0].to").value("awaiting_approval"));
+        .andExpect(jsonPath("$.actions[0].to").value("wait_approval"));
     mvc.perform(get("/api/overview").header(TokenFilter.HEADER, h))
         .andExpect(jsonPath("$[0].running[0].id").value("FEAT-001"));
     mvc.perform(get("/api/events").header(TokenFilter.HEADER, h)).andExpect(status().isOk());

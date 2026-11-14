@@ -67,8 +67,8 @@ class TicketGitServiceTest {
 
   private String readyTicket() {
     String id = tasks.create("shop", "FEAT", "NYX-7", "Hoàn tiền", "Thêm hoàn tiền ở order-service, gọi payment-service").task().id();
-    tasks.transition("shop", id, "sa_analysis", Actor.SA);
-    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "analysis", Actor.SA);
+    tasks.transition("shop", id, "wait_approval", Actor.SA);
     tasks.writeDoc("shop", id, "plan.md", "# Plan", Actor.PMO);
     tasks.transition("shop", id, "ready", Actor.PMO);
     return id;
@@ -86,7 +86,7 @@ class TicketGitServiceTest {
     String id = readyTicket();
 
     TicketGitService.View v = dev.start("shop", id, Actor.DEV);
-    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.IN_DEV);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.IMPLEMENT);
     assertThat(v.repos()).extracting(TicketGitService.RepoView::repo).containsExactlyInAnyOrder("order-service", "payment-service");
     Path order = Path.of(v.repos().stream().filter(r -> r.repo().equals("order-service")).findFirst().orElseThrow().worktree());
     assertThat(order).isEqualTo(repos.resolve("order-service")); // edited in the service repo itself, no worktree copy
@@ -111,7 +111,7 @@ class TicketGitServiceTest {
     assertThat(git.run(order, "log", "-1", "--format=%s").output()).isEqualTo("NYX-7: add refund");
 
     // AIR-13 / AC-10: SA only after a passing gate; a change that adds a Controller → Repository shortcut fails it
-    assertThatThrownBy(() -> tasks.transition("shop", id, "sa_verify", Actor.DEV)).hasMessageContaining("quality gate");
+    assertThatThrownBy(() -> tasks.transition("shop", id, "verify", Actor.DEV)).hasMessageContaining("quality gate");
     Path refund = order.resolve("src/main/java/com/shop/order/web/RefundController.java");
     Files.writeString(refund, "package com.shop.order.web;\n\nimport com.shop.order.repository.OrderRepository;\n\n"
         + "@org.springframework.web.bind.annotation.RestController\npublic class RefundController {\n"
@@ -132,8 +132,8 @@ class TicketGitServiceTest {
     // the violation already on the base branch (OrderReportController) is listed but does not block this ticket
     assertThat(dev.gate("shop", id, Actor.DEV)).allMatch(QualityGate.Result::passed);
     assertThat(tasks.readDoc("shop", id, "tests.md").content()).contains("Vi phạm có sẵn", "OrderReportController", "ĐẠT");
-    tasks.transition("shop", id, "sa_verify", Actor.DEV);
-    tasks.transition("shop", id, "awaiting_push", Actor.SA);
+    tasks.transition("shop", id, "verify", Actor.DEV);
+    tasks.transition("shop", id, "wait_confirm", Actor.SA);
 
     String changes = tasks.readDoc("shop", id, "changes.md").content();
     assertThat(changes).contains("feature/NYX-7-hoan-tien", "NYX-7: add refund", "RefundService.java", "Push: chưa");
@@ -183,7 +183,7 @@ class TicketGitServiceTest {
     Files.delete(order.resolve("stray.txt"));
 
     dev.waiveGate("shop", id, "build cần token GitHub, PMO build tay đạt", Actor.PMO);
-    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.SA_VERIFY);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.VERIFY);
     assertThat(tasks.readDoc("shop", id, "tests.md").content()).contains("PMO bỏ qua gate", "PMO build tay đạt");
     assertThat(tasks.readDoc("shop", id, "history.md").content()).contains("PMO bỏ qua quality gate");
     assertThatThrownBy(() -> dev.waiveGate("shop", id, "lần nữa", Actor.PMO)).hasMessageContaining("Dev triển khai");
@@ -207,8 +207,8 @@ class TicketGitServiceTest {
     Files.writeString(wt.resolve("CHANGELOG.md"), "refund\n");
     dev.commit("shop", id, "payment-service", "changelog", Actor.PMO);
     dev.gate("shop", id, Actor.PMO);
-    tasks.transition("shop", id, "sa_verify", Actor.DEV);
-    tasks.transition("shop", id, "awaiting_push", Actor.SA);
+    tasks.transition("shop", id, "verify", Actor.DEV);
+    tasks.transition("shop", id, "wait_confirm", Actor.SA);
     Files.writeString(wt.resolve("CHANGELOG.md"), "refund v2\n");
     git.commitAll(wt, "NYX-7: sneaky");
     assertThatThrownBy(() -> dev.confirmPush("shop", id, Actor.PMO)).hasMessageContaining("chưa qua quality gate");
@@ -230,8 +230,8 @@ class TicketGitServiceTest {
     Files.writeString(wt.resolve("CHANGELOG.md"), "refund\n");
     dev.commit("shop", id, "payment-service", "changelog", Actor.PMO);
     dev.gate("shop", id, Actor.PMO);
-    tasks.transition("shop", id, "sa_verify", Actor.DEV);
-    tasks.transition("shop", id, "awaiting_push", Actor.SA);
+    tasks.transition("shop", id, "verify", Actor.DEV);
+    tasks.transition("shop", id, "wait_confirm", Actor.SA);
     dev.confirmPush("shop", id, Actor.PMO);
     Path origin = tmp.resolve("origin/payment-service.git");
     assertThat(git.run(origin, "rev-parse", "refs/heads/main").output()).isEqualTo(git.head(wt));
@@ -269,8 +269,8 @@ class TicketGitServiceTest {
     Files.writeString(order.resolve("CHANGELOG.md"), "refund\n");
     dev.commit("shop", id, "order-service", "changelog", Actor.DEV);
     assertThat(dev.gate("shop", id, Actor.DEV)).isNotEmpty().allMatch(r -> !r.service().equals("payment-service"));
-    tasks.transition("shop", id, "sa_verify", Actor.DEV);
-    tasks.transition("shop", id, "awaiting_push", Actor.SA);
+    tasks.transition("shop", id, "verify", Actor.DEV);
+    tasks.transition("shop", id, "wait_confirm", Actor.SA);
     SampleRepos.commit(payment, "main", Map.of("OTHER.md", "from a teammate\n"));
     dev.confirmPush("shop", id, Actor.PMO);
     assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.DONE);

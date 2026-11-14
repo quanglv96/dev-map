@@ -76,7 +76,7 @@ public class TicketGitService {
   public synchronized View start(String project, String id, Actor actor) {
     Stored s = tasks.stored(project, id);
     Task t = s.task();
-    if (t.status() != TaskStatus.READY && t.status() != TaskStatus.IN_DEV) {
+    if (t.status() != TaskStatus.READY && t.status() != TaskStatus.IMPLEMENT) {
       throw new IllegalArgumentException("Chỉ bắt đầu triển khai được khi ticket Sẵn sàng hoặc đang triển khai");
     }
     if (t.repos().isEmpty()) {
@@ -119,7 +119,7 @@ public class TicketGitService {
     }
     repo.writeDevState(s.folder(), dev);
     if (t.status() == TaskStatus.READY) {
-      tasks.transition(project, id, TaskStatus.IN_DEV.code(), actor);
+      tasks.transition(project, id, TaskStatus.IMPLEMENT.code(), actor);
     }
     writeChanges(project, id);
     events.publishEvent(new BasePulled(project));
@@ -204,7 +204,7 @@ public class TicketGitService {
   /** FR-26: commit everything in the worktree with the ticket code; refuses secret files and unapproved scope. */
   public synchronized View commit(String project, String id, String repoName, String message, Actor actor) {
     Stored s = tasks.stored(project, id);
-    if (s.task().status() != TaskStatus.IN_DEV) {
+    if (s.task().status() != TaskStatus.IMPLEMENT) {
       throw new IllegalArgumentException("Chỉ commit khi ticket đang triển khai");
     }
     if (message == null || message.isBlank()) {
@@ -231,6 +231,39 @@ public class TicketGitService {
     writeChanges(project, id);
     tasks.changed(project, id);
     return view(project, id);
+  }
+
+  /**
+   * FR-94: what a safely stopped Dev session left on disk becomes a local commit {@code WIP(<id>): tạm dừng do <reason>} in every
+   * repo of the ticket, never pushed; Dev continues from it. A repo with secret files or files waiting for PMO approval is left
+   * uncommitted (the approval card must still show them). Returns "repo@hash" per commit; the hashes land in changes.md.
+   */
+  public synchronized List<String> wipCommit(String project, String id, String reason, Actor actor) {
+    Stored s = tasks.stored(project, id);
+    List<String> out = new ArrayList<>();
+    for (RepoWork w : tasks.devState(project, s).repos()) {
+      Path wt = Path.of(w.worktree());
+      if (!Files.exists(wt) || !checkedOut(w) || git.uncommitted(wt).isEmpty()) {
+        continue;
+      }
+      ScopeCheck check = checkScope(project, id, w.repo());
+      if (!check.secrets().isEmpty() || !check.needApproval().isEmpty()) {
+        tasks.history(s, actor, w.repo(), "FR-94", w.repo() + ": không commit WIP vì có file bí mật hoặc file chờ PMO duyệt, giữ nguyên "
+            + check.files().size() + " file chưa commit");
+        continue;
+      }
+      String clean = reason.replaceAll("\\s+", " ").strip();
+      git.commitAll(wt, "WIP(" + id + "): tạm dừng do " + (clean.length() > 120 ? clean.substring(0, 120) + "…" : clean));
+      String head = git.head(wt);
+      out.add(w.repo() + "@" + head.substring(0, 8));
+      tasks.history(s, actor, w.repo(), "FR-94 dừng Dev an toàn", w.repo() + ": commit WIP cục bộ " + head.substring(0, 8)
+          + " (" + check.files().size() + " file), không push");
+    }
+    if (!out.isEmpty()) {
+      writeChanges(project, id);
+      tasks.changed(project, id);
+    }
+    return out;
   }
 
   /** FR-31 / AIR-13: runs the quality gate of every repo of the ticket, writes tests.md, remembers which commit passed. */
@@ -292,7 +325,7 @@ public class TicketGitService {
       throw new IllegalArgumentException("Ghi lý do bỏ qua quality gate");
     }
     Stored s = tasks.stored(project, id);
-    if (s.task().status() != TaskStatus.IN_DEV) {
+    if (s.task().status() != TaskStatus.IMPLEMENT) {
       throw new IllegalArgumentException("Chỉ bỏ qua gate khi ticket đang Dev triển khai");
     }
     DevState dev = tasks.devState(project, s);
@@ -319,7 +352,7 @@ public class TicketGitService {
     String tests = repo.readDoc(s.folder(), "tests.md").orElse("# Test và quality gate – " + id + "\n");
     tasks.writeDoc(project, id, "tests.md", tests + "\n## PMO bỏ qua gate – " + now() + "\n\n" + note + "\n", Actor.DEVMAP);
     tasks.history(s, actor, null, "quality gate, PMO duyệt ngoại lệ", note);
-    tasks.transition(project, id, TaskStatus.SA_VERIFY.code(), actor);
+    tasks.transition(project, id, TaskStatus.VERIFY.code(), actor);
   }
 
   /**
@@ -331,7 +364,7 @@ public class TicketGitService {
       throw new PmoOnlyException("Chỉ PMO được xác nhận push");
     }
     Stored s = tasks.stored(project, id);
-    if (s.task().status() != TaskStatus.AWAITING_PUSH) {
+    if (s.task().status() != TaskStatus.WAIT_CONFIRM) {
       throw new IllegalArgumentException("Chỉ push khi ticket đang chờ PMO xác nhận");
     }
     DevState dev = tasks.devState(project, s);
@@ -456,7 +489,7 @@ public class TicketGitService {
   }
 
   private DevState requireHandoffable(String project, Stored s) {
-    if (s.task().status() != TaskStatus.IN_DEV) {
+    if (s.task().status() != TaskStatus.IMPLEMENT) {
       throw new IllegalArgumentException("Chỉ chuyển máy được khi ticket đang Dev triển khai");
     }
     DevState dev = tasks.devState(project, s);
@@ -508,7 +541,7 @@ public class TicketGitService {
     tasks.list(project).stream()
         // waiting for push needs only its branch ref, not the checkout
         .filter(x -> !x.id().equals(id) && x.repos().contains(name) && x.branch().equals(current)
-            && (x.status() == TaskStatus.IN_DEV || x.status() == TaskStatus.SA_VERIFY))
+            && (x.status() == TaskStatus.IMPLEMENT || x.status() == TaskStatus.VERIFY))
         .findFirst().ifPresent(x -> {
           throw new IllegalStateException(name + ": repo đang dùng cho " + x.id() + " (nhánh " + current + "); xong ticket đó trước");
         });

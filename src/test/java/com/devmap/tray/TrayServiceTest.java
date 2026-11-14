@@ -129,8 +129,8 @@ class TrayServiceTest {
 
   private String awaitingApproval() {
     String id = ticket();
-    tasks.transition("shop", id, "sa_analysis", Actor.SA);
-    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "analysis", Actor.SA);
+    tasks.transition("shop", id, "wait_approval", Actor.SA);
     return id;
   }
 
@@ -175,8 +175,8 @@ class TrayServiceTest {
     String id = ticket();
     step();
     tray.reportFocus("tab-1", "shop", id);
-    tasks.transition("shop", id, "sa_analysis", Actor.SA);
-    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "analysis", Actor.SA);
+    tasks.transition("shop", id, "wait_approval", Actor.SA);
     settle();
     assertThat(notifier.popups).isEmpty();
     assertThat(notifier.last().rows()).anyMatch(r -> r.path().endsWith(id));

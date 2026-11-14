@@ -125,13 +125,15 @@ class TaskServiceTest {
     String a = tasks.create("shop", "MAINT", null, "nâng spring", "x").task().id();
     String b = tasks.create("shop", "MAINT", null, "vá log4j", "x").task().id();
     for (String id : List.of(a, b)) {
-      tasks.transition("shop", id, "sa_analysis", Actor.SA);
-      tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+      tasks.transition("shop", id, "analysis", Actor.SA);
+      tasks.transition("shop", id, "wait_approval", Actor.SA);
     }
-    assertThatThrownBy(() -> tasks.transition("shop", a, "in_dev", Actor.PMO)).hasMessageContaining("Không chuyển được");
+    assertThatThrownBy(() -> tasks.transition("shop", a, "verify", Actor.PMO)).hasMessageContaining("Không chuyển được");
     assertThatThrownBy(() -> tasks.transition("shop", a, "ready", Actor.PMO)).hasMessageContaining("plan.md");
     tasks.writeDoc("shop", a, "plan.md", "# Plan", Actor.PMO);
     tasks.writeDoc("shop", b, "plan.md", "# Plan", Actor.PMO);
+    // FR-86: never implemented yet, so the approval queues it (READY) instead of going straight to IMPLEMENT
+    assertThatThrownBy(() -> tasks.transition("shop", a, "implement", Actor.PMO)).hasMessageContaining("Chốt lần đầu");
     assertThatThrownBy(() -> tasks.transition("shop", a, "ready", Actor.SA)).isInstanceOf(PmoOnlyException.class);
 
     tasks.transition("shop", a, "ready", Actor.PMO);
@@ -141,10 +143,10 @@ class TaskServiceTest {
     assertThatThrownBy(() -> tasks.reorderQueue("shop", List.of(b))).hasMessageContaining("Hàng đợi");
     assertThat(tasks.detail("shop", a).queuePosition()).isEqualTo(2);
 
-    tasks.transition("shop", b, "in_dev", Actor.DEV);
+    tasks.transition("shop", b, "implement", Actor.DEV);
     assertThat(tasks.queue("shop")).extracting(Task::id).containsExactly(a);
-    tasks.transition("shop", b, "sa_verify", Actor.DEV);
-    tasks.transition("shop", b, "awaiting_push", Actor.SA);
+    tasks.transition("shop", b, "verify", Actor.DEV);
+    tasks.transition("shop", b, "wait_confirm", Actor.SA);
     assertThat(tasks.overview()).singleElement().satisfies(o -> {
       assertThat(o.pending()).extracting(Task::id).containsExactly(b);
       assertThat(o.running()).extracting(Task::id).containsExactly(a);
@@ -158,16 +160,16 @@ class TaskServiceTest {
   @Test
   void pmoSendsApprovedTicketBackToAnalysis() {
     String id = tasks.create("shop", "MAINT", null, "outbox", "x").task().id();
-    tasks.transition("shop", id, "sa_analysis", Actor.SA);
-    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "analysis", Actor.SA);
+    tasks.transition("shop", id, "wait_approval", Actor.SA);
     tasks.writeDoc("shop", id, "plan.md", "# Plan", Actor.PMO);
     tasks.transition("shop", id, "ready", Actor.PMO);
-    tasks.transition("shop", id, "in_dev", Actor.DEV);
+    tasks.transition("shop", id, "implement", Actor.DEV);
 
-    assertThat(tasks.detail("shop", id).actions()).contains(new TaskService.Action("sa_analysis", true));
-    assertThatThrownBy(() -> tasks.transition("shop", id, "sa_analysis", Actor.DEV)).isInstanceOf(PmoOnlyException.class)
+    assertThat(tasks.detail("shop", id).actions()).contains(new TaskService.Action("analysis", true));
+    assertThatThrownBy(() -> tasks.transition("shop", id, "analysis", Actor.DEV)).isInstanceOf(PmoOnlyException.class)
         .hasMessageContaining("phân tích lại");
-    assertThat(tasks.transition("shop", id, "sa_analysis", Actor.PMO).status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(tasks.transition("shop", id, "analysis", Actor.PMO).status()).isEqualTo(TaskStatus.ANALYSIS);
   }
 
   /** FR-09: every save of analysis.md / plan.md is a version with a diff. */
@@ -195,8 +197,8 @@ class TaskServiceTest {
   @Test
   void pmoCancelsTicketWithReason() throws Exception {
     String id = tasks.create("shop", "FEAT", "SHOP-9", "refund", "hoàn tiền").task().id();
-    tasks.transition("shop", id, "sa_analysis", Actor.PMO);
-    tasks.transition("shop", id, "awaiting_approval", Actor.PMO);
+    tasks.transition("shop", id, "analysis", Actor.PMO);
+    tasks.transition("shop", id, "wait_approval", Actor.PMO);
     tasks.writeDoc("shop", id, "plan.md", "p", Actor.PMO);
     tasks.transition("shop", id, "ready", Actor.PMO);
     assertThatThrownBy(() -> tasks.cancel("shop", id, "x", Actor.SA)).isInstanceOf(PmoOnlyException.class);
@@ -220,8 +222,8 @@ class TaskServiceTest {
   @Test
   void pmoForcesStatusWithReason() throws Exception {
     String id = tasks.create("shop", "FEAT", "SHOP-8", "refund", "hoàn tiền").task().id();
-    assertThatThrownBy(() -> tasks.forceStatus("shop", id, "in_dev", "x", Actor.SA)).isInstanceOf(PmoOnlyException.class);
-    assertThatThrownBy(() -> tasks.forceStatus("shop", id, "in_dev", " ", Actor.PMO)).hasMessageContaining("lý do");
+    assertThatThrownBy(() -> tasks.forceStatus("shop", id, "implement", "x", Actor.SA)).isInstanceOf(PmoOnlyException.class);
+    assertThatThrownBy(() -> tasks.forceStatus("shop", id, "implement", " ", Actor.PMO)).hasMessageContaining("lý do");
     assertThatThrownBy(() -> tasks.forceStatus("shop", id, "new", "x", Actor.PMO)).hasMessageContaining("đã ở new");
 
     assertThat(tasks.forceStatus("shop", id, "ready", "kẹt, token 10.0.0.12", Actor.PMO).status()).isEqualTo(TaskStatus.READY);
@@ -237,18 +239,18 @@ class TaskServiceTest {
   void reopenKeepsCode() throws Exception {
     String id = tasks.create("shop", "FEAT", "SHOP-1", "refund", "hoàn tiền ở order-service").task().id();
     assertThatThrownBy(() -> tasks.reopen("shop", id, "bug", "lỗi", Actor.PMO)).hasMessageContaining("đã Done");
-    tasks.transition("shop", id, "sa_analysis", Actor.PMO);
-    tasks.transition("shop", id, "awaiting_approval", Actor.PMO);
+    tasks.transition("shop", id, "analysis", Actor.PMO);
+    tasks.transition("shop", id, "wait_approval", Actor.PMO);
     tasks.writeDoc("shop", id, "plan.md", "p", Actor.PMO);
     tasks.setRepos("shop", id, List.of(), Actor.PMO); // no code in this manual flow: no worktree, gate or push to check
-    for (String s : List.of("ready", "in_dev", "sa_verify", "awaiting_push", "done")) {
+    for (String s : List.of("ready", "implement", "verify", "wait_confirm", "done")) {
       tasks.transition("shop", id, s, Actor.PMO);
     }
     assertThatThrownBy(() -> tasks.reopen("shop", id, "bug", "x", Actor.SA)).isInstanceOf(PmoOnlyException.class);
 
     Task t = tasks.reopen("shop", id, "bug", "Hoàn tiền lần 2 bị trùng ở payment-service", Actor.PMO);
     assertThat(t.id()).isEqualTo("SHOP-1");
-    assertThat(t.status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(t.status()).isEqualTo(TaskStatus.ANALYSIS);
     assertThat(t.reopened()).isEqualTo(1);
     Path f = folder(id);
     assertThat(Files.readString(f.resolve("bugs/BUG-01.md"))).contains("trùng");
@@ -258,12 +260,77 @@ class TaskServiceTest {
     assertThat(spec.targetModules()).containsExactly("payment-service");
     assertThat(spec.source()).isEqualTo("bugs/BUG-01.md");
 
-    for (String s : List.of("awaiting_approval", "ready", "in_dev", "sa_verify", "awaiting_push", "done")) {
+    for (String s : List.of("wait_approval", "ready", "implement", "verify", "wait_confirm", "done")) {
       tasks.transition("shop", id, s, Actor.PMO);
     }
     tasks.reopen("shop", id, "logic", "Thêm giới hạn số lần hoàn", Actor.PMO);
     assertThat(tasks.detail("shop", id).docs()).contains("bugs/BUG-01.md", "bugs/LOGIC-01.md");
     assertThat(new TaskRepository().readSpec(f).actionType()).isEqualTo("ADD_LOGIC");
     assertThat(new TaskRepository().readSpec(f).targetModules()).containsExactly("payment-service");
+  }
+
+  /** AC-40 / FR-86: every pair of states outside the table is refused by the server, whoever asks. */
+  @Test
+  void everyPairOutsideTheTableIsRefused() {
+    String id = tasks.create("shop", "FEAT", null, "bảng chuyển", "x").task().id();
+    java.util.Map<TaskStatus, java.util.Set<TaskStatus>> table = java.util.Map.of(
+        TaskStatus.NEW, java.util.Set.of(TaskStatus.ANALYSIS),
+        TaskStatus.ANALYSIS, java.util.Set.of(TaskStatus.WAIT_APPROVAL),
+        TaskStatus.WAIT_APPROVAL, java.util.Set.of(TaskStatus.READY, TaskStatus.IMPLEMENT, TaskStatus.ANALYSIS),
+        TaskStatus.READY, java.util.Set.of(TaskStatus.IMPLEMENT),
+        TaskStatus.IMPLEMENT, java.util.Set.of(TaskStatus.VERIFY, TaskStatus.ANALYSIS),
+        TaskStatus.VERIFY, java.util.Set.of(TaskStatus.IMPLEMENT, TaskStatus.ANALYSIS, TaskStatus.WAIT_CONFIRM),
+        TaskStatus.WAIT_CONFIRM, java.util.Set.of(TaskStatus.IMPLEMENT, TaskStatus.DONE),
+        TaskStatus.DONE, java.util.Set.of(TaskStatus.ANALYSIS),
+        TaskStatus.CANCELLED, java.util.Set.of(TaskStatus.NEW));
+    for (TaskStatus from : TaskStatus.values()) {
+      assertThat(from.next()).as(from.code()).isEqualTo(table.get(from));
+      tasks.forceStatus("shop", id, from == TaskStatus.NEW ? "analysis" : from.code(), "test", Actor.PMO);
+      if (from == TaskStatus.NEW) {
+        tasks.forceStatus("shop", id, "new", "test", Actor.PMO);
+      }
+      for (TaskStatus to : TaskStatus.values()) {
+        if (!table.get(from).contains(to)) {
+          for (Actor actor : Actor.values()) {
+            assertThatThrownBy(() -> tasks.transition("shop", id, to.code(), actor)).as(from + "→" + to)
+                .hasMessageContaining("ngoài bảng FR-86");
+          }
+        }
+      }
+    }
+    // DONE → ANALYSIS only through "Báo bug / Bổ sung logic"; IMPLEMENT/VERIFY → ANALYSIS never by an agent
+    tasks.forceStatus("shop", id, "done", "test", Actor.PMO);
+    assertThatThrownBy(() -> tasks.transition("shop", id, "analysis", Actor.PMO)).hasMessageContaining("Báo bug");
+    tasks.forceStatus("shop", id, "implement", "test", Actor.PMO);
+    assertThatThrownBy(() -> tasks.transition("shop", id, "analysis", Actor.SA)).isInstanceOf(PmoOnlyException.class);
+    assertThat(tasks.transition("shop", id, "analysis", Actor.DEVMAP).status()).isEqualTo(TaskStatus.ANALYSIS);
+  }
+
+  /** AC-41 / FR-85: old tickets keep every byte of their documents; "Mở lại" becomes ANALYSIS with the reopened flag. */
+  @Test
+  void oldStatusesMigrate() throws Exception {
+    String a = tasks.create("shop", "FEAT", null, "cũ mở lại", "yêu cầu A").task().id();
+    String b = tasks.create("shop", "BUG", null, "cũ đang dev", "yêu cầu B").task().id();
+    tasks.writeDoc("shop", a, "analysis.md", "- AC-1: giữ nguyên", Actor.SA);
+    Path fa = folder(a).resolve("task.md");
+    Path fb = folder(b).resolve("task.md");
+    Files.writeString(fa, Files.readString(fa).replace("status: new", "status: reopened"));
+    Files.writeString(fb, Files.readString(fb).replace("status: new", "status: in_dev"));
+    String bodyA = new TaskRepository().readTaskBody(folder(a));
+
+    Task ta = tasks.detail("shop", a).task();
+    assertThat(ta.status()).isEqualTo(TaskStatus.ANALYSIS);
+    assertThat(ta.reopened()).isEqualTo(1);
+    assertThat(tasks.detail("shop", b).task().status()).isEqualTo(TaskStatus.IMPLEMENT);
+
+    assertThat(tasks.migrate()).isEqualTo(2);
+    assertThat(Files.readString(fa)).contains("status: analysis", "reopened: 1").doesNotContain("status: reopened");
+    assertThat(Files.readString(fb)).contains("status: implement");
+    assertThat(new TaskRepository().readTaskBody(folder(a))).isEqualTo(bodyA);
+    assertThat(tasks.readDoc("shop", a, "analysis.md").content()).isEqualTo("- AC-1: giữ nguyên");
+    assertThat(Files.readString(folder(a).resolve("history.md"))).contains("Migration mô hình trạng thái mới");
+    assertThat(tasks.migrate()).isZero();
+    assertThat(TaskStatus.parse("sa_verify")).isEqualTo(TaskStatus.VERIFY);
+    assertThat(TaskStatus.parse("awaiting_push")).isEqualTo(TaskStatus.WAIT_CONFIRM);
   }
 }

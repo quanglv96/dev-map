@@ -160,8 +160,9 @@ public class TrayService implements TrayActions {
       AgentService.Activity activity = agents.activity(p.name());
       for (Task t : tasks.list(p.name())) {
         if (!t.status().isClosed()) {
-          NoticeKind waiting = t.status() == TaskStatus.AWAITING_APPROVAL ? NoticeKind.DECISION
-              : t.status() == TaskStatus.AWAITING_PUSH ? NoticeKind.PUSH : null;
+          // FR-79 / FR-88: needs_pmo (mid-change, SA and Dev disagree, hourly cap) is a decision like an approval
+          NoticeKind waiting = t.status() == TaskStatus.WAIT_APPROVAL || t.flags().needsPmo() != null ? NoticeKind.DECISION
+              : t.status() == TaskStatus.WAIT_CONFIRM ? NoticeKind.PUSH : null;
           items.put(p.name() + "/" + t.id(), new TraySnapshot.Item(p.name(), t.id(), waiting,
               activity.questions().getOrDefault(t.id(), 0), activity.failed().contains(t.id())));
         }

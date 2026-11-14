@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Repository;
@@ -26,6 +27,8 @@ public class TaskRepository {
       .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
       .enable(SerializationFeature.INDENT_OUTPUT);
   private static final String FRONT = "---\n";
+  private static final Pattern STATUS_LINE = Pattern.compile("(?m)^status: \"?([a-z_]+)\"?\\s*$");
+  private static final Pattern LEGACY_REOPENED = Pattern.compile("(?m)^status: \"?reopened\"?\\s*$");
   private static final Pattern BUG_DOC = Pattern.compile("bugs/[A-Z]+-\\d{2,}\\.md");
 
   record Queue(List<String> order) {
@@ -61,7 +64,16 @@ public class TaskRepository {
     if (!text.startsWith(FRONT) || end < 0) {
       throw new IllegalStateException("task.md thiếu phần đầu YAML: " + folder);
     }
-    return Yaml.parse(text.substring(FRONT.length(), end + 1), Task.class);
+    String front = text.substring(FRONT.length(), end + 1);
+    Task t = Yaml.parse(front, Task.class);
+    // FR-85 migration: the old "Mở lại" state reads as ANALYSIS with the reopened flag
+    return LEGACY_REOPENED.matcher(front).find() && t.reopened() == 0 ? t.withReopened(1) : t;
+  }
+
+  /** True when task.md still carries a pre-D-74 status code; TaskService.migrate rewrites it. */
+  public boolean hasLegacyStatus(Path folder) {
+    Matcher m = STATUS_LINE.matcher(read(folder.resolve("task.md")));
+    return m.find() && TaskStatus.LEGACY.containsKey(m.group(1));
   }
 
   /** The Markdown body of task.md (the original request), without the YAML header. */
@@ -140,7 +152,8 @@ public class TaskRepository {
     Yaml.writeText(folder.resolve(name), content);
   }
 
-  public void appendDoc(Path folder, String name, String line) {
+  /** Read-append-write under one lock: SA and Dev sessions of one ticket run side by side (FR-74) and both log to history.md. */
+  public synchronized void appendDoc(Path folder, String name, String line) {
     writeDoc(folder, name, readDoc(folder, name).orElse("") + line);
   }
 

@@ -22,9 +22,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,7 +43,8 @@ public class TaskService {
   public record Action(String to, boolean pmoGate) {
   }
 
-  public record Detail(Task task, List<String> docs, List<Action> actions, Integer queuePosition) {
+  /** reapproval: plan.md version when the ticket waits for "chốt lại · v<n>" (FR-87), null for the first approval. */
+  public record Detail(Task task, List<String> docs, List<Action> actions, Integer queuePosition, Integer reapproval) {
   }
 
   public record Created(Task task, int maskedCount) {
@@ -80,10 +84,24 @@ public class TaskService {
   public Detail detail(String project, String id) {
     Stored s = stored(project, id);
     TaskStatus from = s.task().status();
+    boolean before = implementedBefore(s);
+    // DONE → ANALYSIS only through "Báo bug / Bổ sung logic"; approval goes to READY the first time, IMPLEMENT after (FR-86)
     List<Action> actions = from.next().stream().sorted()
-        .map(to -> new Action(to.code(), from.isPmoGate(to))).toList();
+        .filter(to -> from != TaskStatus.DONE)
+        .filter(to -> from != TaskStatus.WAIT_APPROVAL || to == TaskStatus.ANALYSIS || (to == TaskStatus.IMPLEMENT) == before)
+        .map(to -> new Action(to.code(), from.isPmoGate(to) || from.isReanalysis(to))).toList();
     int pos = repo.readQueue(dir(project)).indexOf(id);
-    return new Detail(s.task(), repo.docs(s.folder()), actions, pos < 0 ? null : pos + 1);
+    Integer re = from == TaskStatus.WAIT_APPROVAL && before ? repo.versionCount(s.folder(), "plan.md") : null;
+    return new Detail(s.task(), repo.docs(s.folder()), actions, pos < 0 ? null : pos + 1, re);
+  }
+
+  /** The ticket went through IMPLEMENT before (worktrees exist): approving again returns straight to IMPLEMENT (FR-86). */
+  public boolean implementedBefore(String project, String id) {
+    return implementedBefore(stored(project, id));
+  }
+
+  boolean implementedBefore(Stored s) {
+    return !repo.readDevState(s.folder()).repos().isEmpty();
   }
 
   // ponytail: one lock for all ticket writes; per-project locks if parallel agents ever contend
@@ -107,7 +125,7 @@ public class TaskService {
     List<String> modules = cleaner.mentioned(name + "\n" + req.text(), moduleNames(cfg));
     String now = now();
     Task task = new Task(id, type, name, TaskStatus.NEW, reposOf(cfg, modules),
-        cfg.branchPatterns().get(type).replace("{code}", id).replace("{slug}", slug), 0, 0, now, now, null);
+        cfg.branchPatterns().get(type).replace("{code}", id).replace("{slug}", slug), 0, 0, now, now, null, null);
 
     Path folder = dir.resolve("tasks").resolve(id + "-" + slug);
     repo.writeTask(folder, task, "# " + name + "\n\n## Yêu cầu gốc của PMO\n\n" + req.text() + "\n");
@@ -126,25 +144,47 @@ public class TaskService {
     TaskStatus from = s.task().status();
     TaskStatus to = TaskStatus.parse(toCode);
     if (!from.next().contains(to)) {
-      throw new IllegalArgumentException("Không chuyển được từ " + from.code() + " sang " + to.code());
+      throw new IllegalArgumentException("Không chuyển được từ " + from.code() + " sang " + to.code() + " (ngoài bảng FR-86)");
+    }
+    if (from == TaskStatus.DONE) {
+      throw new IllegalArgumentException("Ticket đã Done: dùng \"Báo bug\" hoặc \"Bổ sung logic\" để mở lại");
     }
     if (from.isPmoGate(to) && actor != Actor.PMO) {
-      throw new PmoOnlyException("Chỉ PMO được " + (to == TaskStatus.READY ? "chốt giải pháp"
-          : from == TaskStatus.CANCELLED ? "mở lại ticket đã huỷ" : from.isReanalysis(to) ? "yêu cầu phân tích lại" : "xác nhận push"));
+      throw new PmoOnlyException("Chỉ PMO được " + (from == TaskStatus.WAIT_APPROVAL ? to == TaskStatus.ANALYSIS
+          ? "yêu cầu phân tích lại" : "chốt giải pháp" : from == TaskStatus.CANCELLED ? "mở lại ticket đã huỷ"
+          : to == TaskStatus.IMPLEMENT ? "yêu cầu sửa" : "xác nhận push"));
     }
-    if (to == TaskStatus.READY && repo.readDoc(s.folder(), "plan.md").map(String::isBlank).orElse(true)) {
-      throw new IllegalArgumentException("Chưa có plan.md, chưa chốt được giải pháp");
+    if (from.isReanalysis(to) && actor != Actor.PMO && actor != Actor.DEVMAP) {
+      throw new PmoOnlyException("Chỉ PMO (yêu cầu phân tích lại) hoặc DevMap (thay đổi ảnh hưởng AC, business rule, phạm vi) "
+          + "đưa ticket về phân tích");
     }
-    if (from == TaskStatus.IN_DEV && to == TaskStatus.SA_VERIFY) {
+    boolean approve = from == TaskStatus.WAIT_APPROVAL && to != TaskStatus.ANALYSIS;
+    if (approve) {
+      if (repo.readDoc(s.folder(), "plan.md").map(String::isBlank).orElse(true)) {
+        throw new IllegalArgumentException("Chưa có plan.md, chưa chốt được giải pháp");
+      }
+      boolean before = implementedBefore(s);
+      if (to == TaskStatus.READY && before) {
+        throw new IllegalArgumentException("Ticket đã từng triển khai: chốt lại đưa thẳng về implement, không xếp lại hàng đợi");
+      }
+      if (to == TaskStatus.IMPLEMENT && !before) {
+        throw new IllegalArgumentException("Chốt lần đầu: ticket vào hàng đợi (ready)");
+      }
+    }
+    if (from == TaskStatus.IMPLEMENT && to == TaskStatus.VERIFY) {
       requireGatePassed(project, s);
     }
     if (to == TaskStatus.DONE) {
       requirePushed(project, s);
     }
     Task updated = s.task().withStatus(to, now());
+    if (approve) {
+      updated = updated.withFlags(updated.flags().withApprovedPlan(repo.versionCount(s.folder(), "plan.md"))
+          .withMidChange(false).withNeedsPmo(null), now());
+    }
     repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
     updateQueue(dir(project), id, to);
-    history(s, actor, null, from.isPmoGate(to) ? "cổng duyệt PMO (NFR-03)" : "luồng 8 trạng thái",
+    history(s, actor, null, from.isPmoGate(to) ? "cổng duyệt PMO (NFR-03)" : "bảng chuyển trạng thái FR-86",
         "Chuyển trạng thái " + from.code() + " → " + to.code());
     changed(project, id);
     return updated;
@@ -189,6 +229,63 @@ public class TaskService {
     }
     Stored s = stored(project, id);
     return repo.readVersion(s.folder(), doc, n).orElseThrow(() -> new NoSuchElementException(doc + " không có v" + n));
+  }
+
+  /**
+   * FR-80 / AC-38 "Hoàn tác": version n of the document becomes the newest version again (a new version, so the undo itself can be
+   * undone and the diff stays readable).
+   */
+  public synchronized Doc restore(String project, String id, String doc, int n, Actor actor) {
+    String content = version(project, id, doc, n);
+    Doc d = writeDoc(project, id, doc, content, Actor.DEVMAP);
+    note(project, id, actor, "Hoàn tác " + doc + " về nội dung v" + n + " (→ v" + d.versions() + ")");
+    return d;
+  }
+
+  /** FR-88: changes the flags of a ticket; note (may be null) goes to history.md. */
+  public synchronized Task flags(String project, String id, UnaryOperator<Task.Flags> change, Actor actor, String note) {
+    Stored s = stored(project, id);
+    Task.Flags next = change.apply(s.task().flags());
+    if (next.equals(s.task().flags())) {
+      return s.task();
+    }
+    Task updated = s.task().withFlags(next, now());
+    repo.writeTask(s.folder(), updated, repo.readTaskBody(s.folder()));
+    if (note != null) {
+      history(s, actor, note);
+    }
+    changed(project, id);
+    return updated;
+  }
+
+  /** FR-85 / AC-41: rewrites task.md files that still carry an old status code; nothing else in the file changes. */
+  public int migrate() {
+    int n = 0;
+    for (Project p : projects.list()) {
+      if (p.error() != null || !Files.isDirectory(Path.of(p.dataDir()))) {
+        continue;
+      }
+      for (Stored s : repo.list(Path.of(p.dataDir()))) {
+        synchronized (this) {
+          if (repo.hasLegacyStatus(s.folder())) {
+            repo.writeTask(s.folder(), s.task(), repo.readTaskBody(s.folder()));
+            history(s, Actor.DEVMAP, "Migration mô hình trạng thái mới (FR-85): trạng thái hiện là " + s.task().status().code()
+                + (s.task().reopened() > 0 ? ", mở lại " + s.task().reopened() + " lần" : ""));
+            n++;
+          }
+        }
+      }
+    }
+    return n;
+  }
+
+  @EventListener(ApplicationReadyEvent.class)
+  public void migrateOnStart() {
+    try {
+      migrate();
+    } catch (RuntimeException e) {
+      // a broken project must not stop DevMap; its tickets still read through TaskStatus.parse
+    }
   }
 
   /** Unified diff between two versions of analysis.md or plan.md (FR-09). */
@@ -340,7 +437,7 @@ public class TaskService {
       }
     }
     if (!problems.isEmpty()) {
-      throw new IllegalArgumentException("Chưa chuyển SA kiểm chứng được: " + String.join("; ", problems));
+      throw new IllegalArgumentException("Chưa chuyển sang kiểm chứng được: " + String.join("; ", problems));
     }
   }
 
