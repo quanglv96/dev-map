@@ -38,4 +38,8 @@ public interface AgentProvider {
 
   /** Runs the session to the end, streaming steps to sink. Blocks; never throws for agent failures (ok=false instead). */
   Result run(Call call, Consumer<Event> sink);
+
+  /** FR-94: ends the session of this token now (it did not stop when asked); run() then returns with ok=false. */
+  default void cancel(String sessionToken) {
+  }
 }

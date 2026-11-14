@@ -22,8 +22,8 @@ final class AgentSession {
     }
   }
 
-  /** ask: answer the PMO; verify: SA checks Dev's diff against the request (FR-43). */
-  enum Mode { ASK, VERIFY }
+  /** ask: answer the PMO; verify: SA checks Dev's diff against the request (FR-43); sync: started by an event (FR-77). */
+  enum Mode { ASK, VERIFY, SYNC }
 
   final String token;
   final String project;
@@ -33,12 +33,22 @@ final class AgentSession {
   final int messageId;
   final Path workDir;
   final Path log;
+  /** Id of the sync event that started this session (FR-77), null for a PMO question. */
+  final String trigger;
+  /** FR-94: set when DevMap asks the session to stop after its current file edit; every later tool call is refused. */
+  volatile String stop;
   /** Ticket documents the agent wrote in this session. */
   final Set<String> written = ConcurrentHashMap.newKeySet();
   /** Code files Dev wrote, edited or deleted in this session, per repo (worktree-relative, forward slashes). */
   final Map<String, Set<String>> edited = new ConcurrentHashMap<>();
 
   AgentSession(String token, String project, String taskId, Role role, Mode mode, int messageId, Path workDir, Path log) {
+    this(token, project, taskId, role, mode, messageId, workDir, log, null);
+  }
+
+  AgentSession(String token, String project, String taskId, Role role, Mode mode, int messageId, Path workDir, Path log,
+      String trigger) {
+    this.trigger = trigger;
     this.token = token;
     this.project = project;
     this.taskId = taskId;

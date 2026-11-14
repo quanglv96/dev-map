@@ -17,6 +17,8 @@ import com.devmap.git.GitService;
 import com.devmap.graph.GraphRepository;
 import com.devmap.graph.GraphService;
 import com.devmap.graph.SourceIndexer;
+import com.devmap.proposal.ProposalRepository;
+import com.devmap.proposal.ProposalService;
 import com.devmap.rule.ConventionService;
 import com.devmap.rule.QualityGate;
 import com.devmap.rule.RuleRepository;
@@ -24,7 +26,6 @@ import com.devmap.rule.RuleService;
 import com.devmap.rule.Rules;
 import com.devmap.secret.SecretMasker;
 import com.devmap.ticket.RequestCleaner;
-import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskChanged;
 import com.devmap.ticket.TaskRepository;
 import com.devmap.ticket.TaskService;
@@ -122,7 +123,8 @@ class AgentServiceTest {
     dev = new TicketGitService(tasks, taskRepo, git, rules, publish);
     SourceIndexer indexer = new SourceIndexer();
     graphs = new GraphService(projects, git, new GraphRepository(), indexer, masker, tasks, e -> { });
-    AgentTools tools = new AgentTools(tasks, dev, graphs, git, projects, rules, masker, new VerifyFacts(dev, graphs, git, indexer));
+    AgentTools tools = new AgentTools(tasks, dev, graphs, git, projects, rules, masker, new VerifyFacts(dev, graphs, git, indexer),
+        new ProposalService(tasks, new ProposalRepository(), masker, projects, publish));
     ContextBuilder context = new ContextBuilder(tasks, graphs, new ConventionService(projects, new RuleRepository(), git, masker), rules,
         projects, new RequestCleaner(), masker, dev);
     agents = new AgentService(tasks, dev, graphs, git, projects, context, tools, fake, new ChatRepository(), masker, publish,
@@ -214,7 +216,7 @@ class AgentServiceTest {
     assertThat(chat.messages().get(1).context()).contains("spec.json");
     assertThat(chat.ticket().total()).isEqualTo(3 * 470);
     assertThat(chat.project().total()).isEqualTo(3 * 470);
-    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.ANALYSIS);
     String log = inputLog(id, 2);
     assertThat(log).contains("System prompt", "### get_spec", "### set_status").doesNotContain("ghp_", "Chào em");
     assertThat(Files.readString(tasks.folder("shop", id).resolve("history.md"))).contains("Hỏi SA", "Trả lời câu #2");
@@ -288,6 +290,20 @@ class AgentServiceTest {
     }
     assertThat(log).doesNotContain("10.12.0.").doesNotContain(Files.readString(repos.resolve(
         "order-service/src/main/java/com/shop/order/client/PaymentClient.java")).strip());
+    // AC-32 / FR-73: before approval Dev may answer and propose, but the server refuses every code change
+    fake.scripts.add(c -> {
+      assertThat(c.prompt()).contains("PMO CHƯA CHỐT");
+      assertThat(tool(c, "edit_file", Map.of("repo", "order-service", "path", "pom.xml", "old", "a", "new", "b")))
+          .startsWith("ERR").contains("write_proposal");
+      assertThat(tool(c, "commit", Map.of("repo", "order-service", "message", "x"))).startsWith("ERR");
+      assertThat(tool(c, "run_quality_gate", Map.of())).startsWith("ERR");
+      assertThat(tool(c, "write_proposal", Map.of("type", "SOLUTION_CHANGE", "summary", "Dùng lại PaymentClient", "proposal", "x",
+          "affects", "TECHNICAL_ONLY"))).contains("Đã ghi đề xuất");
+      return "Đã ghi đề xuất";
+    });
+    agents.ask("shop", id, "dev", "code đi", false);
+    assertThat(tasks.detail("shop", id).task().flags().openProposals()).isEqualTo(1);
+    projects.update("shop", projects.get("shop").config().withRoom(com.devmap.config.RoomConfig.DEFAULT.withDevCanPropose(false)));
     assertThatThrownBy(() -> agents.ask("shop", id, "dev", "code đi", false)).hasMessageContaining("chốt");
   }
 
@@ -303,7 +319,7 @@ class AgentServiceTest {
       tool(c, "write_ticket_doc", Map.of("name", "summary.md", "content", "Chờ PMO chốt"));
       assertThat(tool(c, "set_repos", Map.of("repos", List.of("nope-service")))).startsWith("ERR");
       assertThat(tool(c, "set_repos", Map.of("repos", List.of("order-service")))).contains("order-service"); // FR-14
-      assertThat(tool(c, "set_status", Map.of("to", "awaiting_approval"))).contains("awaiting_approval");
+      assertThat(tool(c, "set_status", Map.of("to", "wait_approval"))).contains("wait_approval");
       return "Đã gửi PMO chốt";
     });
     agents.ask("shop", id, "", "Phân tích giúp", false);
@@ -319,10 +335,10 @@ class AgentServiceTest {
           "old", old, "new", "public Order create(String customerId, BigDecimal amount, String note) {"))).contains("Đã sửa");
       tool(c, "write_file", Map.of("repo", "order-service", "path", "src/main/java/com/shop/order/Extra.java",
           "content", "package com.shop.order;\n\nclass Extra {\n}\n"));
-      assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).startsWith("ERR").contains("gate"); // AIR-13
+      assertThat(tool(c, "set_status", Map.of("to", "verify"))).startsWith("ERR").contains("gate"); // AIR-13
       assertThat(tool(c, "commit", Map.of("repo", "order-service", "message", "add note"))).contains("NYX-3: add note");
       assertThat(tool(c, "run_quality_gate", Map.of())).contains("ĐẠT", "static (git status)");
-      assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).contains("sa_verify");
+      assertThat(tool(c, "set_status", Map.of("to", "verify"))).contains("verify");
       return "Xong, chuyển SA";
     });
     fake.scripts.add(c -> { // started by DevMap itself after Dev handed over
@@ -338,23 +354,23 @@ class AgentServiceTest {
       assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "file", "src/main/java/com/shop/order/Extra.java")))
           .contains("class Extra").doesNotContain("String note");
       assertThat(tool(c, "git_diff", Map.of("repo", "order-service", "file", ".env"))).startsWith("ERR");
-      assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).startsWith("ERR").contains("verify.md");
+      assertThat(tool(c, "set_status", Map.of("to", "wait_confirm"))).startsWith("ERR").contains("verify.md");
       // the approved plan cannot be rewritten to make the deviation look planned
       assertThat(tool(c, "write_ticket_doc", Map.of("name", "plan.md", "content", "- order-service: Extra.java\n")))
           .startsWith("ERR").contains("đã được PMO chốt");
       tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "AC-1 đạt.\n\nKết luận: ĐẠT"));
-      assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).startsWith("ERR").contains("Extra.java", "OrderService.create");
+      assertThat(tool(c, "set_status", Map.of("to", "wait_confirm"))).startsWith("ERR").contains("Extra.java", "OrderService.create");
       tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "Lệch phạm vi: Extra.java không thuộc AC nào. Hồi quy: "
           + "OrderService.create đổi chữ ký, OrderController.create chưa cập nhật.\n\nKết luận: KHÔNG ĐẠT"));
-      assertThat(tool(c, "set_status", Map.of("to", "in_dev"))).contains("in_dev");
+      assertThat(tool(c, "set_status", Map.of("to", "implement"))).contains("implement");
       return "Trả về Dev";
     });
     agents.ask("shop", id, "", "Triển khai", false);
 
     assertThat(fake.calls).hasSize(3);
-    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.IN_DEV);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.IMPLEMENT);
     assertThat(tasks.readDoc("shop", id, "verify.md").content()).contains("KHÔNG ĐẠT");
-    assertThat(Files.readString(tasks.folder("shop", id).resolve("history.md"))).doesNotContain("→ awaiting_push");
+    assertThat(Files.readString(tasks.folder("shop", id).resolve("history.md"))).doesNotContain("→ wait_confirm");
     assertThat(agents.chat("shop", id).messages()).extracting(ChatMessage::mode).containsSubsequence("ask", "ask", "verify");
 
     // FR-28: the PMO commits by hand in the worktree; the next Dev session is told before it edits anything
@@ -394,10 +410,10 @@ class AgentServiceTest {
     List<String> ids = new ArrayList<>();
     for (String n : List.of("1", "2")) {
       String id = tasks.create("shop", "MAINT", "", "", "Dọn log ở order-service " + n).task().id();
-      tasks.transition("shop", id, "sa_analysis", Actor.SA);
+      tasks.transition("shop", id, "analysis", Actor.SA);
       tasks.writeDoc("shop", id, "analysis.md", "- AC-1: Given log When dọn Then gọn\n", Actor.SA);
       tasks.writeDoc("shop", id, "plan.md", "- order-service: Maint" + n + ".java\n", Actor.SA);
-      tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+      tasks.transition("shop", id, "wait_approval", Actor.SA);
       tasks.transition("shop", id, "ready", Actor.PMO);
       ids.add(id);
     }
@@ -407,25 +423,25 @@ class AgentServiceTest {
       fake.scripts.add(c -> { // Dev
         started.add(c.prompt().contains(ids.get(1)) ? ids.get(1) : ids.get(0));
         if (n.equals("1")) { // the first ticket of the line already left development when this one starts
-          assertThat(tasks.detail("shop", ids.get(1)).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH);
+          assertThat(tasks.detail("shop", ids.get(1)).task().status()).isEqualTo(TaskStatus.WAIT_CONFIRM);
         }
         tool(c, "write_file", Map.of("repo", "order-service", "path", "src/main/java/com/shop/order/Maint" + n + ".java",
             "content", "package com.shop.order;\n\nclass Maint" + n + " {\n}\n"));
         tool(c, "commit", Map.of("repo", "order-service", "message", "maint " + n));
         assertThat(tool(c, "run_quality_gate", Map.of())).contains("ĐẠT").doesNotContain("KHÔNG ĐẠT"); // unit tests in the gate
-        assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).contains("sa_verify");
+        assertThat(tool(c, "set_status", Map.of("to", "verify"))).contains("verify");
         return "ok";
       });
       fake.scripts.add(c -> { // SA verification, started by DevMap
         tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "Maint" + n + ".java theo plan. Kết luận: ĐẠT"));
-        assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).contains("awaiting_push");
+        assertThat(tool(c, "set_status", Map.of("to", "wait_confirm"))).contains("wait_confirm");
         return "ok";
       });
     }
     agents.runQueue("shop", true); // the test runner is synchronous: the whole line has run when this returns
 
     assertThat(started).containsExactly(ids.get(1), ids.get(0));
-    assertThat(ids).allSatisfy(id -> assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH));
+    assertThat(ids).allSatisfy(id -> assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.WAIT_CONFIRM));
     // both wait for push from the one service repo: each keeps its own verified branch commit, whatever is checked out
     assertThat(ids).allSatisfy(id -> assertThat(dev.view("shop", id).repos().get(0).gatePassed()).isTrue());
     assertThat(dev.view("shop", ids.get(0)).repos().get(0).head()).isNotEqualTo(dev.view("shop", ids.get(1)).repos().get(0).head());
@@ -453,10 +469,10 @@ class AgentServiceTest {
         + "2. Bao nhiêu ngày?\n\n## Việc tiếp theo\n- chờ PMO\n", Actor.SA);
     assertThat(agents.activity("shop").questions()).containsEntry(id, 2);
     assertThatThrownBy(() -> agents.implement("shop", id)).hasMessageContaining("PMO đã chốt");
-    tasks.transition("shop", id, "sa_analysis", Actor.SA);
+    tasks.transition("shop", id, "analysis", Actor.SA);
     tasks.writeDoc("shop", id, "summary.md", "# Tóm tắt\n\n## Câu hỏi chờ PMO\r\n- (không còn)\r\n", Actor.SA);
     tasks.writeDoc("shop", id, "plan.md", "- order-service: Cleanup.java\n", Actor.SA);
-    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "wait_approval", Actor.SA);
     tasks.transition("shop", id, "ready", Actor.PMO);
     assertThat(agents.activity("shop").questions()).doesNotContainKey(id);
     SampleRepos.commit(repos.resolve("order-service"), "test", Map.of("NEWS.md", "new on test\n")); // after SA's analysis
@@ -470,18 +486,18 @@ class AgentServiceTest {
           "content", "package com.shop.order;\n\nclass Cleanup {\n}\n"));
       tool(c, "commit", Map.of("repo", "order-service", "message", "cleanup"));
       tool(c, "run_quality_gate", Map.of());
-      assertThat(tool(c, "set_status", Map.of("to", "sa_verify"))).contains("sa_verify");
+      assertThat(tool(c, "set_status", Map.of("to", "verify"))).contains("verify");
       return "ok";
     });
     fake.scripts.add(c -> { // SA verification, started by DevMap
       assertThat(agents.activity("shop").working()).containsEntry(id, "VERIFY");
       tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "Cleanup.java theo plan. Kết luận: ĐẠT"));
-      tool(c, "set_status", Map.of("to", "awaiting_push"));
+      tool(c, "set_status", Map.of("to", "wait_confirm"));
       return "ok";
     });
     agents.implement("shop", id);
 
-    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.WAIT_CONFIRM);
     assertThat(repos.resolve("order-service/src/main/java/com/shop/order/Cleanup.java")).exists(); // in the service, not a copy
     assertThat(agents.activity("shop").working()).isEmpty();
   }
@@ -495,13 +511,13 @@ class AgentServiceTest {
       tool(c, "write_ticket_doc", Map.of("name", "analysis.md", "content", "- AC-1: hoàn tối đa số đã trả\n"));
       tool(c, "write_ticket_doc", Map.of("name", "plan.md", "content", "- payment-service: PaymentService.java\n"));
       tool(c, "write_ticket_doc", Map.of("name", "summary.md", "content", "Logic: hoàn tối đa số đã trả."));
-      tool(c, "set_status", Map.of("to", "awaiting_approval"));
+      tool(c, "set_status", Map.of("to", "wait_approval"));
       return "ok";
     });
     agents.ask("shop", id, "", "Phân tích", false);
     Path sessionDir = home.resolve("sessions/shop").resolve(id);
     assertThat(sessionDir.resolve("2.log")).exists();
-    for (String s : List.of("ready", "in_dev", "sa_verify", "awaiting_push", "done")) {
+    for (String s : List.of("ready", "implement", "verify", "wait_confirm", "done")) {
       tasks.transition("shop", id, s, s.equals("done") || s.equals("ready") ? Actor.PMO : Actor.SA);
     }
     assertThat(sessionDir).doesNotExist();
@@ -512,73 +528,38 @@ class AgentServiceTest {
     fake.scripts.add(c -> {
       assertThat(c.prompt()).contains("REOPEN_BUG", "Logic: hoàn tối đa số đã trả.", "mở lại 1 lần");
       tool(c, "write_ticket_doc", Map.of("name", "plan.md", "content", "- payment-service: PaymentService.java chặn hoàn trùng\n"));
-      tool(c, "set_status", Map.of("to", "awaiting_approval"));
+      tool(c, "set_status", Map.of("to", "wait_approval"));
       return "ok";
     });
     agents.ask("shop", id, "", "Vì sao hoàn trùng?", false);
-    for (String s : List.of("ready", "in_dev", "sa_verify")) {
+    for (String s : List.of("ready", "implement", "verify")) {
       tasks.transition("shop", id, s, s.equals("ready") ? Actor.PMO : Actor.DEV);
     }
     fake.scripts.add(c -> {
       tool(c, "write_ticket_doc", Map.of("name", "verify.md", "content", "Kết luận: ĐẠT"));
-      assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).startsWith("ERR").contains("BUG-01");
+      assertThat(tool(c, "set_status", Map.of("to", "wait_confirm"))).startsWith("ERR").contains("BUG-01");
       tool(c, "write_ticket_doc", Map.of("name", "analysis.md",
           "content", "- AC-1: hoàn tối đa số đã trả\n- AC-2 (BUG-01): không hoàn trùng\n"));
-      assertThat(tool(c, "set_status", Map.of("to", "awaiting_push"))).contains("awaiting_push");
+      assertThat(tool(c, "set_status", Map.of("to", "wait_confirm"))).contains("wait_confirm");
       return "ok";
     });
     agents.ask("shop", id, "sa", "Kiểm chứng", false);
-    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.AWAITING_PUSH);
+    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.WAIT_CONFIRM);
   }
 
   /** FR-10: "Báo bug" starts SA by itself; the report and SA's session show in the chat. Refused while a session still runs. */
-  @Test
-  void reportingABugStartsSaInTheChat() {
-    String id = ticket("NYX-8", "Hoàn tiền");
-    tasks.setRepos("shop", id, List.of(), Actor.PMO); // documents only: no worktree in this flow
-    for (String s : List.of("sa_analysis", "awaiting_approval")) {
-      tasks.transition("shop", id, s, Actor.SA);
-    }
-    tasks.writeDoc("shop", id, "plan.md", "- payment-service: PaymentService.java\n", Actor.SA);
-    for (String s : List.of("ready", "in_dev", "sa_verify", "awaiting_push", "done")) {
-      tasks.transition("shop", id, s, s.equals("done") || s.equals("ready") ? Actor.PMO : Actor.SA);
-    }
-    fake.scripts.add(c -> {
-      assertThatThrownBy(() -> agents.reopen("shop", id, "bug", "x")).hasMessageContaining("đang chạy");
-      return "ok";
-    });
-    agents.ask("shop", id, "sa", "Ticket này sửa gì?", false);
-    assertThat(tasks.detail("shop", id).task().status()).isEqualTo(TaskStatus.DONE);
-    int before = fake.calls.size();
-
-    assertThatThrownBy(() -> agents.reopen("shop", id, "bug", " ")).hasMessageContaining("Chưa mô tả");
-    assertThat(fake.calls).hasSize(before);
-
-    fake.scripts.add(c -> {
-      assertThat(c.prompt()).contains("REOPEN_BUG", "Hoàn tiền lần 2 bị trùng");
-      return "Đang phân tích";
-    });
-    Task t = agents.reopen("shop", id, "bug", "Hoàn tiền lần 2 bị trùng");
-    assertThat(t.reopened()).isEqualTo(1);
-    assertThat(fake.calls).hasSize(before + 1);
-    List<ChatMessage> chat = agents.chat("shop", id).messages();
-    assertThat(chat.get(chat.size() - 2).text()).isEqualTo("Báo bug: Hoàn tiền lần 2 bị trùng");
-    assertThat(chat.get(chat.size() - 1).from()).isEqualTo("SA");
-    assertThat(chat.get(chat.size() - 1).text()).isEqualTo("Đang phân tích");
-  }
-
   /** D-68: PMO sends an in_dev ticket back to SA; SA starts by itself on a new plan, refused while an agent runs. */
   @Test
   void reanalysisAfterApprovalStartsSa() {
     String id = ticket("NYX-7", "Outbox");
     tasks.setRepos("shop", id, List.of(), Actor.PMO);
-    tasks.transition("shop", id, "sa_analysis", Actor.SA);
-    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "analysis", Actor.SA);
+    tasks.transition("shop", id, "wait_approval", Actor.SA);
     tasks.writeDoc("shop", id, "plan.md", "# Plan v1", Actor.SA);
     tasks.transition("shop", id, "ready", Actor.PMO);
-    tasks.transition("shop", id, "in_dev", Actor.DEV);
+    tasks.transition("shop", id, "implement", Actor.DEV);
     fake.scripts.add(c -> {
-      assertThatThrownBy(() -> agents.transition("shop", id, "sa_analysis")).hasMessageContaining("đang chạy");
+      assertThatThrownBy(() -> agents.transition("shop", id, "analysis")).hasMessageContaining("đang chạy");
       return "ok";
     });
     agents.ask("shop", id, "sa", "Còn việc gì?", false);
@@ -588,7 +569,7 @@ class AgentServiceTest {
       assertThat(c.prompt()).contains("PMO yêu cầu phân tích lại", "ghi plan.md bản mới");
       return "Đang ghi plan mới";
     });
-    assertThat(agents.transition("shop", id, "sa_analysis").status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(agents.transition("shop", id, "analysis").status()).isEqualTo(TaskStatus.ANALYSIS);
     assertThat(fake.calls).hasSize(before + 1);
     assertThat(agents.chat("shop", id).messages()).last().satisfies(m -> assertThat(m.from()).isEqualTo("SA"));
   }
@@ -597,14 +578,14 @@ class AgentServiceTest {
   @Test
   void reanalysisBeforeApprovalStartsSa() {
     String id = ticket("NYX-8", "Trigger");
-    tasks.transition("shop", id, "sa_analysis", Actor.SA);
-    tasks.transition("shop", id, "awaiting_approval", Actor.SA);
+    tasks.transition("shop", id, "analysis", Actor.SA);
+    tasks.transition("shop", id, "wait_approval", Actor.SA);
     int before = fake.calls.size();
     fake.scripts.add(c -> {
       assertThat(c.prompt()).contains("phương án chưa được chốt");
       return "Đang xem lại";
     });
-    assertThat(agents.transition("shop", id, "sa_analysis").status()).isEqualTo(TaskStatus.SA_ANALYSIS);
+    assertThat(agents.transition("shop", id, "analysis").status()).isEqualTo(TaskStatus.ANALYSIS);
     assertThat(fake.calls).hasSize(before + 1);
     assertThat(agents.chat("shop", id).messages()).last().satisfies(m -> assertThat(m.text()).isEqualTo("Đang xem lại"));
   }

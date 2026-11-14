@@ -32,6 +32,7 @@ public class ClaudeCodeProvider implements AgentProvider {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
+  private final java.util.Map<String, Process> running = new java.util.concurrent.ConcurrentHashMap<>();
   private final String command;
   private final String model;
   private final int timeoutMinutes;
@@ -91,6 +92,7 @@ public class ClaudeCodeProvider implements AgentProvider {
       // run_quality_gate runs builds and tests for minutes: let the tool call live as long as the session
       pb.environment().put("MCP_TOOL_TIMEOUT", String.valueOf(TimeUnit.MINUTES.toMillis(timeoutMinutes)));
       Process p = pb.start();
+      running.put(call.sessionToken(), p);
       CompletableFuture.delayedExecutor(timeoutMinutes, TimeUnit.MINUTES).execute(p::destroyForcibly);
       try (OutputStream in = p.getOutputStream()) {
         in.write(call.prompt().getBytes(StandardCharsets.UTF_8));
@@ -113,6 +115,18 @@ public class ClaudeCodeProvider implements AgentProvider {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return new Result(false, "Phiên agent bị ngắt", Usage.ZERO);
+    } finally {
+      running.remove(call.sessionToken());
+    }
+  }
+
+  /** FR-94: the session did not stop when asked; the process tree goes, run() returns with what it has. */
+  @Override
+  public void cancel(String sessionToken) {
+    Process p = running.remove(sessionToken);
+    if (p != null) {
+      p.descendants().forEach(ProcessHandle::destroyForcibly);
+      p.destroyForcibly();
     }
   }
 

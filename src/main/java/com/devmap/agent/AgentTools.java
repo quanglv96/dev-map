@@ -11,6 +11,8 @@ import com.devmap.graph.Graph.Direction;
 import com.devmap.graph.Graph.Node;
 import com.devmap.graph.Graph.Subgraph;
 import com.devmap.graph.GraphService;
+import com.devmap.proposal.Proposal;
+import com.devmap.proposal.ProposalService;
 import com.devmap.rule.QualityGate;
 import com.devmap.rule.RuleService;
 import com.devmap.secret.SecretFiles;
@@ -64,11 +66,12 @@ class AgentTools {
   private static final Map<Role, List<String>> DOCS = Map.of(
       Role.SA, List.of("analysis.md", "plan.md", "summary.md", "verify.md"),
       Role.DEV, List.of("summary.md"));
-  private static final Set<TaskStatus> APPROVED = Set.of(TaskStatus.READY, TaskStatus.IN_DEV, TaskStatus.SA_VERIFY,
-      TaskStatus.AWAITING_PUSH, TaskStatus.DONE);
+  /** Statuses where SA may still rewrite the plan in any session; after approval only a sync session may (FR-77, FR-79). */
+  private static final Set<TaskStatus> PLANNING = Set.of(TaskStatus.NEW, TaskStatus.ANALYSIS, TaskStatus.WAIT_APPROVAL);
+  private static final Set<TaskStatus> SYNC_EDIT = Set.of(TaskStatus.IMPLEMENT, TaskStatus.VERIFY);
   private static final Map<Role, List<String>> MOVES = Map.of(
-      Role.SA, List.of(TaskStatus.AWAITING_APPROVAL.code(), TaskStatus.IN_DEV.code(), TaskStatus.AWAITING_PUSH.code()),
-      Role.DEV, List.of(TaskStatus.SA_VERIFY.code()));
+      Role.SA, List.of(TaskStatus.WAIT_APPROVAL.code(), TaskStatus.IMPLEMENT.code(), TaskStatus.WAIT_CONFIRM.code()),
+      Role.DEV, List.of(TaskStatus.VERIFY.code()));
 
   private final List<Tool> tools = List.of(
       tool("get_spec", "spec.json của ticket: yêu cầu PMO đã làm sạch (không có nguyên văn).", Set.of(Role.SA, Role.DEV)),
@@ -91,9 +94,20 @@ class AgentTools {
           "from?:integer:Dòng đầu", "to?:integer:Dòng cuối"),
       tool("write_ticket_doc", "Ghi tài liệu của ticket (SA: analysis.md, plan.md, summary.md, verify.md; Dev: summary.md). Bí mật bị che.",
           Set.of(Role.SA, Role.DEV), "name:string:Tên tài liệu", "content:string:Nội dung Markdown đầy đủ"),
-      tool("set_status", "Chuyển trạng thái ticket. SA: awaiting_approval (gửi PMO chốt), in_dev (trả về Dev), awaiting_push "
-          + "(kiểm chứng đạt). Dev: sa_verify (xong, gate đạt). Không chốt giải pháp hay push thay PMO được.",
+      tool("set_status", "Chuyển trạng thái ticket. SA: wait_approval (gửi PMO chốt), implement (kiểm chứng thấy lệch: trả về Dev), "
+          + "wait_confirm (kiểm chứng đạt). Dev: verify (xong, gate đạt). Không chốt giải pháp hay push thay PMO được.",
           Set.of(Role.SA, Role.DEV), "to:string:Trạng thái đích"),
+      tool("write_proposal", "Ghi phát hiện/đề xuất có cấu trúc (FR-75); bên kia tự nhận qua sự kiện, PMO thấy thẻ trong room. Dev dùng "
+          + "khi thấy bug, cần đổi giải pháp/phạm vi; trước khi PMO chốt, Dev chỉ được ghi đề xuất.", Set.of(Role.SA, Role.DEV),
+          "type:string:BUG_FOUND | SOLUTION_CHANGE | SCOPE_CHANGE | QUESTION", "summary:string:Tóm tắt một câu",
+          "proposal:string:Đề xuất cụ thể", "affects:string:TECHNICAL_ONLY | AC | BUSINESS_RULE | SCOPE (tự đánh giá)",
+          "repo?:string:Repo", "file?:string:File trong repo", "signature?:string:Chữ ký method",
+          "refs?:array:Đoạn tài liệu liên quan, dạng analysis.md#AC-2 hoặc plan.md#Bước 3",
+          "reply_to?:string:Id đề xuất đang trao đổi tiếp (giữ cùng mạch, DevMap đếm vòng)"),
+      tool("resolve_proposal", "SA chốt một đề xuất sau khi đánh giá: APPLIED (đã cập nhật tài liệu), REJECTED (giữ nguyên, ghi lý do), "
+          + "NEEDS_PMO (cần PMO quyết). affects: mức ảnh hưởng SA đánh giá; DevMap vẫn áp luật cứng (đổi AC, business rule, thêm repo "
+          + "luôn cần PMO).", Set.of(Role.SA), "id:string:Id đề xuất", "status:string:APPLIED | REJECTED | NEEDS_PMO",
+          "affects:string:TECHNICAL_ONLY | AC | BUSINESS_RULE | SCOPE", "note:string:Lý do / đã đổi gì (ngắn)"),
       tool("set_repos", "Ghi danh sách repo/service bị ảnh hưởng vào ticket (hiện cho PMO, Dev mở worktree ở các repo này). "
           + "Chỉ khi đang phân tích, trước khi PMO chốt.", Set.of(Role.SA), "repos:array:Tên repo thuộc dự án",
           "branch?:string:Tên branch tiếng Anh ngắn gọn, 2-4 từ (ví dụ cancel-order-refund); DevMap thêm tiền tố loại và mã ticket"),
@@ -123,10 +137,12 @@ class AgentTools {
   private final RuleService rules;
   private final SecretMasker masker;
   private final VerifyFacts verifier;
+  private final ProposalService proposals;
   private final Map<String, VerifyFacts.Facts> facts = new ConcurrentHashMap<>();
 
   AgentTools(TaskService tasks, TicketGitService dev, GraphService graphs, GitService git, ProjectService projects, RuleService rules,
-      SecretMasker masker, VerifyFacts verifier) {
+      SecretMasker masker, VerifyFacts verifier, ProposalService proposals) {
+    this.proposals = proposals;
     this.tasks = tasks;
     this.dev = dev;
     this.graphs = graphs;
@@ -148,6 +164,9 @@ class AgentTools {
     if (!tool.roles().contains(s.role)) {
       throw new IllegalArgumentException("Vai " + s.role + " không dùng được " + name);
     }
+    if (s.stop != null) {
+      throw new IllegalStateException("DevMap yêu cầu dừng phiên: " + s.stop + ". Không gọi thêm công cụ, kết thúc phiên ngay (FR-94).");
+    }
     String out = switch (name) {
       case "get_spec" -> doc(s, "spec.json");
       case "get_ticket_docs" -> docs(s, args.path("names"));
@@ -161,6 +180,12 @@ class AgentTools {
       case "write_ticket_doc" -> writeDoc(s, text(args, "name"), text(args, "content"));
       case "set_status" -> setStatus(s, text(args, "to"));
       case "set_repos" -> setRepos(s, args.path("repos"), args.path("branch").asText(""));
+      case "write_proposal" -> writeProposal(s, args);
+      case "resolve_proposal" -> {
+        Proposal p = proposals.resolve(s.project, s.taskId, text(args, "id"), text(args, "status"), text(args, "affects"),
+            text(args, "affects"), args.path("note").asText(null), null, s.role.actor);
+        yield "Đề xuất " + p.id() + " → " + p.status() + " (" + p.affects() + ")";
+      }
       case "verify_facts" -> facts(s).markdown();
       case "git_diff" -> narrowDiff(
           args.hasNonNull("commit") ? show(s, text(args, "repo"), text(args, "commit")) : diff(s, text(args, "repo")),
@@ -407,10 +432,13 @@ class AgentTools {
     if (!DOCS.get(s.role).contains(name)) {
       throw new IllegalArgumentException(s.role + " chỉ ghi được " + DOCS.get(s.role));
     }
-    // FR-08 / NFR-03: the plan the PMO approved stays as approved; a deviation goes to verify.md and back to Dev
-    if (name.equals("plan.md") && APPROVED.contains(tasks.detail(s.project, s.taskId).task().status())) {
-      throw new IllegalArgumentException("plan.md đã được PMO chốt, không sửa sau khi chốt. Thay đổi lệch plan thì ghi vào verify.md và "
-          + "trả về Dev (in_dev); cần đổi plan thì để PMO yêu cầu phân tích lại");
+    // FR-08 / NFR-03: after approval the plan changes only in a sync session (Dev proposal, PMO change), where DevMap classifies
+    // the impact afterwards and sends AC / business rule / scope changes back to the PMO (FR-79); never while verifying
+    TaskStatus st = tasks.detail(s.project, s.taskId).task().status();
+    if ((name.equals("plan.md") || name.equals("analysis.md")) && !PLANNING.contains(st)
+        && !(s.mode == Mode.SYNC && SYNC_EDIT.contains(st)) && !(s.mode == Mode.VERIFY && name.equals("analysis.md"))) {
+      throw new IllegalArgumentException(name + " đã được PMO chốt: chỉ cập nhật trong phiên đồng bộ (đề xuất của Dev, thay đổi của "
+          + "PMO). Lệch plan khi kiểm chứng thì ghi vào verify.md và trả về Dev (implement)");
     }
     TaskService.Doc d = tasks.writeDoc(s.project, s.taskId, name, content, s.role.actor);
     s.written.add(name);
@@ -421,7 +449,7 @@ class AgentTools {
   /** FR-14: the SA's impacted services land on the ticket; once the PMO approved, only the PMO changes them. */
   private String setRepos(AgentSession s, JsonNode repos, String branch) {
     TaskStatus st = tasks.detail(s.project, s.taskId).task().status();
-    if (st != TaskStatus.SA_ANALYSIS && st != TaskStatus.AWAITING_APPROVAL) {
+    if (st != TaskStatus.ANALYSIS && st != TaskStatus.WAIT_APPROVAL && !(s.mode == Mode.SYNC && SYNC_EDIT.contains(st))) {
       throw new IllegalArgumentException("Chỉ ghi repo khi đang phân tích; ticket ở " + st.code() + ", PMO tự đổi nếu cần");
     }
     if (!repos.isArray()) {
@@ -439,11 +467,11 @@ class AgentTools {
           + "; chốt giải pháp và push là việc của PMO");
     }
     Task t = tasks.detail(s.project, s.taskId).task();
-    if (to.equals(TaskStatus.AWAITING_APPROVAL.code()) && (optDoc(s, "analysis.md").isBlank() || optDoc(s, "plan.md").isBlank())) {
+    if (to.equals(TaskStatus.WAIT_APPROVAL.code()) && (optDoc(s, "analysis.md").isBlank() || optDoc(s, "plan.md").isBlank())) {
       throw new IllegalArgumentException("Cần analysis.md và plan.md trước khi gửi PMO chốt");
     }
-    if (t.status() == TaskStatus.SA_VERIFY) {
-      requireVerified(s, t, to.equals(TaskStatus.AWAITING_PUSH.code()));
+    if (t.status() == TaskStatus.VERIFY) {
+      requireVerified(s, t, to.equals(TaskStatus.WAIT_CONFIRM.code()));
     }
     tasks.transition(s.project, s.taskId, to, s.role.actor);
     return "Ticket chuyển sang " + to;
@@ -461,7 +489,7 @@ class AgentTools {
     List<String> missing = facts(s).mustMention().stream().filter(m -> !verify.contains(m.toLowerCase())).toList();
     if (!missing.isEmpty()) {
       throw new IllegalArgumentException("verify.md chưa xét: " + missing
-          + ". Lệch phạm vi hoặc chưa kiểm nơi gọi thì trả về Dev (in_dev)");
+          + ". Lệch phạm vi hoặc chưa kiểm nơi gọi thì trả về Dev (implement)");
     }
     if (t.reopened() > 0) {
       List<String> bugs = tasks.detail(s.project, s.taskId).docs().stream().filter(d -> d.startsWith("bugs/")).toList();
@@ -471,6 +499,18 @@ class AgentTools {
             + " vào AC trước (FR-11)");
       }
     }
+  }
+
+  /** FR-73 / FR-75: Dev may always write proposals; before approval that is all it may write. */
+  private String writeProposal(AgentSession s, JsonNode args) {
+    List<String> refs = new ArrayList<>();
+    args.path("refs").forEach(r -> refs.add(r.asText()));
+    Proposal.Location loc = args.hasNonNull("repo") || args.hasNonNull("file") || args.hasNonNull("signature")
+        ? new Proposal.Location(args.path("repo").asText(null), args.hasNonNull("file") ? safePath(args.get("file").asText()) : null,
+            args.path("signature").asText(null)) : null;
+    Proposal p = proposals.create(s.project, s.taskId, new ProposalService.Input(s.role.name(), text(args, "type"), text(args, "summary"),
+        loc, args.path("proposal").asText(""), args.path("affects").asText("TECHNICAL_ONLY"), refs, args.path("reply_to").asText(null)));
+    return "Đã ghi đề xuất " + p.id() + " (vòng " + p.round() + "), trạng thái " + p.status();
   }
 
   private String diff(AgentSession s, String repo) {
@@ -526,6 +566,9 @@ class AgentTools {
   }
 
   private String gate(AgentSession s) {
+    if (tasks.detail(s.project, s.taskId).task().status() != TaskStatus.IMPLEMENT) {
+      throw new IllegalArgumentException("Chỉ chạy quality gate khi ticket đang triển khai (PMO đã chốt)");
+    }
     StringBuilder sb = new StringBuilder();
     for (QualityGate.Result r : dev.gate(s.project, s.taskId, s.role.actor)) {
       sb.append(r.service()).append(": ").append(r.passed() ? "ĐẠT" : "KHÔNG ĐẠT").append('\n');
@@ -591,8 +634,9 @@ class AgentTools {
 
   /** FR-34 + NFR-06: inside the ticket worktree only, never a secret file, only while the ticket is in development. */
   private Path editable(AgentSession s, String repo, String path) {
-    if (tasks.detail(s.project, s.taskId).task().status() != TaskStatus.IN_DEV) {
-      throw new IllegalArgumentException("Chỉ sửa code khi ticket đang triển khai");
+    if (tasks.detail(s.project, s.taskId).task().status() != TaskStatus.IMPLEMENT) {
+      throw new IllegalArgumentException("Chỉ sửa code khi ticket đang triển khai (PMO đã chốt); trước đó Dev chỉ ghi đề xuất bằng "
+          + "write_proposal (FR-73)");
     }
     RepoView w = worktree(s, repo);
     if (w == null) {
@@ -628,7 +672,8 @@ class AgentTools {
       case "write_file", "edit_file", "delete_file" -> "scope + chặn file bí mật (FR-32, FR-34)";
       case "commit" -> "git.commit_template, scope";
       case "run_quality_gate" -> "quality: tách lớp, phân tích tĩnh, unit test";
-      case "set_status", "set_repos" -> "luồng 8 trạng thái, cổng duyệt PMO";
+      case "set_status", "set_repos" -> "bảng chuyển trạng thái FR-86, cổng duyệt PMO";
+      case "write_proposal", "resolve_proposal" -> "đề xuất có cấu trúc, che bí mật (FR-75)";
       default -> "lọc bí mật, ngữ cảnh 2–3 tầng, không nguyên file (FR-34/35)";
     };
     return new String[] {repo, service, rule};
