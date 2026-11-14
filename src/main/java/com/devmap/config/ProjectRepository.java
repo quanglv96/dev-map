@@ -38,7 +38,7 @@ public class ProjectRepository {
       // FR-51: config.yml is synced between machines, so it never holds this machine's repo paths
       Yaml.write(dir.resolve(CONFIG), new ProjectConfig(config.project(), config.color(), config.ticketCode(), config.ticketPattern(),
           config.branchPatterns(), config.repos().stream().map(r -> r.withPath(null)).toList(), config.environments(),
-          config.scanFullProject(), config.secrets()));
+          config.scanFullProject(), config.secrets(), config.room()));
       writeProjectMd(dir.resolve("project.md"), config);
     } catch (IOException e) {
       throw new UncheckedIOException("Không ghi được folder dữ liệu " + dir + ": " + e.getMessage(), e);

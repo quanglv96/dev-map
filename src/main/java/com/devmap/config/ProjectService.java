@@ -109,7 +109,7 @@ public class ProjectService {
       return r.withRemote(found != null ? found : r.remote() != null ? r.remote() : known.get(r.name()));
     }).toList();
     fixed = new ProjectConfig(name, fixed.color(), fixed.ticketCode(), fixed.ticketPattern(), fixed.branchPatterns(), repos,
-        fixed.environments(), fixed.scanFullProject(), fixed.secrets());
+        fixed.environments(), fixed.scanFullProject(), fixed.secrets(), fixed.room());
     requireValid(fixed);
     rememberPaths(name, repos);
     projects.save(Path.of(ws.dataDir()), fixed);
@@ -227,7 +227,7 @@ public class ProjectService {
     projects.backup(dir);
     rememberPaths(config.project(), repos);
     ProjectConfig migrated = new ProjectConfig(config.project(), config.color(), config.ticketCode(), config.ticketPattern(),
-        config.branchPatterns(), repos, config.environments(), config.scanFullProject(), config.secrets());
+        config.branchPatterns(), repos, config.environments(), config.scanFullProject(), config.secrets(), config.room());
     projects.save(dir, migrated);
     LOG.info("Đã migrate {}: {} đường dẫn repo chuyển sang workspaces.yml, bản cũ ở config.yml.bak", dir.resolve("config.yml"),
         repos.size());
@@ -237,7 +237,7 @@ public class ProjectService {
   private ProjectConfig withLocalPaths(ProjectConfig c) {
     List<RepoConfig> repos = c.repos().stream().map(r -> r.withPath(workspaces.repoPath(r.key(c.project())))).toList();
     return new ProjectConfig(c.project(), c.color(), c.ticketCode(), c.ticketPattern(), c.branchPatterns(), repos,
-        c.environments(), c.scanFullProject(), c.secrets());
+        c.environments(), c.scanFullProject(), c.secrets(), c.room());
   }
 
   /** Unregisters only; the data folder is never deleted. */
