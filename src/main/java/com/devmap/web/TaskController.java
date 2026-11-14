@@ -1,6 +1,7 @@
 package com.devmap.web;
 
 import com.devmap.agent.AgentService;
+import com.devmap.orchestration.Orchestrator;
 import com.devmap.ticket.Task;
 import com.devmap.ticket.TaskService;
 import com.devmap.ticket.TaskService.Actor;
@@ -43,10 +44,12 @@ public class TaskController {
 
   private final TaskService tasks;
   private final AgentService agents;
+  private final Orchestrator sync;
 
-  public TaskController(TaskService tasks, AgentService agents) {
+  public TaskController(TaskService tasks, AgentService agents, Orchestrator sync) {
     this.tasks = tasks;
     this.agents = agents;
+    this.sync = sync;
   }
 
   @GetMapping("/overview")
@@ -76,7 +79,7 @@ public class TaskController {
 
   @PostMapping("/projects/{project}/tasks/{id}/transition")
   public Task transition(@PathVariable String project, @PathVariable String id, @RequestBody TransitionRequest req) {
-    return agents.transition(project, id, req.to());
+    return sync.transition(project, id, req.to());
   }
 
   @PostMapping("/projects/{project}/tasks/{id}/cancel")
@@ -91,7 +94,7 @@ public class TaskController {
 
   @PostMapping("/projects/{project}/tasks/{id}/reopen")
   public Task reopen(@PathVariable String project, @PathVariable String id, @RequestBody ReopenRequest req) {
-    return agents.reopen(project, id, req.kind(), req.description());
+    return sync.reportAfterDeploy(project, id, req.kind(), req.description());
   }
 
   @GetMapping("/projects/{project}/tasks/{id}/doc")
