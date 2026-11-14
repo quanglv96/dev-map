@@ -147,7 +147,7 @@ async function commitRepo(project, id, repo, message, status) {
 /** "Code" tab: per repo branch, commits, files, gate result, diff and commit form (FR-26, FR-27). */
 function renderCode(box, project, detail, dev) {
   const id = detail.task.id;
-  const canCommit = detail.task.status === "in_dev";
+  const canCommit = detail.task.status === "implement";
   fill(box, dev.repos.map((r) => {
     const out = el("div");
     const status = el("div");
@@ -155,7 +155,7 @@ function renderCode(box, project, detail, dev) {
     return el("section", { class: "card" },
       el("div", { class: "row" },
         el("strong", { class: "grow" }, r.repo),
-        el("span", { class: `badge ${r.gatePassed ? "done" : "awaiting_approval"}` }, r.gatePassed ? t("gatePassed") : t("gateNotPassed"))),
+        el("span", { class: `badge ${r.gatePassed ? "done" : "wait_approval"}` }, r.gatePassed ? t("gatePassed") : t("gateNotPassed"))),
       el("small", { class: "muted path" }, `${r.branch} ← ${r.baseBranch} @${short(r.baseCommit)} · ${r.worktree}`),
       el("p", { class: "small" }, r.pushedHead ? t("pushedAt", { sha: short(r.pushedHead) }) : t("notPushed")),
       r.commits.length ? el("ul", { class: "small" }, r.commits.map((c) => el("li", {}, c))) : el("p", { class: "muted small" }, t("noCommits")),
@@ -364,8 +364,21 @@ function gateSummary(dev, openCode) {
   return dev.repos.length ? el("div", { class: "gate-summary" },
     dev.repos.map((r) => el("div", { class: "row small" },
       el("span", { class: "grow path" }, r.repo),
-      el("span", { class: `badge ${r.gatePassed ? "done" : "awaiting_approval"}` }, r.gatePassed ? t("gatePassed") : t("gateNotPassed")))),
+      el("span", { class: `badge ${r.gatePassed ? "done" : "wait_approval"}` }, r.gatePassed ? t("gatePassed") : t("gateNotPassed")))),
     el("button", { type: "button", class: "link small", onclick: openCode }, t("viewCode"))) : null;
+}
+
+/** FR-88 flags of a ticket as small pills; needs_pmo first and loudest. Shared with the task list. */
+export function flagList(task) {
+  const f = task.flags ?? {};
+  return [
+    f.needsPmo ? el("span", { class: "flag needs_pmo", title: f.needsPmo }, `⚑ ${t("flag.needs_pmo")}`) : null,
+    f.openProposals ? el("span", { class: "flag" }, `✉ ${t("flag.open_proposals", { n: f.openProposals })}`) : null,
+    f.syncPaused ? el("span", { class: "flag" }, `⏸ ${t("flag.sync_paused")}`) : null,
+    f.midChange ? el("span", { class: "flag" }, `↻ ${t("flag.mid_change")}`) : null,
+    f.fileOverlap?.length ? el("span", { class: "flag" }, `⧉ ${t("flag.file_overlap", { ids: f.fileOverlap.join(", ") })}`) : null,
+    task.reopened ? el("span", { class: "flag" }, `↺ ${t("flag.reopened", { n: task.reopened })}`) : null
+  ].filter(Boolean);
 }
 
 function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, activity, openCode) {
@@ -383,11 +396,11 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     }
   };
   const move = async (to, gate) => {
-    if (from === "awaiting_push" && to === "done") {
+    if (from === "wait_confirm" && to === "done") {
       await pushReview(reviewBox, project, detail, dev, error);
       return;
     }
-    if (from === "ready" && to === "in_dev") {
+    if (from === "ready" && to === "implement") {
       await call("/implement"); // Dev pulls the base branch and implements plan.md on its own; SA verifies after
       return;
     }
@@ -396,7 +409,7 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     }
     try {
       await api(`${base(project, task.id)}/transition`, { method: "POST", body: { to } });
-      if (to === "sa_analysis") {
+      if (to === "analysis" || to === "implement") {
         selectedTab.set(task.id, "chat"); // any move back to SA starts SA at once (D-68)
       }
       rerender();
@@ -404,12 +417,12 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       showError(error, err);
     }
   };
-  const implementNow = (a) => from === "ready" && a.to === "in_dev";
+  const implementNow = (a) => from === "ready" && a.to === "implement";
   // the queue is running and this ticket is in it: same pause button as the queue box instead of starting it out of turn
   const queued = activity.queueRunning && (from === "ready" || activity.queueTicket === task.id);
   const pause = queued ? [el("button", { type: "button", class: "secondary", onclick: () => window.dispatchEvent(new Event("queue-pause")) }, t("implementPause")),
     el("p", { class: "muted small" }, t("implementPauseHint"))] : null;
-  const decide = detail.actions.filter((a) => a.pmoGate || implementNow(a) || (from === "awaiting_approval" && a.to === "sa_analysis"));
+  const decide = detail.actions.filter((a) => a.pmoGate || implementNow(a));
   const manual = detail.actions.filter((a) => !decide.includes(a));
   const gates = decide.filter((a) => !(queued && implementNow(a)));
 
@@ -533,7 +546,11 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
     el("h3", {}, task.id),
     el("dl", {},
       el("dt", {}, t("status")), el("dd", {}, el("span", { class: `badge ${task.status}` }, t(`status.${task.status}`)),
+        // FR-87: first approval or approval again of plan.md v<n>
+        from === "wait_approval" ? [" ", el("small", { class: "muted" },
+          detail.reapproval ? t("approval.again", { n: detail.reapproval }) : t("approval.first"))] : null,
         work ? [" ", el("span", { class: `work ${work.cls}` }, t(work.key, { n: work.n }))] : null),
+      flagList(task).length ? [el("dt", {}, t("flags")), el("dd", {}, flagList(task))] : null,
       el("dt", {}, t("type")), el("dd", {}, task.type),
       el("dt", {}, t("branch")), el("dd", {}, renderBranch(project, task, dev, error)),
       el("dt", {}, t("repos")), el("dd", {}, renderRepoPicker(project, detail, repoNames, error)
@@ -543,10 +560,10 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       detail.queuePosition ? [el("dt", {}, t("queuePos")), el("dd", {}, String(detail.queuePosition))] : null,
       el("dt", {}, t("tokens")), el("dd", {}, totals),
       dev.repos.length ? [el("dt", {}, t("gateRow")), el("dd", {}, gateSummary(dev, openCode))] : null),
-    gates.length || from === "done" || !running || (queued && from !== "in_dev") ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
+    gates.length || from === "done" || !running || (queued && from !== "implement") ? el("h3", { class: "section" }, t("pmoDecisions")) : null,
     el("div", { class: "actions" }, gates.map((a) => el("button", {
       type: "button", class: a.pmoGate || implementNow(a) ? "primary" : "secondary", title: implementNow(a) ? t("implementOne") : null, onclick: () => move(a.to, a.pmoGate)
-    }, actionLabel(from, a.to))), from === "in_dev" ? null : pause,
+    }, actionLabel(from, a.to))), from === "implement" ? null : pause,
     from === "done" || from === "cancelled" || running ? null
       : el("button", { type: "button", class: "secondary", onclick: cancelTask }, t("cancelTask")),
     running ? null : el("button", { type: "button", class: "link", onclick: forceStatus }, t("forceStatus"))),
@@ -554,7 +571,7 @@ function renderRight(right, project, detail, dev, repoNames, reviewBox, totals, 
       el("button", { type: "button", class: "secondary", onclick: () => reopen("bug") }, t("reportBug")),
       el("button", { type: "button", class: "secondary", onclick: () => reopen("logic") }, t("addLogic"))) : null,
     reopenBox,
-    from === "in_dev" ? [el("h3", { class: "section" }, t("devSteps")), el("div", { class: "actions" },
+    from === "implement" ? [el("h3", { class: "section" }, t("devSteps")), el("div", { class: "actions" },
       running || queued ? null : el("button", { type: "button", class: "primary", onclick: () => call("/implement") }, t("implement")),
       pause,
       dev.repos.length ? gateButton : null,

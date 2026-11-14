@@ -9,7 +9,7 @@ import { mountSync, onSync, onSyncEvent, renderConflicts, syncStatus } from "./s
 import { reportFocus, trayActive } from "./tray.js";
 import { renderLog } from "./views/log.js";
 import { renderRules } from "./views/rules.js";
-import { renderNewTask, renderTask } from "./views/task.js";
+import { flagList, renderNewTask, renderTask } from "./views/task.js";
 
 applyI18n();
 mountLangSwitch(document.getElementById("lang"));
@@ -131,7 +131,8 @@ async function renderUsage() {
       el("strong", {}, t("tokens")),
       el("p", {}, t("tokensToday", { n: tokens(u.today).toLocaleString() }), el("br"),
         t("tokensProject", { n: tokens(u.project).toLocaleString() }), el("br"),
-        t("tokensCost", { cost: u.project.costUsd.toFixed(4) })),
+        t("tokensCost", { cost: u.project.costUsd.toFixed(4) }), el("br"),
+        t("room.syncCost", { n: u.syncSessions ?? 0, tokens: tokens(u.sync).toLocaleString() })),
       u.quota.length === 0 ? el("p", { class: "muted" }, t("quotaNone")) : u.quota.map((q) => {
         // utilization is a fraction of the window; older Claude Code builds leave it out
         const pct = q.utilization === null || q.utilization === undefined ? null : Math.round(q.utilization <= 1 ? q.utilization * 100 : q.utilization);
@@ -180,9 +181,11 @@ function renderList() {
     && (!filterType.value || x.type === filterType.value));
   list.replaceChildren(...shown.map((x) => el("li", { class: r.id === x.id ? "active" : "" },
     el("a", { href: `#task=${encodeURIComponent(x.id)}` },
+      // FR-89: code + title + status; what is going on right now; flags (needs_pmo loudest)
       el("div", { class: "row" }, el("strong", { class: "grow" }, x.id), conflictPill(x), workPill(x)),
-      el("div", {}, x.title),
-      el("small", { class: `badge ${x.status}` }, `${x.type} · ${t(`status.${x.status}`)}`)))));
+      el("div", {}, x.title, " ", el("small", { class: `badge ${x.status}` }, `${x.type} · ${t(`status.${x.status}`)}`)),
+      activity.doing?.[x.id] ? el("div", { class: "task-activity", title: activity.doing[x.id] }, activity.doing[x.id]) : null,
+      flagList(x).length ? el("div", {}, flagList(x)) : null))));
   if (shown.length === 0) {
     list.replaceChildren(el("li", { class: "muted" }, t("noTasks")));
   }

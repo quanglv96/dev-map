@@ -119,7 +119,7 @@ async function renderConventions(box, base) {
         el("button", { type: "button", class: "link", onclick: () => renderConventions(box, base) }, t("cancel"))));
   };
   fill(box,
-    el("h2", {}, t("conventions"), " ", el("span", { class: `badge ${view.approved ? "done" : "awaiting_approval"}` },
+    el("h2", {}, t("conventions"), " ", el("span", { class: `badge ${view.approved ? "done" : "wait_approval"}` },
       view.approved ? t("approved") : t("draft"))),
     el("p", { class: "muted small" }, t("conventionsHint")),
     el("div", { class: "row" },

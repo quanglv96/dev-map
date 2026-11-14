@@ -16,8 +16,8 @@ export function diffView(text) {
   }, line + "\n")));
 }
 
-export const STATUSES = ["new", "sa_analysis", "awaiting_approval", "ready", "in_dev", "sa_verify", "awaiting_push", "done", "cancelled"];
-export const WAITS_FOR_PMO = ["awaiting_approval", "awaiting_push"];
+export const STATUSES = ["new", "analysis", "wait_approval", "ready", "implement", "verify", "wait_confirm", "done", "cancelled"];
+export const WAITS_FOR_PMO = ["wait_approval", "wait_confirm"];
 
 export async function api(path, { method = "GET", body } = {}) {
   const res = await fetch(path, {
@@ -70,6 +70,9 @@ export function workState(task, activity) {
   const role = activity.working?.[task.id];
   if (role) {
     return { key: `work.${role}`, cls: role.toLowerCase() };
+  }
+  if (task.flags?.needsPmo) {
+    return { key: "flag.needs_pmo", cls: "pmo" }; // FR-89: the most visible state of the list
   }
   if (activity.questions?.[task.id]) {
     return { key: "work.questions", cls: "pmo", n: activity.questions[task.id] };
