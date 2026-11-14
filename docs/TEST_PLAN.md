@@ -26,6 +26,7 @@ Chạy toàn bộ: `./mvnw verify` (JUnit 5 + Checkstyle + ESLint). Dự án m�
 | AC-18 Chuyển ticket | SYNC | Đạt (tự động) | `TicketGitServiceTest.handoffPushesWipAndOtherMachineContinuesOnTheSameCommit`, K-10 |
 | AC-19 Không đồng bộ thứ không cần | SYNC | Đạt (tự động) | `SyncServiceTest.rebuildableAndMachineFilesAreNotSynced` |
 | AC-20 Bí mật | SYNC | Đạt (tự động) | `SyncServiceTest.secretInAChangedFileBlocksTheCommit`, `SyncServiceTest.remoteUrlNeverCarriesAToken` |
+| AC-31 → AC-50 Room | ROOM | Đạt (agent giả, tự động); K-12 với Claude Code thật chưa chạy | Mục "Room và đồng bộ giữa agent" |
 
 ## Test tự động Phase 1
 
@@ -298,3 +299,38 @@ Hai "máy" giả lập trong thư mục tạm của test: `machineA/`, `machineB
 - [ ] **D-65** Ticket in_dev có gate không đạt: bấm "Bỏ qua gate", để trống lý do → báo lỗi; ghi lý do → ticket sang "SA kiểm chứng", `tests.md` có mục "PMO bỏ qua gate" kèm lý do, tab chat mở phiên SA kiểm chứng. Test tự động: `TicketGitServiceTest.pmoWaivesGateWithReason`.
 - [ ] **D-66** Ticket chưa Done, agent không chạy: bấm "Huỷ task", để trống lý do → báo lỗi; ghi lý do → ticket sang "Đã huỷ" (badge gạch ngang, lọc được ở danh sách), ra khỏi hàng đợi, không còn nút chuyển trạng thái hay Báo bug, nhật ký có dòng "Huỷ ticket từ …" kèm lý do đã che bí mật, tab chat trống, hỏi agent bị từ chối. Bấm "Mở lại ticket" (hỏi xác nhận) → ticket về "Mới", nhật ký có `cancelled → new`. Test tự động: `TaskServiceTest.pmoCancelsTicketWithReason`.
 - [ ] **D-72** Ticket kẹt (ví dụ SA phân tích không có phiên), agent không chạy: bấm "Đổi trạng thái", chọn trạng thái, để trống lý do → báo lỗi; ghi lý do → ticket sang trạng thái đã chọn dù gate/push chưa qua, nhật ký có "Đổi trạng thái bằng tay A → B, lý do: …" đã che bí mật; chọn Sẵn sàng → ticket vào hàng đợi. Agent đang chạy → nút ẩn, API từ chối. Test tự động: `TaskServiceTest.pmoForcesStatusWithReason`.
+
+## Room và đồng bộ giữa agent (ROOM, `docs/CHANGE-ROOM.md`)
+
+Agent giả (`FakeAgent`) đi qua MCP thật, repo git thật của `samples/shop`, folder dữ liệu thật; hàng đợi đồng bộ chạy trong luồng test nên thứ tự phiên xác định.
+
+| Test | AC |
+| --- | --- |
+| `RoomRouterTest`, `RoomFlowTest.vagueMessageAsksWithoutAnyLlmCall` | AC-31: `@Dev chạy lại test` → Dev; "quy tắc hoàn tiền khi có phí là gì?" → SA; câu mơ hồ → nút chọn, không gọi agent |
+| `AgentServiceTest.toolsNeverServeSecretsOrWholeFiles` | AC-32: trước khi chốt Dev bị từ chối `edit_file`/`commit`/`run_quality_gate`, ghi được `write_proposal`; tắt cấu hình thì không mở được phiên Dev |
+| `RoomFlowTest.devTechnicalFindingUpdatesPlanAndDevContinues` | AC-33, AC-35, FR-84, token phiên đồng bộ |
+| `RoomFlowTest.acChangeFromDevProposalNeedsThePmoWhateverTheAgentSays`, `ImpactRulesTest` | AC-34 |
+| `RoomFlowTest.loopStopsAfterTwoRoundsAndHourlyCapPauses` | AC-36, AC-40 (nhiều vòng SA ↔ Dev không đổi status) |
+| `RoomFlowTest.eventsRunInOrderAndSurviveARestart` | AC-37, FR-83 |
+| `RoomFlowTest.undoRestoresThePreviousVersionAndTellsDev` | AC-38 |
+| `RoomFlowTest.twoJobsInOneMessageRunInParallel` | AC-39 (hai luồng thật, mỗi phiên thấy phiên kia đang chạy) |
+| `TaskServiceTest.everyPairOutsideTheTableIsRefused` | AC-40: mọi cặp ngoài bảng FR-86, mọi vai |
+| `TaskServiceTest.oldStatusesMigrate` | AC-41 |
+| `RoomFlowTest.caseA1KeepsImplementing` | AC-42 |
+| `RoomFlowTest.caseA2StopsDevCommitsWipAndReapproves` | AC-43 |
+| `RoomFlowTest.caseB1BugInTheWorkInProgress` | AC-44 |
+| `RoomFlowTest.caseB2FixOldBugHereGoesLikeA2` | AC-45 |
+| `RoomFlowTest.caseB3ReopensTheOtherTicketAndFlagsOverlap` | AC-46 |
+| `RoomFlowTest.caseB4CreatesANewBugTicket` | AC-47 |
+| `RoomFlowTest.bugCasesAreGuessedLocally` | AC-48 |
+| `RoomFlowTest.devThatDoesNotStopIsCancelledAndItsWorkCommitted` | AC-49 (huỷ sau 1 giây trong test; cấu hình mặc định 60 giây) |
+| `RoomFlowTest.skipReapprovalUnlessANewRepoIsAdded` | AC-50 |
+| `RoomFlowTest.pmoHandEditsAndBugsAfterDeployReachSa` | FR-77: PMO tự commit → SA ghi nhận một lần; báo bug sau deploy → SA cập nhật analysis.md trước Dev |
+
+**K-12 (Claude Code thật trên `samples/shop`)** — chưa chạy
+
+- [ ] Ticket FEAT order-service: SA phân tích qua room, PMO chốt, Dev triển khai. Trong lúc Dev chạy, gõ "dùng lại hàm format tiền có sẵn": SA bổ sung plan.md, thẻ diff hiện, Dev nhận phần bổ sung.
+- [ ] Gõ "hoàn tiền tối đa 50%": Dev dừng trong 60 giây, có commit `WIP(<mã>)` cục bộ, ticket qua Phân tích → "Chờ PMO chốt · chốt lại"; plan.md có "Ảnh hưởng tới code đang làm"; chốt → Triển khai, Dev làm tiếp từ commit WIP.
+- [ ] Ghi token vào/ra của từng phiên tự kích hoạt (history.md, hộp token "Đồng bộ tự động") để tính trung bình một lần đồng bộ.
+- [ ] Bấm Hoàn tác trên thẻ cập nhật; bấm "Tạm dừng đồng bộ", để Dev ghi một đề xuất, bật lại: sự kiện chạy.
+- [ ] Folder dữ liệu thật có ticket `in_dev`/`sa_verify`: khởi động DevMap, trạng thái hiện đúng, history.md có dòng migration.

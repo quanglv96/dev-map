@@ -497,3 +497,58 @@ Lỗi "Thiếu prompts/execution.md … does not exist" giữa lúc chạy ticke
 - `bin/devmap.cmd` và `bin/devmap` chép jar vào thư mục tạm, chạy bản sao, xoá khi thoát; truyền jar gốc qua `-Ddevmap.jar`.
 - `serve.url` (D-54, kiểm "bản khác đang chạy") và shortcut khởi động dùng jar gốc (`StartupShortcut.jar()`), thời điểm build lấy từ bản sao (giữ nguyên mtime).
 - Shortcut khởi động (javaw) vẫn chạy jar gốc: build lại khi bản nền đó đang chạy thì cần tắt DevMap trước.
+
+## D-74 Mô hình trạng thái 3 lớp và migration (PROMPT_ROOM FR-85 → FR-89)
+Thay 8 trạng thái của D-13 bằng `new`, `analysis`, `wait_approval`, `ready`, `implement`, `verify`, `wait_confirm`, `done` (mã thường trong `task.md`). `cancelled` (D-66) giữ nguyên, nằm ngoài bảng như cũ.
+- Bảng chuyển FR-86 là `TaskStatus.next()`; mọi cặp ngoài bảng bị `TaskService.transition` từ chối ("ngoài bảng FR-86"). Cổng PMO: mọi lối ra của `wait_approval`, `wait_confirm`, `done`, `cancelled`. `implement/verify → analysis` chỉ PMO hoặc DevMap (luật cứng), không agent nào. `done → analysis` chỉ qua "Báo bug / Bổ sung logic" (FR-10), nút chuyển thường bị từ chối.
+- Chốt lần đầu → `ready`; chốt lại (ticket đã có worktree trong `dev.json`) → thẳng `implement`, không vào hàng đợi; server từ chối hướng còn lại. Lúc chốt, `flags.approved_plan` ghi version plan.md để lần chốt lại chỉ đưa Dev phần diff.
+- Cờ (FR-88) nằm trong `task.md` mục `flags`: `needs_pmo` (lý do, null = không), `open_proposals`, `sync_paused`, `mid_change`, `file_overlap`, `approved_plan`. Cờ `reopened` giữ là trường `reopened` sẵn có (đếm số lần).
+- Hoạt động (`activity`) chỉ ở bộ nhớ (`AgentService.doing`), đi qua `GET /agents` (trường `doing`) và SSE như trước, không ghi tài liệu. Trao đổi SA ↔ Dev nhiều vòng chỉ đổi activity.
+- Migration: `TaskStatus.parse` đọc mọi mã cũ (`sa_analysis`, `awaiting_approval`, `in_dev`, `sa_verify`, `awaiting_push`, và `reopened`, `sa_review` nếu có) thành trạng thái mới; `status: reopened` còn đặt `reopened` ≥ 1. Lúc khởi động (`ApplicationReadyEvent`) `TaskService.migrate()` ghi lại `task.md` còn mã cũ, chỉ đổi phần đầu YAML, thân và tài liệu giữ nguyên, ghi một dòng history.md. File đồng bộ từ máy chạy bản cũ vẫn đọc được. `set_status` của agent chỉ nhận mã mới.
+- D-72 (đổi trạng thái bằng tay có lý do) giữ nguyên: là lối thoát của PMO, không phải bước của luồng.
+
+## D-75 Room thay chatbox; định tuyến cục bộ (FR-71 → FR-74)
+- Tab "Room" thay tab Chat. PMO gõ một lần, `POST …/room/send`; `RoomRouter` (không gọi LLM) chọn: `@SA`/`@Dev`/`@all` → từ khoá → trạng thái. Hai mention trong một câu tách thành hai việc, mỗi vai nhận phần chữ sau mention của mình. Không chắc → trả `ask: "role"`, UI hiện "Gửi SA / Gửi Dev", chưa lưu gì.
+- Bộ từ khoá ở `config.yml` mục `room` (`sa_keywords`, `dev_keywords`, `bug_keywords`, `change_keywords`), so khớp nguyên từ. Đang `implement/verify`: câu có từ bug → SA với case B; có từ thay đổi → SA phân loại A1/A2 (PMO gọi `@Dev` thì vẫn tới Dev).
+- Song song (FR-74): `busy` của AgentService tính theo ticket + vai, nên SA và Dev của cùng ticket chạy cùng lúc trong giới hạn `devmap.agent.max-concurrent`. Hai phiên cùng vai vẫn bị từ chối. `history.md` ghi dưới một khoá (`TaskRepository.appendDoc`), `chat.json` dưới khoá của AgentService.
+- Quyền Dev trước khi chốt (FR-73): `room.dev_can_propose_before_approval` (mặc định `true`) cho mở phiên Dev ở mọi trạng thái chưa đóng, nhưng `edit_file`, `write_file`, `delete_file`, `commit`, `run_quality_gate` chỉ chạy khi ticket `implement` (kiểm ở server). Dev luôn có `write_proposal`. `false` thì như cũ (Dev chỉ khi đã chốt).
+- Câu "Quét toàn bộ dự án" vẫn đi `POST …/ask` (một vai, ngoài router) vì AC-09 gắn với một câu hỏi.
+
+## D-76 Đề xuất có cấu trúc (FR-75, FR-76)
+- `tasks/<ticket>/proposals/<yyyyMMdd-HHmmss-SSS>-<tác giả>.json`, schema FR-75 thêm `origin` (đề xuất gốc của mạch), `round`, `agent_affects` (agent tự đánh giá) bên cạnh `affects` (sau luật cứng), `note`, `views` (hai quan điểm khi chống vòng lặp), `created`, `updated`. Mọi chữ qua lớp che bí mật.
+- Công cụ: `write_proposal` (SA, Dev), `resolve_proposal` (SA). `QUESTION` vào thẳng `NEEDS_PMO` và bật `needs_pmo`. PMO quyết đề xuất `NEEDS_PMO` bằng nút Đồng ý / Không đồng ý trên thẻ; hết đề xuất chờ thì tắt `needs_pmo`.
+- Câu thay đổi logic hay báo bug của PMO lúc đang triển khai cũng thành đề xuất (tác giả PMO), nên SA phân loại chúng bằng cùng công cụ như đề xuất của Dev.
+
+## D-77 Đồng bộ tự động qua sự kiện (FR-77 → FR-84)
+- `orchestration.TriggerRules` là bảng duy nhất: sự kiện → vai → trạng thái được chạy → loại ngữ cảnh → nhiệm vụ. Sự kiện: `DEV_PROPOSAL`, `DOC_CHANGED`, `PROPOSAL_RESOLVED`, `VERIFY_FAILED`, `PMO_CODE_CHANGE`, `BUG_AFTER_DEPLOY`, `PMO_CHANGE`, `PMO_BUG`, `PMO_BUG_DEV`, `REANALYZE`, `REAPPROVED`, `UNDONE`. Điều kiện không còn đúng lúc tới lượt thì sự kiện `SKIPPED` kèm ghi chú.
+- Hàng đợi bền: `tasks/<ticket>/events.json` (đồng bộ theo folder dữ liệu như mọi file khác). Mỗi ticket một "làn": xử lý phiên vừa xong trước (phân loại, sinh sự kiện mới), rồi mới mở phiên kế tiếp; không mở phiên khi vai đó đang bận. Khởi động lại: `RUNNING` → `PENDING`, chạy tiếp (`Orchestrator.recover`).
+- Ngữ cảnh phiên tự kích hoạt (FR-78, `ContextBuilder.buildSync`): spec.json, summary.md (≤ 3000 ký tự), phần thay đổi (đề xuất hoặc unified diff), đoạn tài liệu theo `refs` (`analysis.md#AC-2`: heading tới heading cùng cấp; dòng danh sách thì chỉ dòng đó và dòng con), chữ ký của file trong `location` + lân cận 1 tầng. Không có analysis.md/plan.md đầy đủ, không có chat. System prompt giữ nguyên theo vai nên vẫn trúng prompt cache.
+- Sau khi PMO chốt, plan.md/analysis.md chỉ sửa được trong phiên tự kích hoạt (thay "plan.md đã chốt không sửa" của FR-08/D-68); phiên hỏi thường và phiên kiểm chứng không sửa plan.md (kiểm chứng vẫn được thêm ca kiểm thử vào analysis.md).
+- PMO tự sửa code: DevMap quét mỗi phút các ticket `implement/verify` không có phiên chạy, tìm commit sau lần Dev cuối mà không do Dev làm; mỗi head một lần. `changes.md` do DevMap sinh lại từ git (SA không ghi được file này); SA ghi nhận vào summary.md và kiểm AC. `ponytail:` chỉ bắt commit, không bắt file chưa commit (có thể là phần Dev để lại).
+- FR-84: sau mỗi phiên tự kích hoạt DevMap thêm một dòng vào summary.md mục `## Đồng bộ tự động` (giữ 10 dòng gần nhất).
+- Chi phí: phiên tự kích hoạt có `mode: sync` và `trigger` trong chat.json; history.md ghi "Phiên tự kích hoạt #n (sự kiện)" kèm token; `GET /usage` có `sync`, `syncSessions`; hộp token của dự án hiện "Đồng bộ tự động: n phiên, x token".
+
+## D-78 Luật cứng phân loại ảnh hưởng (FR-79, FR-90, FR-91)
+- Sau mỗi phiên SA bắt đầu ở `implement/verify` có đổi plan.md/analysis.md hoặc repo, `ImpactRules.classify` so bản đầu phiên với bản cuối: thêm repo vào ticket hoặc plan.md nhắc repo mới của dự án → `SCOPE`; đổi mục phạm vi → `SCOPE`; đổi mục business rule/quy tắc/nghiệp vụ → `BUSINESS_RULE`; đổi dòng AC (`AC-n`, Given/When/Then, mọi dòng dưới heading AC) → `AC`. Mục "Ca kiểm thử" không tính: case bị sót của AC có sẵn là kỹ thuật (B1).
+- Kết quả = nặng hơn giữa luật cứng và `affects` SA ghi khi `resolve_proposal`. `TECHNICAL_ONLY`: đề xuất `APPLIED`, thẻ "SA đã cập nhật plan.md (vN) theo …" có diff và Hoàn tác, Dev nhận `DOC_CHANGED` (chỉ khi `implement`). Khác: đề xuất `NEEDS_PMO`, xử lý như A2 (D-79).
+- Mỗi lần ghi history.md một dòng FR-95: `Thay đổi giữa chừng · nguồn PMO|DEV|SA · case A1|A2|B… · plan.md v3 → v4 · mức`.
+
+## D-79 Thay đổi giữa chừng, dừng Dev an toàn, bỏ chốt lại (FR-91 → FR-96)
+- A2 (và B2, và B1 khi SA thấy AC sai): (1) dừng Dev an toàn; (2) commit WIP; (3) cờ `mid_change` + `needs_pmo` (khay coi là việc cần quyết); (4) `implement/verify → analysis` (DevMap); (5) sự kiện `REANALYZE`: SA so code trong worktree với yêu cầu mới, ghi plan.md mục `## Ảnh hưởng tới code đang làm` (giữ nguyên / phải sửa / phải bỏ). SA quên `set_status` thì DevMap tự chuyển `wait_approval` để PMO vẫn quyết. (6) Nhãn "chốt lại · v<n>"; PMO chốt → `implement`, sự kiện `REAPPROVED` đưa Dev diff plan.md từ lần chốt trước và mục ảnh hưởng.
+- Dừng an toàn (FR-94): phiên Dev nhận cờ dừng; mọi lệnh công cụ sau đó bị từ chối với "DevMap yêu cầu dừng", nên thao tác sửa file đang chạy xong rồi agent kết thúc. Quá `room.safe_stop_seconds` (mặc định 60) thì `AgentProvider.cancel` giết tiến trình Claude Code (cả tiến trình con). Sau đó `TicketGitService.wipCommit` commit cục bộ `WIP(<mã>): tạm dừng do <lý do>` ở mọi repo có thay đổi, không push; hash vào changes.md qua danh sách commit. Repo có file bí mật hoặc file chờ PMO duyệt thì không commit WIP (giữ trên đĩa, ghi history) để thẻ duyệt vẫn thấy chúng. Phiên bị dừng không tự commit phần còn lại như phiên thường (commitLeftovers), để phần đó vào đúng commit WIP.
+- `room.skip_reapproval_for_pmo_changes` (mặc định `false`): A2/B2 do chính PMO yêu cầu và không thêm repo thì giữ `implement`; SA cập nhật xong có thẻ "Đã áp dụng thay đổi của PMO, không chốt lại" kèm Hoàn tác, Dev nhận `REAPPROVED`. Sau phiên SA mà plan thêm repo/service thì vẫn đi đường chốt lại.
+- Hoàn tác (FR-80): `POST …/room/undo` ghi lại nội dung version cũ thành version mới (hoàn tác cũng xem diff và hoàn tác được), thẻ cũ gạch ngang, Dev nhận `UNDONE` khi đang `implement`.
+
+## D-80 Báo bug khi đang triển khai: B1–B4 đoán cục bộ (FR-92, FR-93)
+- `BugCaseGuesser` lấy tên file (`*.java`, `.ts`…), tên camelCase/PascalCase, `tên(` trong câu của PMO, so với file + diff của worktree ticket, plan.md, `changes.md` của các ticket Done. "sửa luôn / trong task này" → B2. Chỉ khớp ticket đang làm → B1 (chắc). Chỉ khớp một ticket Done → B3. Khớp cả hai, chỉ khớp plan.md, hoặc không có tên nào → hỏi bằng 4 nút. Không khớp gì → B4.
+- B1: đề xuất `BUG_FOUND` tác giả PMO. Nguyên nhân rõ → Dev sửa trước (`PMO_BUG_DEV`); luôn có `PMO_BUG` cho SA thêm ca kiểm thử vào AC (case sót → kỹ thuật, AC sai → luật cứng thành A2). B2: đề xuất `SCOPE_CHANGE` rồi như A2. B3: mở lại ticket Done bằng "Báo bug", chạy riêng; chạm cùng file (mục "File sửa" của changes.md) → cờ `file_overlap` cả hai và thẻ hỏi PMO làm task nào trước; task không được ưu tiên dừng an toàn, commit WIP và tạm dừng đồng bộ. B4: tạo ticket BUG mới, SA phân tích ngay.
+
+## D-81 Chống vòng lặp và trần phiên (FR-81)
+- Mỗi đề xuất mang `origin` của mạch; Dev trả lời bằng `write_proposal` với `reply_to`. Đề xuất thứ `room.max_rounds + 1` (mặc định 3) của Dev trong một mạch không mở phiên SA: đề xuất `NEEDS_PMO` với hai quan điểm (Dev: đề xuất; SA: lý do lần từ chối trước), cờ `needs_pmo`, thẻ quan trọng.
+- Trần `room.max_auto_sessions_per_hour` (mặc định 10) phiên tự kích hoạt mỗi ticket trong 60 phút gần nhất (đếm theo `started` trong events.json). Vượt: sự kiện giữ `PENDING`, cờ `sync_paused` + `needs_pmo`, thẻ quan trọng. PMO bật lại đồng bộ thì xoá luôn `needs_pmo` của trần.
+
+## D-82 Giới hạn còn lại của room
+- Dừng cưỡng bức chỉ có ở `ClaudeCodeProvider` (giết tiến trình). Provider khác phải tự cài `cancel`; nếu không, phiên chỉ dừng khi agent tự kết thúc sau lần bị từ chối công cụ.
+- Phiên SA phân loại A1/A2 chạy song song với phiên Dev đang làm (SA chỉ sửa tài liệu); Dev chỉ bị dừng khi kết quả là A2. Đổi lại, Dev có thể code thêm ít phút trên yêu cầu cũ trước khi dừng; phần đó nằm trong commit WIP và mục "Ảnh hưởng tới code đang làm".
+- Hai phiên song song cùng ghi summary.md thì bản ghi sau thắng (writeDoc vẫn tuần tự, không hỏng file); dòng "Đồng bộ tự động" do DevMap ghi nên không mất.
+- `config.yml` lưu mục `room` đầy đủ (kể cả bộ từ khoá mặc định) ở lần lưu đầu tiên, để PMO thấy và sửa được.

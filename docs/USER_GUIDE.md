@@ -46,14 +46,14 @@ Trình duyệt tự mở và đăng nhập sẵn (token đổi mỗi lần chạ
 ## 4. Một ticket từ đầu đến cuối
 
 1. **Tạo ticket** (nút "Ticket mới" hoặc `devmap task new nyxhub --type FEAT --code NYX-231 --request "…"`). Viết tự nhiên; DevMap tự bỏ câu xã giao, che bí mật, tạo `spec.json`. Agent chỉ nhận `spec.json`, không nhận nguyên văn.
-2. **Hỏi SA** trong tab Chat, ví dụ "Phân tích và gửi chốt". Mỗi câu hỏi là một phiên agent mới; agent đọc tài liệu của ticket, không đọc lại chat. SA viết `analysis.md` (AC), `plan.md` (việc theo repo, tên file) rồi chuyển "Chờ PMO chốt".
-3. **Chốt giải pháp** ở cột phải (hoặc "Yêu cầu phân tích lại"). Sau khi chốt, plan.md không ai sửa được ngoài lần phân tích lại.
-4. **Triển khai**: hỏi Dev (ở trạng thái Sẵn sàng vai mặc định là Dev). Dev pull nhánh nền vào worktree riêng của ticket, sửa code, chạy quality gate, commit `<mã>: …`, chuyển SA.
+2. **Nhắn trong room** (tab Room), ví dụ "Phân tích và gửi chốt". DevMap tự chọn SA hay Dev (hoặc gõ `@SA`, `@Dev`, `@all`); mỗi câu là một phiên agent mới, agent đọc tài liệu của ticket, không đọc lại room. SA viết `analysis.md` (AC), `plan.md` (việc theo repo, tên file) rồi chuyển "Chờ PMO chốt". Xem mục 11.
+3. **Chốt giải pháp** ở cột phải (hoặc "Yêu cầu phân tích lại"). Nhãn cạnh trạng thái cho biết "chốt lần đầu" (vào hàng đợi) hay "chốt lại · v<n>" (về thẳng Triển khai). Sau khi chốt, plan.md chỉ đổi qua đồng bộ tự động (mục 11), có thẻ và nút Hoàn tác.
+4. **Triển khai**: hỏi Dev (ở trạng thái Sẵn sàng vai mặc định là Dev). Dev pull nhánh nền vào worktree riêng của ticket, sửa code, chạy quality gate, commit `<mã>: …`, chuyển Kiểm chứng.
    - Sửa DB schema, dependency hay thư mục cấm: hiện thẻ duyệt, chỉ PMO duyệt được.
    - PMO có thể tự sửa/commit trong worktree (đường dẫn ở cột phải); phiên Dev sau được báo.
-5. **SA kiểm chứng** tự chạy: đối chiếu AC với diff, ghi `verify.md`. Lệch phạm vi hoặc chữ ký bị đổi mà nơi gọi chưa kiểm → trả về Dev. Đạt → "Chờ PMO xác nhận".
+5. **Kiểm chứng** tự chạy: SA đối chiếu AC với diff, ghi `verify.md`. Lệch phạm vi hoặc chữ ký bị đổi mà nơi gọi chưa kiểm → trả về Dev, Dev tự nhận danh sách lỗi. Đạt → "Chờ PMO xác nhận push".
 6. **Xác nhận push**: DevMap push đúng commit đã qua gate và kiểm chứng lên nhánh của ticket (không bao giờ vào nhánh bảo vệ). Ticket sang Done; ngữ cảnh phiên bị xoá, tài liệu giữ lại.
-7. **Báo bug / Bổ sung logic** sau deploy: mở lại cùng mã, SA tự phân tích ngay; mô tả của PMO và tiến trình của SA hiện ở tab Chat.
+7. **Báo bug / Bổ sung logic** sau deploy: mở lại cùng mã (về Phân tích, cờ "Mở lại" +1), SA tự cập nhật logic đúng vào analysis.md trước khi giao Dev; tiến trình hiện ở tab Room.
 
 Sau khi chốt, ticket vào khung "Hàng đợi Dev" ở cột trái: xếp thứ tự (↑↓) rồi bấm **Dev triển khai**; Dev làm lần lượt, ticket sau bắt đầu khi ticket trước đã qua SA kiểm chứng. Bấm **Tạm dừng triển khai** (ở khung này hoặc trên trang ticket) thì phiên đang chạy vẫn làm xong và ticket kế tiếp chưa bắt đầu. Ticket nào lỗi hoặc bị trả về thì hàng đợi dừng. Muốn làm riêng một ticket: bấm ▶ ở dòng của ticket hoặc **Dev triển khai** trên trang ticket.
 
@@ -168,3 +168,30 @@ Có nhiều trạng thái cùng lúc thì ưu tiên số, rồi đến lỗi, r�
 - **Menu → Tạm tắt thông báo**: 1 giờ, đến 7 giờ sáng, hoặc bật lại.
 - **Menu → Khởi động cùng Windows**: tạo hoặc xoá shortcut trong thư mục Startup của bạn (không sửa registry, không cần quyền admin). Khi đó DevMap chạy nền, không tự mở trình duyệt. Shortcut lưu đường dẫn jar hiện tại; chuyển thư mục DevMap thì tắt và bật lại.
 - **Menu → Thoát DevMap**: còn agent đang chạy thì hỏi xác nhận; thoát sẽ dừng agent và nhả khoá đồng bộ để máy khác mở được ngay.
+
+## 11. Room và đồng bộ giữa agent
+
+Mỗi ticket là một **room** ba thành viên: PMO (bên phải), SA (xanh) và Dev (tím) bên trái. Thanh trên room cho biết trạng thái ticket, agent nào đang chạy (avatar có vòng xanh) và nút **Tạm dừng đồng bộ tự động**.
+
+**Ai nhận câu của bạn.** Gõ `@SA`, `@Dev` hoặc `@all` để chỉ định; "@SA rà nghiệp vụ, @Dev dò log" mở hai phiên chạy song song. Không gọi tên thì DevMap đoán theo từ khoá (nghiệp vụ, quy tắc, nguyên nhân → SA; sửa code, chạy test, log → Dev) rồi theo trạng thái ticket; không chắc thì hiện một dòng "Gửi SA / Gửi Dev". Việc chọn chạy trên máy, không tốn token. Bộ từ khoá sửa ở `config.yml` mục `room`.
+
+**Trước khi chốt**, Dev chỉ trả lời và ghi đề xuất, không sửa được code (`room.dev_can_propose_before_approval`).
+
+**Đề xuất.** SA, Dev (và câu thay đổi/báo bug của bạn khi đang triển khai) thành thẻ đề xuất: tác giả, loại, mức ảnh hưởng, trạng thái. Bấm vào để xem chi tiết; thẻ "NEEDS_PMO" có nút Đồng ý / Không đồng ý.
+
+**Đồng bộ tự động.** Agent không nói chuyện với nhau, chỉ qua tài liệu và sự kiện:
+- Dev phát hiện bug hay cần đổi giải pháp → SA tự đánh giá và cập nhật plan.md/analysis.md.
+- Thay đổi chỉ kỹ thuật → Dev làm tiếp; bạn thấy thẻ "SA đã cập nhật plan.md (v4) theo đề xuất của Dev" với **Xem diff** và **Hoàn tác**.
+- Thay đổi chạm AC, business rule, phạm vi hay thêm repo → luôn về bạn, kể cả khi agent nói là kỹ thuật: Dev dừng ở điểm an toàn (commit WIP cục bộ, không push), ticket về Phân tích, SA ghi "Ảnh hưởng tới code đang làm" (giữ / sửa / bỏ) rồi "Chờ PMO chốt · chốt lại". Có thông báo quan trọng ở khay.
+- SA kiểm chứng không đạt → Dev tự nhận danh sách lỗi. Bạn tự commit code trong repo → SA tự ghi nhận và kiểm AC (DevMap kiểm mỗi phút).
+- SA và Dev bất đồng quá 2 vòng → dừng, thẻ trình bày hai quan điểm cho bạn quyết. Mỗi ticket tối đa 10 phiên tự kích hoạt mỗi giờ; vượt thì tạm dừng và báo bạn.
+- Tạm dừng đồng bộ: sự kiện vẫn được ghi lại, chạy khi bạn bật lại. Tắt DevMap giữa chừng cũng không mất sự kiện.
+
+**Thay đổi giữa chừng khi đang Triển khai.** Mọi câu về logic hay bug được chuyển cho SA phân loại trước:
+- Làm rõ kỹ thuật ("dùng lại hàm format tiền có sẵn") → giữ Triển khai, SA bổ sung plan.md, Dev nhận đúng phần bổ sung.
+- Đổi nghiệp vụ ("hoàn tiền tối đa 50%") → dừng Dev, phân tích lại, chốt lại. Muốn bỏ bước chốt lại cho thay đổi của chính bạn: `room.skip_reapproval_for_pmo_changes: true` (thêm repo/service mới vẫn phải chốt lại).
+- Báo bug: DevMap đoán bug thuộc phần đang làm, code cũ muốn sửa luôn, task đã Done khác, hay không thuộc task nào; không chắc thì hỏi bằng 4 nút. Task Done khác chạm cùng file với task đang làm → cả hai có cờ "Chạm cùng file", bạn chọn task làm trước, task kia dừng ở điểm an toàn.
+
+**Danh sách task** bên trái: mỗi dòng có mã, tên, trạng thái; dòng hoạt động hiện tại ("SA đang đánh giá đề xuất của Dev"); các cờ (⚑ Cần PMO quyết nổi bật nhất, ✉ đề xuất mở, ⏸ đồng bộ tạm dừng, ↻ thay đổi giữa chừng, ⧉ chạm cùng file, ↺ mở lại). Hộp token của dự án có dòng "Đồng bộ tự động: n phiên, x token" để bạn thấy chi phí của đồng bộ.
+
+Ticket cũ được chuyển sang trạng thái mới tự động khi DevMap khởi động ("SA phân tích" → Phân tích, "Đang triển khai" → Triển khai, "SA kiểm chứng" → Kiểm chứng, "Chờ PMO xác nhận" → Chờ PMO xác nhận push); tài liệu giữ nguyên.
